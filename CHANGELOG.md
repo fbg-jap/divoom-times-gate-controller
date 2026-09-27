@@ -8,7 +8,7 @@ Las versiones 2.x y 3.0 se desarrollaron y comprobaron localmente. Esta actualiz
 - Acceso directo a color fijo trasero sin ciclo multicolor y modo de luz continua en los bordes, con límites de color del firmware explicados.
 - Corregido el direccionamiento de efectos mediante las tres entradas de `LightList`.
 - Recuperación del último ajuste RGB aceptado al iniciar o reconectar, sin detener imágenes/GIF si falla el comando RGB.
-- 125 pruebas Python. [Uso y validación](docs/RGB-3.1.1.md).
+- 126 pruebas Python. Importar una copia deja la recuperación RGB en pausa hasta aplicar la iluminación. [Uso y validación](docs/RGB-3.1.1.md).
 
 ## 3.1.0 · Colores y RGB visuales
 

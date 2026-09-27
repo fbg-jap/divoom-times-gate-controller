@@ -92,3 +92,23 @@ class LightingTests(unittest.TestCase):
                 engine.health(d)
             self.assertTrue(engine.online[d['id']])
             self.assertNotIn((d['id'], d['ip']), engine.lighting_restored)
+
+    def test_imported_lighting_waits_for_explicit_apply_before_restoring(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            store = ConfigStore(root / 'source', migrate=False)
+            d = store.get_device()
+            d.update(ip='192.168.1.10', lighting=defaults(), lighting_restore=True)
+            store.update_device(d)
+            store.export(root / 'backup.zip')
+            target = ConfigStore(root / 'target', migrate=False)
+            target.import_bundle(root / 'backup.zip')
+            engine = Engine(target, demo=True)
+            with patch.object(engine, 'command', return_value={'error_code': 0}) as send:
+                engine.tick()
+                send.assert_not_called()
+                engine.health(target.get_device())
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(send.call_args.args[1]['Command'], 'Channel/GetAllConf')
+                engine.process('command', d['id'], {'payload': payload(defaults())})
+                self.assertTrue(target.get_device()['lighting_restore'])

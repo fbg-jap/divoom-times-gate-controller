@@ -280,7 +280,7 @@ class Engine(threading.Thread):
                 payload = lighting_payload(lighting)
             result = self.command(d, payload)
             if payload.get('Command') == 'Channel/SetRGBInfo':
-                self.set_state(d['id'], lighting=lighting)
+                self.set_state(d['id'], lighting=lighting, lighting_restore=True)
                 self.lighting_restored.add((d['id'], d['ip']))
             if args.get("pause"):
                 self.overrides = {key: value for key, value in self.overrides.items() if key[0] != d["id"]}
@@ -351,7 +351,7 @@ class Engine(threading.Thread):
             self.emit("health", device_id=d["id"], online=False, body={"error": str(error)})
             return
         key = (d['id'], d['ip'])
-        if d.get('lighting') and key not in self.lighting_restored:
+        if d.get('lighting') and d.get('lighting_restore', True) and key not in self.lighting_restored:
             from .lighting import payload
             try:
                 self.command(d, payload(d['lighting']))
@@ -389,7 +389,7 @@ class Engine(threading.Thread):
                             self.overrides[key] = time.monotonic() + 5
             if not d.get("ip"):
                 continue
-            if (d.get('enabled') or d.get('lighting')) and now - self.last_health.get(device_id, -1e12) > 30:
+            if (d.get('enabled') or (d.get('lighting') and d.get('lighting_restore', True))) and now - self.last_health.get(device_id, -1e12) > 30:
                 self.health(d)
             if not d.get('enabled'):
                 continue

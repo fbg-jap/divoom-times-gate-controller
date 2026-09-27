@@ -53,6 +53,8 @@ def validate(data):
         if 'lighting' in d:
             from .lighting import validate_lighting
             validate_lighting(d['lighting'])
+        if 'lighting_restore' in d and type(d['lighting_restore']) is not bool:
+            raise ValueError('Estado de recuperación RGB inválido')
         validate_playlists(d.get("playlists", empty_playlists()))
         if len(d.get("screens", [])) != 5:
             raise ValueError("Cada dispositivo necesita cinco pantallas")
@@ -278,6 +280,7 @@ class ConfigStore:
                     s["path"] = str(target)
             for d in data["devices"]:
                 d["enabled"] = False
+                d["lighting_restore"] = False
             data["integrations"] = copy.deepcopy(defaults()["integrations"])
             data["startup"] = self.data.get("startup", False)
             shutil.copy2(self.path, self.root / "config.before-import.json")
