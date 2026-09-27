@@ -151,7 +151,7 @@ Android requiere JDK 21 y SDK 36. iOS requiere Xcode 26 y firma para instalar en
 - La [versión original 0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) sigue disponible como recuperación.
 - El código actual está en esta rama. Los binarios y datos personales no se guardan en Git.
 - [GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/workflows/multiplatform.yml) compila Windows, Linux, Android y el simulador iOS, y comprueba Docker. Los artefactos aparecen en cada ejecución que termine correctamente; su disponibilidad depende del resultado de CI. No equivalen a una prueba en hardware físico.
-- [Compilación 3.1 comprobada y descargas](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150): los cuatro trabajos terminaron correctamente. Abre **Artifacts** al final de la ejecución con una sesión de GitHub iniciada. [Detalle de la validación](docs/VALIDACION-CI-3.1.0.md).
+- [Compilación con escritorio 3.1.1 y descargas](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691): los cuatro trabajos terminaron correctamente. Para Windows, descarga **windows-portable** en **Artifacts**: contiene `DivoomKeeper-3.1.1-windows.zip`, con la corrección RGB. Necesitas una sesión de GitHub iniciada. [Novedades y validación](docs/RGB-3.1.1.md).
 
 ## Migración, copias y compatibilidad
 
@@ -163,7 +163,7 @@ El historial Git y la release 0.1.3 se mantienen. Para volver a ella, cierra Stu
 
 ## Qué se ha comprobado
 
-- **121 pruebas Python y 13 pruebas Node** aprobadas localmente en la 3.1.
+- **126 pruebas Python** aprobadas para el escritorio 3.1.1 y **13 pruebas Node** para el frontend compartido.
 - Ejecutable Windows en demo, conversión real de GIF/vídeo de prueba, interfaz web y motor móvil con transporte simulado.
 - Compilación Android debug y coincidencia de sus recursos con el frontend web.
 - [CI desde un clon limpio](docs/VALIDACION-CI-3.1.0.md): pruebas Windows/Linux, binarios de escritorio, APK Android, app para simulador iOS y construcción/arranque de Docker completados correctamente.
@@ -214,4 +214,4 @@ No todos los comandos de Pixoo u otros modelos funcionan en Times Gate. Este es 
 
 Keeper controls the five Times Gate screens over local HTTP. Version 3.1 adds visual color pickers and RGB controls on top of images/GIFs, adjustable image/GIF/video panoramas, per-screen playlists, PC widgets, custom layouts, scenes, schedules and integrations. It includes a Windows/Linux desktop application, a Docker web portal and standalone Android/iOS projects. Mobile apps send directly to the display and require foreground execution for continuous tasks.
 
-The original working [v0.1.3 release](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains available. [CI builds](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150) passed for Windows, Linux, Android and the iOS simulator, including Docker startup. Physical mobile testing and firmware-specific RGB animations remain pending. Native PC Monitor activation is experimental. Use `--demo` to explore the desktop UI without controlling a device; switch the desktop interface to English in Settings.
+The original working [v0.1.3 release](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains available. [CI builds with desktop 3.1.1](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) passed for Windows, Linux, Android and the iOS simulator, including Docker startup. Download `windows-portable` for the Windows RGB fixes. Physical mobile testing and firmware-specific RGB animations remain pending. Native PC Monitor activation is experimental. Use `--demo` to explore the desktop UI without controlling a device; switch the desktop interface to English in Settings.

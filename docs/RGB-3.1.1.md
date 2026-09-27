@@ -17,8 +17,15 @@ La tabla y las descripciones proceden de las [pruebas documentadas de RGB_LIGHTS
 ## Comprobaciones
 
 - 126 pruebas Python aprobadas; incluyen direccionamiento por zona, compatibilidad de comandos anteriores, persistencia tras aceptación, importación sin envío automático y recuperación RGB sin detener las imágenes/GIF si falla la iluminación.
-- Interfaz comprobada en demo y compilación Windows preparada con PyInstaller.
+- Interfaz y ejecutable Windows comprobados en demo; carga de imágenes/GIF y conversión de vídeo verificadas en el ejecutable compilado.
+- [Compilación final en GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) del commit [`9c4186f`](https://github.com/raishack/divoom-times-gate-controller/commit/9c4186f72252fac8f07d446e69729a2545e0cfd9): Windows, Linux, Android e iOS simulador terminados correctamente; Docker construido y arranque comprobado. Son pruebas de compilación y arranque, no validación en teléfonos físicos.
 - El Times Gate aceptó una prueba de luz continua violeta para ambas zonas. La apariencia física está pendiente de confirmación del usuario; una respuesta correcta de la API no demuestra el color visible.
 - `keeper/protocol.py` mantiene su SHA-256 original: `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
+
+## Descargar Windows 3.1.1
+
+Abre la [ejecución verificada](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) con una sesión de GitHub iniciada y descarga **windows-portable** desde **Artifacts**. Dentro está `DivoomKeeper-3.1.1-windows.zip`. Extrae toda la carpeta, incluida `_internal`, cierra la versión anterior desde **Salir** en la bandeja y abre `DivoomKeeperStudio.exe`.
+
+Los artefactos tienen la retención de GitHub Actions; si caducan, vuelve a ejecutar **Multiplatform builds** o compila desde el código. No se ha creado una nueva release binaria.
 
 La compilación 3.1.0 y la copia del código anterior permanecen en las carpetas locales `dist/3.1.0/` y `backups/`. La 3.1.1 se genera en `dist/3.1.1/`. Los cambios visuales de esta revisión corresponden al escritorio; el portal y las apps móviles conservan su interfaz anterior.
