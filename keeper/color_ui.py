@@ -175,7 +175,7 @@ class LightingPanel(QWidget):
         note = QLabel(t('La zona seleccionada usa su propio catálogo de efectos. El firmware puede cambiar también la otra zona. Los ajustes aplicados se recuperan al reconectar.', 'The selected zone has its own effect catalogue. Firmware may also change the other zone. Applied settings are restored on reconnection.')); note.setWordWrap(True); layout.addWidget(note)
         apply = QPushButton(t('Aplicar iluminación', 'Apply lighting')); apply.setObjectName('primary'); apply.clicked.connect(self.applyRequested); layout.addWidget(apply)
         self.color.textChanged.connect(self.refresh); self.brightness.valueChanged.connect(self.refresh); self.zone.currentIndexChanged.connect(self.refresh)
-        self.effects.idClicked.connect(self.refresh)
+        self.effects.idClicked.connect(self.select_effect)
         for b in [self.on, self.cycle, self.keys]: b.toggled.connect(self.refresh)
         self.refresh()
 
@@ -196,6 +196,11 @@ class LightingPanel(QWidget):
         self.effects.button(SOLID_EFFECT).setChecked(True)
         self.cycle.setChecked(False)
         self.on.setChecked(True)
+        self.refresh()
+
+    def select_effect(self, effect):
+        if effect == SOLID_EFFECT:
+            self.cycle.setChecked(False)
         self.refresh()
 
     def refresh(self, *_):
