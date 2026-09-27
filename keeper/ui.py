@@ -629,12 +629,12 @@ class Window(QMainWindow):
         self.activity.document().setMaximumBlockCount(1500)
         self.activity.setMinimumHeight(450)
         layout.addWidget(self.activity, 1)
-        row = QHBoxLayout()
-        row.addWidget(button(self.t("Consultar ajustes", "Read settings"), lambda: self.command("Channel/GetAllConf")))
-        row.addWidget(button(self.t("Consultar canales", "Read channels"), lambda: self.command("Channel/GetIndex")))
-        row.addWidget(button(self.t("Abrir carpeta de datos", "Open data folder"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.root)))))
-        row.addWidget(button(self.t("Limpiar vista", "Clear view"), self.activity.clear))
-        row.addWidget(button(self.t("Reiniciar dispositivo…", "Reboot device…"), self.reboot))
+        row = QGridLayout()
+        row.addWidget(button(self.t("Consultar ajustes", "Read settings"), lambda: self.command("Channel/GetAllConf")), 0, 0)
+        row.addWidget(button(self.t("Consultar canales", "Read channels"), lambda: self.command("Channel/GetIndex")), 0, 1)
+        row.addWidget(button(self.t("Abrir carpeta de datos", "Open data folder"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.root)))), 0, 2)
+        row.addWidget(button(self.t("Limpiar vista", "Clear view"), self.activity.clear), 1, 0)
+        row.addWidget(button(self.t("Reiniciar dispositivo…", "Reboot device…"), self.reboot), 1, 1)
         layout.addLayout(row)
 
     def build_settings(self):
