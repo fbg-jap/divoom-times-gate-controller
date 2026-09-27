@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!requirements-core.txt
+!requirements-server.txt
+!server.py
+!keeper/
+!keeper/*.py
+!web/
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/public/
+!web/public/**
+!web/src/
+!web/src/**

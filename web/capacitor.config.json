@@ -1,0 +1,6 @@
+{
+  "appId": "com.raishack.divoomkeeper", "appName": "Divoom Keeper", "webDir": "dist",
+  "server": {"androidScheme": "https", "cleartext": true},
+  "android": {"allowMixedContent": true},
+  "plugins": {"CapacitorHttp": {"enabled": true}}
+}

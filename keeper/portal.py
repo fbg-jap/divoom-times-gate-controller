@@ -1,0 +1,412 @@
+"""Authenticated, single-engine web controller. No Qt dependency."""
+from __future__ import annotations
+
+import asyncio
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+import copy
+import hashlib
+import hmac
+import io
+import json
+import os
+from pathlib import Path
+import secrets
+import tempfile
+import threading
+import time
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from filelock import FileLock
+from PIL import Image, ImageOps
+
+from . import __version__
+from .config import ConfigStore, slot, validate, uid
+from .content import all_screens, assets, panorama_canvas
+from .engine import Engine
+from .panorama_media import decode_clip, VIDEO_EXTENSIONS, rgb
+from .protocol import valid_ip
+from .widgets import png_bytes
+
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ics"}
+LIMIT = 100 * 1024**2
+
+
+def revision(data):
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+class PortalEngine(Engine):
+    def __init__(self, *args, **kwargs):
+        self.activity = deque(maxlen=300)
+        self.previews = {}
+        self.tasks = {}
+        self.portal_lock = threading.RLock()
+        self.sequence = 0
+        super().__init__(*args, **kwargs)
+
+    def emit(self, event, **kwargs):
+        with self.portal_lock:
+            if event == "preview":
+                self.previews[(kwargs["device_id"], kwargs["panel"])] = kwargs["png"]
+                return
+            self.sequence += 1
+            self.activity.append({"id": self.sequence, "event": event, "time": time.time(), **kwargs})
+
+    def invalidate(self, device_id, panel=None):
+        super().invalidate(device_id, panel)
+        with self.portal_lock:
+            for key in list(self.previews):
+                if key[0] == device_id and (panel is None or key[1] == panel):
+                    self.previews.pop(key, None)
+
+    def new_task(self, operation):
+        with self.portal_lock:
+            for key in list(self.tasks):
+                if len(self.tasks) < 100:
+                    break
+                if self.tasks[key]["status"] in {"done", "error", "cancelled"}:
+                    del self.tasks[key]
+            if len(self.tasks) >= 100:
+                raise ValueError("Hay demasiadas tareas pendientes")
+            key = uid()
+            self.tasks[key] = {"id": key, "operation": operation, "status": "queued"}
+            return key
+
+    def task_update(self, key, **values):
+        with self.portal_lock:
+            self.tasks[key].update(values)
+
+    def enqueue(self, operation, callback):
+        key = self.new_task(operation)
+        if not self.submit("portal", task_id=key, callback=callback):
+            self.task_update(key, status="error", error="Cola llena")
+            raise ValueError("Cola llena")
+        return {"job": key}
+
+    def process(self, action, device_id, args):
+        if action != "portal":
+            return super().process(action, device_id, args)
+        key = args["task_id"]
+        self.task_update(key, status="running")
+        try:
+            result = args["callback"]()
+            self.task_update(key, status="done", result=result)
+        except Exception as error:
+            self.task_update(key, status="error", error=str(error))
+            self.log(str(error), "error")
+
+
+def validate_portal(data, media_dir):
+    validate(data)
+    if len(data["devices"]) > 30 or len(data["scenes"]) > 200 or len(data["schedules"]) > 200:
+        raise ValueError("Límite de dispositivos, escenas u horarios superado")
+    for d in data["devices"]:
+        if d.get("ip"):
+            valid_ip(d["ip"])
+        if not 30 <= int(d.get("quality", 85)) <= 100 or not 1 <= int(d.get("speed", 100)) <= 60000:
+            raise ValueError("Calidad o velocidad inválida")
+    root = media_dir.resolve()
+    for screen in all_screens(data):
+        if not 1 <= int(screen.get("frame_step", 1)) <= 100 or not 5 <= int(screen.get("refresh", 30)) <= 86400:
+            raise ValueError("Salto o actualización inválidos")
+        for asset in assets(screen):
+            if asset.get("path"):
+                path = Path(asset["path"]).resolve()
+                if path.parent != root or not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
+                    raise ValueError("Usa un archivo subido a la biblioteca de este servidor")
+
+
+def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None):
+    root = Path(root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(root / "server.lock", timeout=0)
+    token_path = root / "admin.token"
+    token = token or os.getenv("KEEPER_TOKEN")
+    if not token:
+        if not token_path.exists():
+            token_path.write_text(secrets.token_urlsafe(32), encoding="utf-8")
+            token_path.chmod(0o600)
+        token = token_path.read_text(encoding="utf-8").strip()
+    if len(token) < 24:
+        raise ValueError("KEEPER_TOKEN debe tener al menos 24 caracteres")
+    with lock:
+        store = ConfigStore(root, migrate=False)
+    engine = engine_factory(store, demo=demo)
+    converter = ThreadPoolExecutor(max_workers=1, thread_name_prefix="portal-converter")
+    conversion_slots = threading.BoundedSemaphore(2)
+    cancelled = {}
+
+    @asynccontextmanager
+    async def lifespan(app):
+        lock.acquire()
+        engine.start()
+        try:
+            yield
+        finally:
+            for event in list(cancelled.values()):
+                event.set()
+            converter.shutdown(wait=False, cancel_futures=True)
+            engine.stop()
+            await asyncio.to_thread(engine.join, 15)
+            lock.release()
+
+    app = FastAPI(title="Divoom Keeper Portal", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.state.store, app.state.engine = store, engine
+
+    @app.middleware("http")
+    async def security(request, call_next):
+        if request.url.path.startswith("/api/"):
+            supplied = request.headers.get("authorization", "")
+            if not hmac.compare_digest(supplied.encode(), ("Bearer " + token).encode()):
+                return JSONResponse({"error": "Introduce el token de acceso"}, status_code=401)
+            origin = request.headers.get("origin")
+            if origin and origin not in {str(request.base_url).rstrip("/"), *os.getenv("KEEPER_ORIGINS", "").split(",")}:
+                return JSONResponse({"error": "Origen no permitido"}, status_code=403)
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "no-cache"
+        return response
+
+    @app.exception_handler(ValueError)
+    async def value_error(request, exc):
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.exception_handler(KeyError)
+    @app.exception_handler(TypeError)
+    async def malformed(request, exc):
+        return JSONResponse({"error": "Petición incompleta o con tipos inválidos"}, status_code=400)
+
+    async def body(request, limit=1024**2):
+        chunks, count = [], 0
+        async for chunk in request.stream():
+            count += len(chunk)
+            if count > limit:
+                raise HTTPException(413, "Archivo o petición demasiado grande")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    async def json_body(request):
+        value = json.loads(await body(request))
+        if not isinstance(value, dict):
+            raise ValueError("Se necesita un objeto JSON")
+        return value
+
+    def owned(name):
+        if not name or Path(name).name != name:
+            raise ValueError("Archivo inválido")
+        path = (store.media_dir / name).resolve()
+        if path.parent != store.media_dir.resolve() or not path.is_file():
+            raise HTTPException(404, "Archivo no encontrado")
+        return path
+
+    def save_blob(blob, suffix):
+        path = store.media_dir / (hashlib.sha256(blob).hexdigest()[:20] + suffix)
+        path.write_bytes(blob)
+        return str(path)
+
+    @app.get("/healthz")
+    def health():
+        return {"ok": engine.is_alive(), "version": __version__}
+
+    @app.get("/api/state")
+    def state():
+        data = store.snapshot()
+        with engine.portal_lock:
+            events = list(engine.activity)
+        return {"config": data, "revision": revision(data), "events": events, "version": __version__,
+                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot()},
+                "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
+                    "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
+                    "metrics_label": "Métricas del equipo que ejecuta el servidor; en Docker, del contenedor"}}
+
+    @app.put("/api/config")
+    async def put_config(request: Request):
+        values = await json_body(request)
+        data = values["config"]
+        validate_portal(data, store.media_dir)
+        def update():
+            with store.lock:
+                if values.get("revision") != revision(store.data):
+                    raise ValueError("La configuración cambió. Recarga antes de guardar para no sobrescribir cambios.")
+                store.change(lambda current: (current.clear(), current.update(copy.deepcopy(data))))
+            # Preserve live Pomodoro and temporary notices; synchronize the runtime flags.
+            engine.paused = {d["id"] for d in data["devices"] if d.get("suspended")}
+            engine.power_off = {d["id"] for d in data["devices"] if d.get("screens_off")}
+            for d in data["devices"]:
+                engine.invalidate(d["id"])
+            return {"revision": revision(store.snapshot())}
+        return engine.enqueue("Guardar configuración", update)
+
+    @app.post("/api/upload")
+    async def upload(request: Request, name: str):
+        suffix = Path(name).suffix.lower()
+        if suffix not in MEDIA_EXTENSIONS:
+            raise ValueError("Formato no compatible")
+        blob = await body(request, LIMIT)
+        if not blob:
+            raise ValueError("Archivo vacío")
+        if suffix not in VIDEO_EXTENSIONS | {".ics"}:
+            with Image.open(io.BytesIO(blob)) as image:
+                if image.width * image.height > 20_000_000:
+                    raise ValueError("Máximo 20 megapíxeles")
+                image.verify()
+        path = save_blob(blob, suffix)
+        return {"path": path, "name": Path(path).name, "original": Path(name).name}
+
+    @app.get("/api/media/{name}")
+    def media(name: str):
+        return FileResponse(owned(name))
+
+    @app.get("/api/library")
+    def library():
+        return [{"path": str(p), "name": p.name, "size": p.stat().st_size}
+                for p in sorted(store.media_dir.iterdir()) if p.is_file() and p.suffix.lower() in MEDIA_EXTENSIONS]
+
+    @app.get("/api/jobs/{key}")
+    def job(key: str):
+        with engine.portal_lock:
+            if key not in engine.tasks:
+                raise HTTPException(404, "Tarea caducada")
+            return copy.deepcopy(engine.tasks[key])
+
+    @app.post("/api/jobs/{key}/cancel")
+    def cancel(key: str):
+        event = cancelled.get(key)
+        if event:
+            event.set()
+        return {"cancelled": bool(event)}
+
+    @app.post("/api/panorama")
+    async def panorama(request: Request):
+        values = await json_body(request)
+        path = owned(Path(values["path"]).name)
+        if not conversion_slots.acquire(blocking=False):
+            raise ValueError("Espera a la conversión anterior")
+        key = engine.new_task("Convertir panorámica")
+        stop = cancelled[key] = threading.Event()
+        def convert():
+            engine.task_update(key, status="running")
+            try:
+                options = {k: values[k] for k in ("fit", "position", "zoom", "start", "duration", "fps", "rotation") if k in values}
+                animated = path.suffix in VIDEO_EXTENSIONS
+                if not animated:
+                    with Image.open(path) as image:
+                        animated = getattr(image, "is_animated", False)
+                if animated:
+                    clip = decode_clip(path, **options, stop=stop)
+                    screens = [slot("media", path=save_blob(blob, ".gif"), fit="stretch", panorama_speed=clip["speed"])
+                               for blob in clip["blobs"]]
+                    preview = io.BytesIO()
+                    clip["frames"][0].save(preview, "GIF", save_all=True, append_images=clip["frames"][1:],
+                                          duration=clip["speed"], loop=0)
+                    preview_path = save_blob(preview.getvalue(), ".gif")
+                    count, duration = clip["count"], clip["duration"]
+                else:
+                    with Image.open(path) as image:
+                        image = rgb(ImageOps.exif_transpose(image)).rotate(-int(options.get("rotation", 0)), expand=True)
+                        canvas = panorama_canvas(image, options.get("fit", "cover"), options.get("position", (.5, .5)), options.get("zoom", 1))
+                    screens = [slot("media", fit="stretch", path=save_blob(png_bytes(canvas.crop((i*128, 0, (i+1)*128, 128))), ".png")) for i in range(5)]
+                    preview_path = save_blob(png_bytes(canvas), ".png")
+                    count, duration = 1, 0
+                if stop.is_set():
+                    raise InterruptedError("Conversión cancelada")
+                engine.task_update(key, status="done", result={"screens": screens, "preview": preview_path,
+                    "count": count, "duration": duration, "animated": animated})
+            except InterruptedError:
+                engine.task_update(key, status="cancelled")
+            except Exception as error:
+                engine.task_update(key, status="error", error=str(error))
+            finally:
+                cancelled.pop(key, None)
+                conversion_slots.release()
+        converter.submit(convert)
+        return {"job": key}
+
+    @app.get("/api/preview/{device_id}/{panel}")
+    def preview(device_id: str, panel: int):
+        if panel not in range(5):
+            raise ValueError("Pantalla inválida")
+        if device_id not in {d['id'] for d in store.snapshot()['devices']}:
+            raise HTTPException(404, "Dispositivo desconocido")
+        engine.submit("preview", device_id, panel=panel)
+        with engine.portal_lock:
+            blob = engine.previews.get((device_id, panel))
+        return Response(blob or b"", media_type="image/png", status_code=200 if blob else 204)
+
+    @app.post("/api/action")
+    async def action(request: Request):
+        values = await json_body(request)
+        operation = values["action"]
+        device_id = values.get("device_id") or store.snapshot()["active_device"]
+        if device_id not in {d["id"] for d in store.snapshot()["devices"]}:
+            raise ValueError("Dispositivo desconocido")
+        args = values.get("args", {})
+        if operation not in {"send", "resume", "health", "scene", "notification", "pomodoro", "command", "discover", "catalog"}:
+            raise ValueError("Acción desconocida")
+        if "panel" in args and int(args["panel"]) not in range(5):
+            raise ValueError("Pantalla inválida")
+        if operation == "command":
+            validate_command(args.get("payload", {}))
+        if operation == "notification" and (not 5 <= int(args.get("seconds", 15)) <= 300 or len(str(args.get("text", ""))) > 500):
+            raise ValueError("Aviso inválido")
+        if operation == "discover" and args.get("seed"):
+            valid_ip(args["seed"])
+        return engine.enqueue(operation, lambda: engine.process(operation, device_id, copy.deepcopy(args)))
+
+    @app.get("/api/export")
+    def export():
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "backup.zip"
+            store.export(path)
+            return Response(path.read_bytes(), media_type="application/zip",
+                            headers={"Content-Disposition": 'attachment; filename="Keeper-backup.zip"'})
+
+    @app.post("/api/import")
+    async def import_bundle(request: Request):
+        blob = await body(request, LIMIT)
+        def load():
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "backup.zip"
+                path.write_bytes(blob)
+                trial = ConfigStore(Path(temp) / "trial", migrate=False)
+                trial.import_bundle(path)
+                validate_portal(trial.snapshot(), trial.media_dir)
+                store.import_bundle(path)
+                engine.process("reset_runtime", None, {})
+            return {"imported": True}
+        return engine.enqueue("Importar copia", load)
+
+    directory = Path(web_root or Path(__file__).resolve().parents[1] / "web/dist")
+    if directory.exists():
+        app.mount("/", StaticFiles(directory=directory, html=True), name="portal")
+    return app
+
+
+def validate_command(payload):
+    if payload.get('Command') == 'Channel/SetRGBInfo':
+        from .lighting import from_payload
+        from_payload(payload)
+        return
+    commands = {
+        "Channel/GetAllConf": {}, "Device/SysReboot": {}, "Channel/SetBrightness": {"Brightness": (0, 100)},
+        "Channel/OnOffScreen": {"OnOff": (0, 1)}, "Channel/Set5LcdBrightness": {"Brightness": (0, 100)},
+        "Tools/SetTimer": {"Minute": (0, 999), "Second": (0, 59), "Status": (0, 1)},
+        "Tools/SetStopWatch": {"Status": (0, 2)}, "Tools/SetScoreBoard": {"RedScore": (0, 999), "BlueScore": (0, 999)},
+        "Tools/SetNoiseStatus": {"NoiseStatus": (0, 1)},
+        "Device/PlayBuzzer": {"ActiveTimeInCycle": (0, 10000), "OffTimeInCycle": (0, 10000), "PlayTotalTime": (0, 10000)},
+        "Channel/SetClockSelectId": {"ClockId": (1, 10000000), "LcdIndependence": (1, 100000000), "LcdIndex": (0, 4)},
+    }
+    name = payload.get("Command")
+    if name not in commands:
+        raise ValueError("Comando no admitido")
+    for key, (low, high) in commands[name].items():
+        if key not in payload or not low <= int(payload[key]) <= high:
+            raise ValueError("Parámetro inválido: " + key)
+    if set(payload) - {"Command", "DeviceId", *commands[name]}:
+        raise ValueError("Parámetro desconocido")

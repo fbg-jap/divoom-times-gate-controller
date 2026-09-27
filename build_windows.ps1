@@ -1,14 +1,16 @@
+param([switch]$SkipInstall, [string]$DistPath = 'dist')
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-
-if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
-  throw "Python launcher 'py' no encontrado. Instala Python 3 para Windows con PATH/launcher."
+if (-not (Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
+    py -3 -m venv .venv
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el entorno Python.' }
 }
-
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
-
-.\.venv\Scripts\pyinstaller.exe --noconsole --onefile --name DivoomKeeper app.py
-
-Write-Host "Build completado: $PSScriptRoot\dist\DivoomKeeper.exe" -ForegroundColor Green
+if (-not $SkipInstall) {
+    & .\.venv\Scripts\python.exe -m pip install -r requirements.txt 'pyinstaller>=6,<7'
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudieron instalar las dependencias.' }
+}
+& .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --distpath $DistPath packaging\DivoomKeeperStudio.spec
+if ($LASTEXITCODE -ne 0) { throw 'La compilación ha fallado.' }
+$studioOutput = Join-Path (Resolve-Path -LiteralPath $DistPath).Path 'DivoomKeeperStudio\DivoomKeeperStudio.exe'
+Write-Host "Aplicación: $studioOutput" -ForegroundColor Green
+Write-Host 'Copia la carpeta DivoomKeeperStudio completa para distribuirla.'

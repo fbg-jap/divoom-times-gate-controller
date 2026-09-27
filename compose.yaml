@@ -1,0 +1,20 @@
+services:
+  keeper:
+    build: .
+    image: divoom-keeper:3.1.0
+    restart: unless-stopped
+    ports:
+      - "${KEEPER_BIND:-0.0.0.0}:8080:8080"
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      KEEPER_TOKEN: ${KEEPER_TOKEN:-}
+      KEEPER_ORIGINS: ${KEEPER_ORIGINS:-}
+    volumes:
+      - keeper-data:/data
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  keeper-data:

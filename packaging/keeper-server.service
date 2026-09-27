@@ -1,0 +1,15 @@
+[Unit]
+Description=Divoom Keeper web portal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/divoom-times-gate-controller
+ExecStart=%h/divoom-times-gate-controller/.venv-server/bin/python server.py --data-dir %h/.local/share/divoom-keeper-server --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
