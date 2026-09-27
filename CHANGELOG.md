@@ -2,6 +2,14 @@
 
 Las versiones 2.x y 3.0 se desarrollaron y comprobaron localmente. Esta actualización publica su evolución junto con la 3.1; no implica que existan releases binarias separadas para cada versión.
 
+## 3.1.1 · Corrección RGB de escritorio
+
+- Efectos con nombres y descripciones específicos para bordes y luz trasera.
+- Acceso directo a color fijo trasero sin ciclo multicolor y modo de luz continua en los bordes, con límites de color del firmware explicados.
+- Corregido el direccionamiento de efectos mediante las tres entradas de `LightList`.
+- Recuperación del último ajuste RGB aceptado al iniciar o reconectar, sin detener imágenes/GIF si falla el comando RGB.
+- 125 pruebas Python. [Uso y validación](docs/RGB-3.1.1.md).
+
 ## 3.1.0 · Colores y RGB visuales
 
 - Selector de tono y saturación/luminosidad, paleta de 16 muestras y ocho colores recientes por sesión.

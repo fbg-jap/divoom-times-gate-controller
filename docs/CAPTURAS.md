@@ -12,7 +12,7 @@ Reloj, monitor del PC, texto, tiempo y tráfico de red, con contenido y color in
 
 ## RGB en escritorio
 
-Vista previa, brillo, seis ambientes y doce tarjetas para el efecto del dispositivo.
+Escritorio 3.1.1: vista previa, brillo, seis ambientes, efectos con nombres por zona y acceso directo al color fijo trasero.
 
 ![Iluminación RGB](screenshots/rgb-desktop.png)
 

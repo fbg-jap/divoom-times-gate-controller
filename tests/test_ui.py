@@ -95,6 +95,28 @@ class UiTests(unittest.TestCase):
         self.assertEqual(saved['screens'][0]['text'], 'original')
         self.assertNotIn(saved['id'], self.engine.paused)
 
+    def test_solid_color_disables_cycle_and_names_follow_the_zone(self):
+        self.drain()
+        panel = self.window.lighting
+        self.assertEqual(panel.effects.button(4).text(), 'Respiración')
+        panel.zone.setCurrentIndex(2)
+        self.assertEqual(panel.effects.button(4).text(), 'Pulso')
+        self.assertEqual(panel.effects.button(5).text(), 'Color fijo')
+        panel.color.setText('#a799ff')
+        panel.effects.button(7).click()
+        panel.cycle.setChecked(True)
+        panel.on.setChecked(False)
+        panel.zone.setCurrentIndex(0)
+        panel.solid.click()
+        self.assertEqual(panel.settings(), dict(color='#a799ff', brightness=50, zone=2, effect=5, on=True, cycle=False, keys=True))
+        self.assertTrue(self.engine.jobs.empty())
+        panel.applyRequested.emit()
+        self.drain()
+        self.window.load_device()
+        self.assertTrue(panel.solid.isChecked())
+        self.assertEqual(self.store.get_device()['lighting']['effect'], 5)
+        self.assertEqual(self.store.get_device()['screens'][0]['text'], 'original')
+
     def test_crop_position_and_zoom_apply_the_displayed_pixels(self):
         from keeper.dialogs import PanoramaDialog
         from PIL import ImageDraw

@@ -4,6 +4,8 @@ Convierte las cinco pantallas de tu **Divoom Times Gate** en un escritorio de im
 
 **Windows · Linux · Portal web / Docker · Android · iOS**
 
+**Escritorio 3.1.1:** efectos RGB con nombres por zona, acceso a color fijo trasero y recuperación de la iluminación al reconectar. [Uso y detalles de la corrección](docs/RGB-3.1.1.md).
+
 [Primeros pasos](#primeros-pasos) · [Instalación por plataforma](docs/MULTIPLATAFORMA.md) · [Galería de capturas](docs/CAPTURAS.md) · [Historial de cambios](CHANGELOG.md) · [Versión original 0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3)
 
 ![Keeper Studio: cinco pantallas con reloj, monitor PC, texto, tiempo y red](docs/screenshots/screens.png)
@@ -42,7 +44,7 @@ Las funciones continuas necesitan que el motor esté ejecutándose. En escritori
 
 ![Panel RGB del portal web: vista previa, paleta, ambientes y tarjetas de efectos](docs/screenshots/rgb-web.png)
 
-Los efectos conservan el orden del dispositivo como **Efecto 1–12**. Sus animaciones dependen del firmware y se comprueban en el Times Gate; la vista previa no intenta reproducir una animación no verificada. [Guía de colores y validación de 3.1](docs/COLORES-3.1.0.md).
+En escritorio 3.1.1 los efectos tienen nombres descriptivos según la zona y un acceso directo al color fijo trasero. El portal y las apps móviles conservan **Efecto 1–12**. La vista previa representa el color; las animaciones reales dependen del firmware. [Corrección RGB de escritorio](docs/RGB-3.1.1.md) · [Guía de colores de 3.1](docs/COLORES-3.1.0.md).
 
 ## Panorámicas con encuadre y animación
 

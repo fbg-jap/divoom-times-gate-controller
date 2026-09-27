@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal, QRectF, QSize
 from PySide6.QtGui import QColor, QPainter, QPen, QLinearGradient, QPixmap, QIcon
 from PySide6.QtWidgets import (QWidget, QPushButton, QDialog, QDialogButtonBox, QLabel,
     QVBoxLayout, QHBoxLayout, QGridLayout, QSlider, QComboBox, QCheckBox, QButtonGroup)
-from .lighting import PALETTE, PRESETS, defaults
+from .lighting import PALETTE, PRESETS, SOLID_EFFECT, defaults, effects_for_zone
 
 
 def color_name(color, t):
@@ -160,17 +160,24 @@ class LightingPanel(QWidget):
         presets = QGridLayout()
         for i, (es, en, color, brightness, cycle) in enumerate(PRESETS):
             b = QPushButton(t(es, en)); b.setIcon(swatch_icon(QColor(color))); b.clicked.connect(lambda checked=False, n=i: self.preset(n)); presets.addWidget(b, i//3, i%3)
-        layout.addLayout(presets); layout.addWidget(QLabel(t('Efecto del dispositivo', 'Device effect')))
+        layout.addLayout(presets)
+        self.solid = QPushButton(t('Color fijo trasero · sin animación', 'Solid backlight color · no animation'))
+        self.solid.setCheckable(True); self.solid.setMinimumHeight(44)
+        self.solid.clicked.connect(self.select_solid); layout.addWidget(self.solid)
+        layout.addWidget(QLabel(t('Efecto del dispositivo', 'Device effect')))
         grid = QGridLayout()
         for i in range(12):
-            b = QPushButton(t(f'Efecto {i+1}', f'Effect {i+1}')); b.setCheckable(True); b.setMinimumHeight(40); self.effects.addButton(b, i); grid.addWidget(b, i//6, i%6)
+            b = QPushButton(); b.setCheckable(True); b.setMinimumHeight(40); self.effects.addButton(b, i); grid.addWidget(b, i//3, i%3)
             b.setStyleSheet('QPushButton:checked {background:#24524c;color:#aaffdf;border:2px solid #64e6ca;}')
         self.effects.button(0).setChecked(True); layout.addLayout(grid)
         row = QHBoxLayout(); row.addWidget(self.cycle); row.addWidget(self.keys); row.addStretch(); layout.addLayout(row)
-        note = QLabel(t('Vista de color, brillo y zonas. La animación de cada efecto depende del firmware; aplícalo para verlo en el dispositivo.', 'Color, brightness and zone preview. Each effect animation depends on firmware; apply it to see it on the device.')); note.setWordWrap(True); layout.addWidget(note)
+        self.effect_description = QLabel(); self.effect_description.setWordWrap(True); layout.addWidget(self.effect_description)
+        note = QLabel(t('La zona seleccionada usa su propio catálogo de efectos. El firmware puede cambiar también la otra zona. Los ajustes aplicados se recuperan al reconectar.', 'The selected zone has its own effect catalogue. Firmware may also change the other zone. Applied settings are restored on reconnection.')); note.setWordWrap(True); layout.addWidget(note)
         apply = QPushButton(t('Aplicar iluminación', 'Apply lighting')); apply.setObjectName('primary'); apply.clicked.connect(self.applyRequested); layout.addWidget(apply)
         self.color.textChanged.connect(self.refresh); self.brightness.valueChanged.connect(self.refresh); self.zone.currentIndexChanged.connect(self.refresh)
+        self.effects.idClicked.connect(self.refresh)
         for b in [self.on, self.cycle, self.keys]: b.toggled.connect(self.refresh)
+        self.refresh()
 
     def settings(self):
         return dict(color=self.color.text(), brightness=self.brightness.value(), effect=max(0, self.effects.checkedId()), zone=self.zone.currentIndex(), on=self.on.isChecked(), cycle=self.cycle.isChecked(), keys=self.keys.isChecked())
@@ -182,5 +189,21 @@ class LightingPanel(QWidget):
     def preset(self, index):
         _, _, color, brightness, cycle = PRESETS[index]; self.color.setText(color); self.brightness.setValue(brightness); self.cycle.setChecked(cycle); self.on.setChecked(True)
 
+    def select_solid(self):
+        # The rear catalogue documents a custom-color solid mode. The edge
+        # steady mode can ignore Color, so do not promise the same behaviour.
+        self.zone.setCurrentIndex(2)
+        self.effects.button(SOLID_EFFECT).setChecked(True)
+        self.cycle.setChecked(False)
+        self.on.setChecked(True)
+        self.refresh()
+
     def refresh(self, *_):
+        catalogue = effects_for_zone(self.zone.currentIndex())
+        for i, (es, en, detail_es, detail_en) in enumerate(catalogue):
+            self.effects.button(i).setText(self.t(es, en))
+            self.effects.button(i).setToolTip(self.t(detail_es, detail_en))
+        selected = max(0, self.effects.checkedId())
+        self.effect_description.setText(self.t(*catalogue[selected][2:]))
+        self.solid.setChecked(self.zone.currentIndex() == 2 and selected == SOLID_EFFECT and not self.cycle.isChecked())
         self.percent.setText(f'{self.brightness.value()}%'); self.preview.update()

@@ -42,6 +42,7 @@ class Engine(threading.Thread):
         self.clients = {}
         self.last_health = {}
         self.online = {}
+        self.lighting_restored = set()
         self.paused = {d["id"] for d in store.snapshot()["devices"] if d.get("suspended")}
         self.power_off = {d["id"] for d in store.snapshot()["devices"] if d.get("screens_off")}
         self.overrides = {}
@@ -232,6 +233,7 @@ class Engine(threading.Thread):
 
     def process(self, action, device_id, args):
         if action == "reset_runtime":
+            self.lighting_restored.clear()
             self.hashes.clear()
             self.last_sent.clear()
             self.last_attempt.clear()
@@ -273,11 +275,13 @@ class Engine(threading.Thread):
         elif action == "command":
             payload = args["payload"]
             if payload.get('Command') == 'Channel/SetRGBInfo':
-                from .lighting import from_payload
+                from .lighting import from_payload, payload as lighting_payload
                 lighting = from_payload(payload)
+                payload = lighting_payload(lighting)
             result = self.command(d, payload)
             if payload.get('Command') == 'Channel/SetRGBInfo':
                 self.set_state(d['id'], lighting=lighting)
+                self.lighting_restored.add((d['id'], d['ip']))
             if args.get("pause"):
                 self.overrides = {key: value for key, value in self.overrides.items() if key[0] != d["id"]}
                 self.paused.add(d["id"])
@@ -336,13 +340,26 @@ class Engine(threading.Thread):
         try:
             body = self.command(d, {"Command": "Channel/GetAllConf"})
             if self.online.get(d["id"]) is False:
+                self.lighting_restored.discard((d['id'], d['ip']))
                 self.invalidate(d["id"])
                 self.log(f"{d['name']} · conexión recuperada; se restaurará su contenido")
             self.online[d["id"]] = True
             self.emit("health", device_id=d["id"], online=True, body=body)
         except Exception as error:
             self.online[d["id"]] = False
+            self.lighting_restored.discard((d['id'], d['ip']))
             self.emit("health", device_id=d["id"], online=False, body={"error": str(error)})
+            return
+        key = (d['id'], d['ip'])
+        if d.get('lighting') and key not in self.lighting_restored:
+            from .lighting import payload
+            try:
+                self.command(d, payload(d['lighting']))
+                self.lighting_restored.add(key)
+                self.log(f"{d['name']} · iluminación recuperada")
+            except Exception as error:
+                # An RGB failure must not suspend image/GIF uploads.
+                self.log(f"{d['name']} · no se pudo recuperar la iluminación: {error}", 'warning')
 
     def tick(self):
         data = self.store.snapshot()
@@ -370,10 +387,12 @@ class Engine(threading.Thread):
                             self.send_panel(d, key[1], True)
                         except Exception:
                             self.overrides[key] = time.monotonic() + 5
-            if not d.get("enabled") or not d.get("ip"):
+            if not d.get("ip"):
                 continue
-            if now - self.last_health.get(device_id, -1e12) > 30:
+            if (d.get('enabled') or d.get('lighting')) and now - self.last_health.get(device_id, -1e12) > 30:
                 self.health(d)
+            if not d.get('enabled'):
+                continue
             if self.online.get(device_id) is False:
                 continue
             for rule in data["schedules"]:
