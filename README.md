@@ -65,10 +65,10 @@ Mezcla texto, imágenes y barras con campos como `{cpu}`, `{ram}`, `{time}` o `{
 | Plataforma | Cómo se ejecuta | Estado de la versión 3.1 |
 | --- | --- | --- |
 | **Windows** | App PySide6, bandeja y autoarranque opcional | Ejecutable compilado y probado en demo. Conserva el transporte original de imágenes/GIF. |
-| **Linux** | Escritorio con rutas XDG, sensores y MPRIS opcional | Código y compilación automatizada preparados; escritorio físico pendiente de validar. |
-| **Docker / web** | Portal FastAPI y motor persistente | Portal probado en Windows; construcción y comprobación del contenedor incluidas en CI. |
+| **Linux** | Escritorio con rutas XDG, sensores y MPRIS opcional | Pruebas y binario x86_64 completados en CI; escritorio físico pendiente de validar. |
+| **Docker / web** | Portal FastAPI y motor persistente | Portal probado en Windows; imagen construida y arranque comprobado en CI. |
 | **Android** | App autónoma Capacitor: conversión y envío desde el teléfono | APK debug compilado; instalación y envío en teléfono físico pendientes. |
-| **iOS** | App autónoma con frontend compartido y HTTP nativo | Proyecto Xcode; necesita Mac y firma para iPhone. CI prepara un simulador sin firma. |
+| **iOS** | App autónoma con frontend compartido y HTTP nativo | App de simulador compilada en CI. Necesita Mac y firma para instalar en iPhone; teléfono físico pendiente. |
 
 El móvil autónomo **no necesita un servidor Keeper**. Sus funciones continuas dependen del primer plano y de las restricciones de Android/iOS. Los GIF enviados siguen reproduciéndose en el dispositivo. El portal web es otra modalidad: el navegador controla al servidor.
 
@@ -149,6 +149,7 @@ Android requiere JDK 21 y SDK 36. iOS requiere Xcode 26 y firma para instalar en
 - La [versión original 0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) sigue disponible como recuperación.
 - El código actual está en esta rama. Los binarios y datos personales no se guardan en Git.
 - [GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/workflows/multiplatform.yml) compila Windows, Linux, Android y el simulador iOS, y comprueba Docker. Los artefactos aparecen en cada ejecución que termine correctamente; su disponibilidad depende del resultado de CI. No equivalen a una prueba en hardware físico.
+- [Compilación 3.1 comprobada y descargas](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150): los cuatro trabajos terminaron correctamente. Abre **Artifacts** al final de la ejecución con una sesión de GitHub iniciada. [Detalle de la validación](docs/VALIDACION-CI-3.1.0.md).
 
 ## Migración, copias y compatibilidad
 
@@ -163,6 +164,7 @@ El historial Git y la release 0.1.3 se mantienen. Para volver a ella, cierra Stu
 - **121 pruebas Python y 13 pruebas Node** aprobadas localmente en la 3.1.
 - Ejecutable Windows en demo, conversión real de GIF/vídeo de prueba, interfaz web y motor móvil con transporte simulado.
 - Compilación Android debug y coincidencia de sus recursos con el frontend web.
+- [CI desde un clon limpio](docs/VALIDACION-CI-3.1.0.md): pruebas Windows/Linux, binarios de escritorio, APK Android, app para simulador iOS y construcción/arranque de Docker completados correctamente.
 - Confirmación visual previa en el Times Gate de imágenes/GIF, datos del PC renderizados por Keeper, listas y panorámicas de GIF/vídeo en las cinco pantallas.
 
 Las animaciones RGB de la nueva interfaz y el transporte desde teléfonos físicos están pendientes de validación real. Los relojes y herramientas nativas dependen del firmware. **PC Monitor nativo sigue siendo experimental:** el grupo nativo 0 está bloqueado porque alteraba otras pantallas. Para datos del PC comprobados utiliza el widget renderizado por Keeper.
@@ -210,4 +212,4 @@ No todos los comandos de Pixoo u otros modelos funcionan en Times Gate. Este es 
 
 Keeper controls the five Times Gate screens over local HTTP. Version 3.1 adds visual color pickers and RGB controls on top of images/GIFs, adjustable image/GIF/video panoramas, per-screen playlists, PC widgets, custom layouts, scenes, schedules and integrations. It includes a Windows/Linux desktop application, a Docker web portal and standalone Android/iOS projects. Mobile apps send directly to the display and require foreground execution for continuous tasks.
 
-The original working [v0.1.3 release](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains available. Windows and Android builds were checked locally; physical mobile testing and firmware-specific RGB animations remain pending. Native PC Monitor activation is experimental. Use `--demo` to explore the desktop UI without controlling a device; switch the desktop interface to English in Settings.
+The original working [v0.1.3 release](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains available. [CI builds](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150) passed for Windows, Linux, Android and the iOS simulator, including Docker startup. Physical mobile testing and firmware-specific RGB animations remain pending. Native PC Monitor activation is experimental. Use `--demo` to explore the desktop UI without controlling a device; switch the desktop interface to English in Settings.

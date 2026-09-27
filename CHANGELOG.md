@@ -10,6 +10,8 @@ Las versiones 2.x y 3.0 se desarrollaron y comprobaron localmente. Esta actualiz
 - Tarjetas para los doce efectos existentes, encendido, ciclo multicolor y luz de teclas.
 - Persistencia por dispositivo tras aceptación. Aplicar RGB no pausa las pantallas ni cambia sus listas.
 - 121 pruebas Python y 13 Node; compilaciones locales Windows y APK debug Android.
+- Publicación del código completo, guías por plataforma y 14 capturas de ejemplo.
+- Compilaciones Windows/Linux/Android/iOS simulador y arranque Docker verificados en GitHub Actions. Corregidos el archivo de dependencias web, la instalación del SDK Android y el ancho de los botones de Actividad en Linux.
 
 ## 3.0.0 · Multiplataforma
 
