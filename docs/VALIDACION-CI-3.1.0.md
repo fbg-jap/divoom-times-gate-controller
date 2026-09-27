@@ -1,19 +1,21 @@
-# Validación de compilaciones · Keeper 3.1
+# Build validation · Keeper 3.1.0
 
-El 27 de septiembre de 2026 se completó correctamente la [ejecución de GitHub Actions 36347165150](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150), a partir del commit [`1796b3f`](https://github.com/raishack/divoom-times-gate-controller/commit/1796b3f6962a41dcc7afa11617fb9108fcda323a).
+**Historical CI report.** The latest desktop/server build is covered by [3.1.1 validation](RGB-3.1.1.md#validation). Counts and artifacts below refer specifically to 3.1.0.
 
-| Plataforma | Comprobaciones completadas | Artefacto de la ejecución |
+On September 27, 2026, [GitHub Actions run 36347165150](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36347165150) completed successfully from commit [`1796b3f`](https://github.com/raishack/divoom-times-gate-controller/commit/1796b3f6962a41dcc7afa11617fb9108fcda323a).
+
+| Platform | Completed checks | Run artifact |
 | --- | --- | --- |
-| Windows | Instalación limpia, 121 pruebas Python y compilación PyInstaller | `windows-portable` |
-| Linux x86_64 | Instalación limpia, 121 pruebas Python, 13 Node, frontend y compilación PyInstaller | `linux-x86_64` |
-| Android | Instalación limpia, 13 pruebas Node, frontend, sincronización Capacitor y Gradle | `android-debug-apk` |
-| iOS | Instalación limpia, frontend, sincronización Capacitor y compilación Xcode para simulador | `ios-simulator-unsigned` |
-| Docker | Construcción de imagen, arranque y respuesta correcta de `/healthz` | Se construye desde el repositorio; no se publicó una imagen en un registro |
+| Windows | Clean installation, 121 Python tests and PyInstaller build | `windows-portable` |
+| Linux x86_64 | Clean installation, 121 Python tests, 13 Node tests, frontend and PyInstaller build | `linux-x86_64` |
+| Android | Clean installation, 13 Node tests, frontend, Capacitor sync and Gradle build | `android-debug-apk` |
+| iOS | Clean installation, frontend, Capacitor sync and Xcode simulator build | `ios-simulator-unsigned` |
+| Docker | Image build, startup and successful `/healthz` response | Built from source; no registry image published |
 
-Para descargar, abre la ejecución con tu sesión de GitHub iniciada y busca **Artifacts** al final. Los archivos tienen la retención de GitHub Actions; si caducan, vuelve a ejecutar el flujo **Multiplatform builds** o compila desde el código. Las descargas de CI no crean una nueva release y no sustituyen la [versión original 0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3).
+To download, open the run while signed in to GitHub and find **Artifacts** at the bottom. Files follow GitHub Actions retention; if expired, rerun **Multiplatform builds** or build from source. CI downloads do not create a new release or replace the [original v0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3).
 
-El APK usa firma debug y el artefacto iOS es una app de simulador, no un IPA instalable en iPhone. La instalación y el envío desde teléfonos físicos siguen pendientes. La compilación Linux no sustituye una prueba interactiva del escritorio, y la prueba Docker comprueba el arranque del servicio, no la comunicación con un Times Gate físico.
+The APK uses a debug signature; the iOS artifact is a simulator app, not an IPA for iPhone. Physical phone installation and transfers remain unvalidated. The Linux build does not replace an interactive desktop test, and Docker checks cover startup rather than physical Times Gate communication.
 
-La primera ejecución permitió corregir tres problemas que no aparecían en el entorno local ya instalado: referencias de dependencias alteradas en `package-lock.json`, un paquete retirado del SDK Android y desbordamiento de los botones de Actividad con las fuentes de Linux. La segunda ejecución verificó las correcciones desde cero. El transporte original de imágenes/GIF de `keeper/protocol.py` conserva sus bytes.
+The first run exposed three issues absent from the installed local environment: altered dependency references in `package-lock.json`, a retired Android SDK package and Activity button overflow with Linux fonts. The second run verified those fixes from a clean environment. The original image/GIF transport in `keeper/protocol.py` retained its bytes.
 
-[Validación local y RGB](COLORES-3.1.0.md) · [Instalación](MULTIPLATAFORMA.md) · [Capturas](CAPTURAS.md)
+[Historical local/RGB checks](COLORES-3.1.0.md) · [Current installation](MULTIPLATAFORMA.md) · [Screenshots](CAPTURAS.md)

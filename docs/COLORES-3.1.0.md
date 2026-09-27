@@ -1,34 +1,36 @@
-# Divoom Keeper 3.1 · selección visual de colores y RGB
+# Keeper 3.1.0 · Visual colors and RGB
 
-## Uso
+**Historical report for 3.1.0.** For current effect names, solid backlight color, corrected sending and platform scope, use the [3.1.1 RGB guide](RGB-3.1.1.md). Build status below describes the local checks performed at that time; subsequent [CI checks](VALIDACION-CI-3.1.0.md) and [3.1.1 validation](RGB-3.1.1.md#validation) supersede the earlier build limitations.
 
-- **Windows/Linux:** Dispositivo → Iluminación RGB. Pulsa la muestra de color para abrir la paleta y el selector de tono. Los editores de pantalla, listas y diseños utilizan el mismo selector para texto y fondo.
-- **Portal, Android e iOS:** sección Iluminación RGB. Los editores de pantalla, listas y diseños también tienen muestras de color y paleta rápida.
-- El selector permite arrastrar por el área de color, mover el tono, elegir entre 16 muestras y recuperar los ocho colores utilizados recientemente durante la sesión. Se puede manejar con teclado. Cancelar conserva el color anterior; Usar color confirma la selección.
-- El panel RGB muestra una aproximación del color, brillo y zonas iluminadas del Times Gate. Elige todas las zonas, bordes o luz trasera, mueve el brillo y controla la iluminación, el ciclo multicolor y la luz de las teclas.
-- Los seis ambientes rápidos combinan color y brillo: Océano, Aurora, Atardecer, Neón, Lectura y Multicolor. Conservan el efecto y la zona elegidos.
-- Las doce tarjetas seleccionan los modos existentes del dispositivo. No hace falta escribir códigos. **No se han asignado nombres de animaciones sin verificar:** Efecto 1–12 corresponde a los identificadores internos 0–11 que ya admitía el controlador. Su animación real depende del firmware y no se simula en la vista previa.
-- Pulsa **Aplicar iluminación** para enviar. Elegir colores, ambientes o tarjetas solo cambia la vista previa. Los últimos ajustes aplicados se guardan por dispositivo después de recibir una respuesta correcta. Aplicar RGB no pausa las listas ni cambia la composición de las pantallas.
+## Usage in 3.1.0
 
-## Ejecutables y versiones conservadas
+- **Windows/Linux:** Device → RGB lighting. Click the color swatch to open the palette and hue selector. Screen, playlist and layout editors use the same picker for text and background.
+- **Portal, Android and iOS:** RGB lighting section. Screen, playlist and layout editors also provide swatches and a quick palette.
+- Drag in the color area, move the hue slider, choose among 16 swatches or reuse the last eight colors from the session. Keyboard input is supported. Cancel keeps the previous color; Use color confirms.
+- The RGB panel approximates Times Gate color, brightness and the selected main zone. Choose all zones, edges or backlight, adjust brightness, lighting power, color cycling and key lighting.
+- Six presets combine color and brightness: Ocean, Aurora, Sunset, Neon, Reading and Color cycle. They preserve the chosen effect and zone.
+- Twelve cards select the existing device modes without entering codes. In 3.1.0, **Effect 1–12** maps to internal identifiers 0–11; animation names were not assigned at that stage. Actual animation depends on firmware and is not simulated in the preview.
+- Click **Apply lighting** to send. Colors, presets and cards only change the preview until applied. The last accepted settings are stored per device. RGB does not pause playlists or replace screen layouts.
 
-Las rutas `dist/`, `backups/` y `artifacts/` de este informe pertenecen a la validación local; sus datos privados no se publican en Git. Para construir desde un clon, utiliza `build_windows.ps1`, `build_linux.sh` y las instrucciones móviles. Los resultados disponibles de CI se encuentran en [GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/workflows/multiplatform.yml). La [release original 0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) permanece publicada.
+## Builds and preserved versions
 
-La nueva compilación de Windows está en `dist/3.1.0/DivoomKeeperStudio/DivoomKeeperStudio.exe`. Para copiarla, utiliza `dist/DivoomKeeper-3.1.0-windows.zip` o toda la carpeta, incluida `_internal`. Cierra la instancia anterior desde **Salir** en la bandeja antes de abrir la nueva con los mismos datos. Para explorarla en paralelo sin enviar al dispositivo, ejecútala con `--demo`.
+Paths under `dist/`, `backups/` and `artifacts/` refer to private local validation; their contents are not published in Git. From a clone, use `build_windows.ps1`, `build_linux.sh` and the mobile instructions. Available CI outputs are on [GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/workflows/multiplatform.yml). The [original v0.1.3 release](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains published.
 
-La 2.3 sigue en `dist/2.3.0/`, y los paquetes 3.0 permanecen en `dist/`. La copia del código previa a esta modificación se encuentra en `backups/working-v3.0.0-20260927-214107/`, con manifiesto SHA-256. No se han cambiado la configuración activa, los medios ni el acceso de inicio del usuario durante estas pruebas.
+The local Windows 3.1.0 executable was generated at `dist/3.1.0/DivoomKeeperStudio/DivoomKeeperStudio.exe`, with ZIP `dist/DivoomKeeper-3.1.0-windows.zip`. Copy the whole folder, including `_internal`. Exit the previous instance through its tray menu before opening another version with the same data. Use `--demo` to explore without sending.
 
-El APK es `dist/DivoomKeeper-3.1.0-android-debug.apk`. Linux, Docker y el proyecto iOS se distribuyen junto con el código 3.1. Sigue las [instrucciones multiplataforma](MULTIPLATAFORMA.md). El paquete Linux contiene código fuente, no un binario compilado. iOS necesita Mac, Xcode y firma.
+Version 2.3 remained in `dist/2.3.0/`, and 3.0 packages in `dist/`. The previous source backup was stored in `backups/working-v3.0.0-20260927-214107/` with a SHA-256 manifest. These tests did not change active settings, media or the user's startup entry.
 
-## Validación local
+The local APK was `dist/DivoomKeeper-3.1.0-android-debug.apk`. Linux, Docker and iOS source projects were included. At this local validation stage, the Linux package contained source rather than a compiled binary. iOS required Mac, Xcode and signing. See [current platform instructions](MULTIPLATAFORMA.md).
 
-- 121 pruebas Python: protocolo original, contenidos, panorámicas, configuración, interfaz, portal y motor. Incluyen rechazos de parámetros RGB, conservación de pantallas/listas y persistencia únicamente tras aceptación.
-- 13 pruebas Node: motor autónomo, RGB, conversión de colores, validación y transporte móvil.
-- Compilación Windows con PyInstaller y prueba del ejecutable en demo: nueve páginas, imágenes/GIF, calendarios, panorámicas GIF/vídeo y proveedores de Windows. Conversión de vídeo de prueba: diez fotogramas por pantalla. Resultado en `artifacts/smoke-3.1.0/smoke-result.json`.
-- Compilación Vite y sincronización de sus recursos con Android/iOS. APK debug construido con Gradle y firma comprobada. Los recursos del APK coinciden con la compilación web.
-- Interfaz web comprobada en navegador: paleta, aceptar/cancelar, tono, brillo, ambientes, zona, efecto y persistencia después de aplicar en el simulador. Vista de teléfono a 390 px, sin desbordamiento horizontal; consola sin errores.
-- No se han enviado pruebas RGB al dispositivo real ni se ha instalado el APK en un teléfono. Linux/Docker e iOS no se han ejecutado en sus sistemas respectivos desde este equipo Windows.
+## Local validation
 
-El archivo `keeper/protocol.py`, responsable del envío original de imágenes/GIF, conserva el SHA-256 `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
+- 121 Python tests: original protocol, content, panoramas, settings, UI, portal and engine. Includes invalid RGB parameters, preservation of screens/playlists and persistence only after acceptance.
+- 13 Node tests: standalone engine, RGB, color conversion, validation and mobile transport.
+- Windows PyInstaller build and packaged demo check: nine pages, images/GIFs, calendars, GIF/video panoramas and Windows providers. Sample video converted to ten frames per screen. Local result: `artifacts/smoke-3.1.0/smoke-result.json`.
+- Vite build and Android/iOS resource synchronization. Android debug APK built with Gradle and signature checked; its resources matched the web build.
+- Browser checks: palette, confirm/cancel, hue, brightness, presets, zone, effect and persistence after applying to the simulator. Phone-width view at 390 px without horizontal overflow; no console errors.
+- No RGB commands were sent to the physical device during these 3.1.0 checks, and the APK was not installed on a phone. Linux/Docker and iOS were not run on their respective systems from the Windows development computer at this stage.
 
-El comando RGB conserva los campos originales de `Channel/SetRGBInfo`. Las zonas concuerdan con [LightIndex en Divoom.Client](https://github.com/usausa/divoom-tool/blob/6a60147bf5bb17b25cc603fa5252a78f4c4a0c46/Divoom.Client/Enums.cs). Esta referencia no proporciona nombres verificados para las animaciones de los doce modos.
+The original image/GIF sender `keeper/protocol.py` retained SHA-256 `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
+
+The 3.1.0 RGB command retained the earlier `Channel/SetRGBInfo` fields. Zone identifiers matched [LightIndex in Divoom.Client](https://github.com/usausa/divoom-tool/blob/6a60147bf5bb17b25cc603fa5252a78f4c4a0c46/Divoom.Client/Enums.cs), which did not document verified animation names. The later [3.1.1 correction](RGB-3.1.1.md#sending-correction) changed the effect-list structure.

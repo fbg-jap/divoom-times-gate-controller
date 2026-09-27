@@ -1,73 +1,94 @@
-# Guía de escritorio
+# Desktop guide · Keeper 3.1.1
 
-[Volver al README](../README.md) · [Instalación por plataforma](MULTIPLATAFORMA.md)
+[README](../README.md) · [Platform installation](MULTIPLATAFORMA.md)
 
-## Primeros pasos
+The Windows/Linux desktop interface supports English and Spanish. Select English in **Settings** to use the labels shown in this guide.
 
-1. Cierra la aplicación original desde su bandeja antes de activar los envíos de Studio. Dos controladores podrían sobrescribir el contenido entre sí.
-2. En **Dispositivo**, revisa la IP importada o utiliza la búsqueda LAN. El descubrimiento vía Divoom es una opción separada que consulta sus servidores y permite obtener MAC y DeviceId.
-3. En **Pantallas**, selecciona una tarjeta, elige contenido y pulsa **Guardar y enviar**. Cambiar de pantalla guarda los cambios válidos pendientes.
-4. Activa **Actualización automática** cuando quieras mantener imágenes y widgets. Esta opción se configura por dispositivo; varios dispositivos pueden funcionar simultáneamente.
-5. Guarda tus composiciones en **Escenas** y añade rotación o **Horarios** si lo necesitas.
+## Getting started
 
-Cerrar la ventana la oculta en la bandeja cuando esta está disponible. Utiliza **Salir** en el menú de la bandeja para finalizar los envíos. Sin bandeja, cerrar la ventana termina la aplicación.
+1. Exit the original app from its tray before enabling Studio transfers. Two controllers can overwrite each other's content.
+2. In **Device**, review the imported IP or use LAN discovery. Divoom discovery is a separate option that contacts its servers and can obtain the MAC address and DeviceId.
+3. In **Screens**, select a card, choose content and click **Save and send**. Switching screens saves valid pending edits.
+4. Enable automatic updates to maintain images and widgets. This is configured per device; several devices can run at the same time.
+5. Save layouts in **Scenes** and add rotation or schedules as needed.
 
-## Funciones
+Closing the window hides it in the tray when a tray is available. Choose **Exit** in the tray menu to stop the engine. Without a tray, closing the window exits the app.
 
-### Pantallas y biblioteca
+## Screens and media library
 
-- Cinco pantallas configurables por dispositivo y vistas previas de contenido generado.
-- Imágenes PNG, JPEG, BMP, WebP y GIF; previsualización animada de GIF.
-- Ajustes de encajar con bandas, recortar o estirar; los perfiles antiguos conservan el ajuste estirado original.
-- Imágenes y animaciones enviadas como **JPEG 128 × 128 en base64**, con `LcdArray`, `PicNum`, `PicOffset`, `PicID` y `PicSpeed`, manteniendo el protocolo original.
-- Calidad JPEG y duración por fotograma configurables por dispositivo. La velocidad es uniforme y no reproduce duraciones distintas del GIF original.
-- Salto de fotogramas para reducir transferencias. Límite explícito de 600 fotogramas por envío y 100 MB por archivo importado.
-- Biblioteca propia: mover el archivo de origen después de guardarlo no rompe el perfil.
-- Pantallas sin gestionar / nativas: Studio no sube contenido a esas pantallas.
+- Five configurable screens per device, with previews of generated content.
+- PNG, JPEG, BMP, WebP and GIF images; animated GIF preview.
+- Fit with borders, crop or stretch. Imported legacy profiles retain the original stretch behavior.
+- Images and animations sent as **base64 128 × 128 JPEG frames**, with `LcdArray`, `PicNum`, `PicOffset`, `PicID` and `PicSpeed`, preserving the original protocol.
+- JPEG quality and frame duration configured per device. Normal GIF playback uses a uniform interval rather than each source frame's duration.
+- Frame skipping to reduce transfers. Explicit limits of 600 frames per send and 100 MB per imported file.
+- Managed library: moving the original file after saving it does not break the profile.
+- Unmanaged/native screens are excluded from Studio content uploads.
+- Per-screen playlists alternate items with separate durations. Transfer time does not consume the item's visible duration.
+- Image/GIF/video panoramas split a composition across five screens, with crop position, zoom, rotation and animation trimming. Animated panoramas have a separate limit of 120 frames per screen.
 
-### Widgets
+## Widgets and layouts
 
-| Widget | Fuente / comportamiento |
+| Widget | Source / behavior |
 | --- | --- |
-| Texto | Renderizado local, color, fondo y tamaño de letra ajustable |
-| Reloj | Zona horaria IANA, por ejemplo `Europe/Madrid`; cambio estacional a través de tzdata |
-| PC | CPU/RAM/GPU, gráficas, tráfico de red, disco seleccionable y temperaturas disponibles; GPU NVIDIA mediante `nvidia-smi` |
-| Tiempo | Open-Meteo, coordenadas, temperatura, humedad y estado; caché de 10 minutos |
-| Cuenta atrás | Fecha/hora objetivo; no emite sonido por sí misma |
-| Calendario | URL ICS o archivo local; próximo evento en 7 días, incluyendo recurrencias; caché de 5 minutos |
-| Servicio | URL HTTP/HTTPS, estado y latencia; timeout de 4 segundos, caché de 15 segundos |
-| Monitor PC nativo | Envía datos al PC Monitor elegido en la app Divoom sin IDs de la nube; activación del reloj 625 desde Studio experimental |
+| Text | Local rendering with adjustable color, background and font size |
+| Clock | IANA timezone, such as `Europe/Madrid`; daylight saving changes through tzdata |
+| PC | CPU/RAM/GPU, graphs, network traffic, selectable disk and available temperatures; NVIDIA GPU through `nvidia-smi` |
+| Weather | Open-Meteo coordinates, temperature, humidity and conditions; 10-minute cache |
+| Countdown | Target date/time; does not produce sound by itself |
+| Calendar | ICS URL or local file; next event within seven days, including recurrence; five-minute cache |
+| Service | HTTP/HTTPS status and latency; four-second timeout, 15-second cache |
+| RSS/Atom | Configured feeds, cached headlines and rotation |
+| Music | Available Windows media session or Linux MPRIS metadata/artwork |
+| Sensor | Configured HTTP/MQTT data or available hardware providers |
+| Designer | Text, images, bars and dynamic fields arranged in layers |
+| Native PC Monitor | Sends metrics to a monitor selected in the Divoom app; direct clock 625 activation is experimental |
 
-Los widgets se generan en el PC: Studio debe permanecer abierto para actualizarlos. Su intervalo mínimo es 5 segundos, aunque cada fuente puede aplicar una caché mayor. No son aplicaciones instaladas en el firmware.
+Widgets are generated on the computer: Studio must remain running to update them. Their minimum update interval is five seconds, although individual sources can cache data longer. They are not firmware applications installed on Times Gate.
 
-Los sensores ausentes se muestran como N/D. La temperatura de CPU mediante psutil depende del sistema operativo; en Windows normalmente no está disponible. GPU/temperatura NVIDIA requiere `nvidia-smi`. No se instala ningún controlador de hardware.
+Unavailable sensors display N/D. CPU temperature through psutil depends on the operating system and is normally unavailable on Windows. NVIDIA GPU metrics/temperature require `nvidia-smi`. Studio does not install hardware drivers. See the [integration guide](INTEGRACIONES.md) for additional sensor providers and music.
 
-Para usar **Monitor PC nativo**, selecciona primero PC Monitor en la pantalla deseada desde la app Divoom, elige aquí **Enviar datos al monitor ya elegido** y pulsa **Guardar y enviar**. Activa **Actualización automática** para mantener los datos al día. Este modo envía las seis métricas por HTTP local sin consultar la nube. La opción **Intentar activar el reloj 625** permite probar la activación directa: requiere un grupo LcdIndependence válido del catálogo. El grupo 0 está bloqueado porque en la prueba real alteró varias pantallas y no actualizó datos. DeviceId solo se envía si está configurado. La activación directa no está validada en este dispositivo. **Estadísticas del PC** genera su propia imagen y evita esa dependencia.
+To try **Native PC Monitor**, first select PC Monitor on the intended screen in the Divoom app, then choose the option to send data to the already selected monitor and click **Save and send**. Enable automatic updates to keep sending the six metrics over local HTTP without cloud IDs. Direct activation of clock 625 requires a valid LcdIndependence group from the catalog. Group 0 is blocked because a physical test changed several screens without updating data. DeviceId is sent only when configured. Direct activation is not validated on this device; Keeper's rendered PC widget has been visually confirmed.
 
-La versión 2.0.1 recupera el transporte del original: `PicID` basado en segundos Unix y creciente entre envíos, POST independiente, timeout de 10 segundos y pausa de 100 ms después de cada fotograma, también en imágenes fijas. El ajuste **Estirar** conserva la conversión de imagen original. Hay pruebas de comparación con el emisor original preservado; la aceptación HTTP no sustituye la confirmación visual en el equipo.
+Since 2.0.1, the sender preserves the original transport: Unix-second-based increasing `PicID`, a separate POST, a ten-second timeout and a 100 ms pause after every frame, including still images. **Stretch** preserves the original image conversion. Regression tests compare the sender with the preserved original; HTTP acceptance alone does not prove the visible result.
 
-Open-Meteo requiere Internet; información y atribución: <https://open-meteo.com/>. Calendarios y URLs de servicios solo se consultan si el usuario los configura.
+Open-Meteo requires internet access: [service and attribution](https://open-meteo.com/). Calendars, feeds and service URLs are fetched only when configured.
 
-### Dispositivo y herramientas
+## RGB lighting
 
-- Brillo de pantalla, encendido/apagado de las pantallas, espejo, 12/24 horas y °C/°F.
-- Sincronización UTC con el PC y envío de su desplazamiento horario actual. La zona nativa no se resincroniza automáticamente en cambios estacionales; los widgets de reloj sí usan zona IANA.
-- RGB: selector visual de color, brillo, tarjetas de efectos, zonas, ambientes rápidos, ciclo multicolor y luz de teclas. Compatibilidad comunitaria dependiente del firmware.
-- Temporizador, cronómetro, marcador, medidor de ruido y buzzer.
-- Destino por pantalla experimental para temporizador y marcador; cronómetro/medidor se envían globalmente.
-- Avisos temporales con restauración de la imagen/widget anterior y pitido opcional. No se superponen a pantallas nativas sin contenido restaurable.
-- Consulta de ajustes/canales y reinicio manual con confirmación.
-- Relojes nativos completos o individuales y consulta del catálogo de cinco pantallas. Requieren IDs válidos y pruebas en el firmware concreto.
+Open **Device → RGB lighting**. Choose a color visually, adjust brightness and select an effect card. Names and descriptions change with the selected zone because edges and backlight have different effects.
 
-Las herramientas nativas que sustituyen el contenido **pausan el reenvío para ese dispositivo**. Aplicar iluminación RGB no pausa las pantallas. Usa **Restaurar composición** o **Enviar todo** para volver a los widgets/imágenes. La pausa y el apagado se conservan entre reinicios. La respuesta `error_code: 0` confirma aceptación del comando, no prueba por sí sola su efecto visual.
+For a steady rear color, choose **Solid backlight color · no animation**, select the color and brightness, then click **Apply lighting**. The shortcut and steady effect card disable color cycling. Preview changes are sent only when you apply them.
 
-### Escenas, horarios y recuperación
+The Python engine saves settings after acceptance and restores them at startup or reconnection, even with automatic screen updates disabled. Importing a backup pauses restoration until you explicitly apply lighting again. RGB errors do not stop image/GIF transfers.
 
-- Escenas completas de cinco pantallas, renombrado y eliminación.
-- Rotación por dispositivo de las escenas marcadas, en el orden de la lista.
-- Horarios diarios, entre semana o fin de semana: aplicar escena, ajustar brillo, encender o apagar pantallas.
-- Se usa la hora local del PC. Studio debe estar ejecutándose y el dispositivo tener la actualización automática activada. Los horarios perdidos con el PC apagado no se reproducen después.
-- Huellas del contenido para evitar subidas idénticas en cada actualización; reenvío de recuperación a intervalos configurables (60 minutos por defecto).
-- Comprobación de conexión cada 30 segundos para dispositivos automáticos. Al recuperar conexión se invalida la caché y se restaura el contenido gestionado, salvo pausa/apagado.
-- No se cambia automáticamente a otro Divoom si falla un envío. Una IP cambiada debe corregirse seleccionando explícitamente el dispositivo.
-- Una sola cola de comunicación evita transferencias simultáneas desde la propia aplicación. Las solicitudes de red se ejecutan fuera del hilo de la interfaz.
+Brightness and lighting power are global. Firmware can also change the other zone, and the **Steady light** edge mode may use a firmware-defined color. [Detailed behavior, source and validation](RGB-3.1.1.md).
+
+## Device controls and native tools
+
+- Screen brightness, screen power, mirroring, 12/24-hour time and °C/°F.
+- UTC synchronization with the computer and its current timezone offset. The native timezone is not automatically resynchronized at daylight saving changes; clock widgets use an IANA timezone.
+- Timer, stopwatch, scoreboard, noise meter and buzzer.
+- Experimental per-screen targeting for timer and scoreboard; stopwatch/noise meter commands are global.
+- Temporary notices with restoration of the previous image/widget and an optional beep. Native screens without restorable content are excluded.
+- Settings/channel queries and manual restart with confirmation.
+- Whole-device or individual native clocks and the five-screen catalog. Valid IDs and firmware-specific testing are required.
+
+Native tools that replace content **pause resending for that device**. Applying RGB does not pause screens. Use the restore-layout action or **Send all** to return to widgets/images. Pause and screen-off state persist across restarts. A response of `error_code: 0` confirms command acceptance, not its visual effect.
+
+## Scenes, schedules and recovery
+
+- Complete five-screen scenes, with rename and delete.
+- Per-device rotation through selected scenes in list order.
+- Daily, weekday or weekend schedules: apply a scene, change brightness, switch screens on or off.
+- Schedules use the computer's local time. Studio must be running with automatic updates enabled for the device. Missed schedules are not replayed after downtime.
+- Content fingerprints avoid identical uploads on every update; recovery resends use a configurable interval, defaulting to 60 minutes.
+- Connection checks every 30 seconds for devices with automatic updates or saved RGB restoration enabled. Reconnection invalidates the content cache and restores managed content unless paused or powered off; lighting restoration is independent.
+- Failed transfers never select a different Divoom automatically. If an IP changes, select or correct the device explicitly.
+- A single communication queue avoids overlapping transfers within the app. Network requests run outside the UI thread.
+
+## Backups and migration
+
+Use **Settings → Export portable backup…** to save settings and media, or **Import backup…** to restore a ZIP. Import first preserves the current configuration and disables automatic sending and integrations. In 3.1.1 it also pauses RGB restoration. Review the device IP and platform-dependent sources, then re-enable the features you want and apply lighting explicitly.
+
+[Platform differences and migration](MULTIPLATAFORMA.md#migrating-your-layouts) · [Screenshot gallery](CAPTURAS.md)

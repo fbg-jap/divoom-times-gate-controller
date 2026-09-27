@@ -1,31 +1,42 @@
-# RGB en escritorio · 3.1.1
+# Desktop RGB lighting · 3.1.1
 
-En **Dispositivo → Iluminación RGB**, las tarjetas tienen nombres descriptivos y una explicación del movimiento. Cambian al seleccionar **Bordes / Todas las zonas** o **Luz trasera**, porque el Times Gate tiene dos catálogos diferentes.
+In **Device → RGB lighting**, effect cards have descriptive names and movement explanations. They change when you select **Edges / All zones** or **Backlight**, because Times Gate uses two different effect catalogs.
 
-Para un color sólido, pulsa **Color fijo trasero · sin animación**, elige el color y el brillo y pulsa **Aplicar iluminación**. El acceso directo selecciona la luz trasera, el efecto continuo y desactiva el ciclo multicolor. La app guarda el ajuste solo si el dispositivo lo acepta y lo recupera al arrancar o reconectar, incluso si la actualización de las pantallas está desactivada. No reinicia los efectos en cada comprobación de conexión. Importar una copia desactiva también la recuperación RGB hasta que apliques la iluminación al dispositivo revisado.
+For a solid color, click **Solid backlight color · no animation**, choose the color and brightness, then click **Apply lighting**. The shortcut selects the rear zone, the steady effect and disables color cycling. Selecting the steady effect card also disables cycling. The app saves the setting only after the device accepts it and restores it at startup or reconnection, even when automatic screen updates are off. It does not restart effects on every connection check. Importing a backup pauses RGB restoration until you apply lighting to the reviewed device again.
 
-En **Bordes** o **Todas las zonas** existe **Luz continua**, sin animación. La documentación comunitaria indica que el color de ese modo puede estar fijado por el firmware; no se presenta como color personalizado garantizado para los bordes. Un cambio RGB puede afectar a ambas zonas, y el brillo y el encendido son globales.
+**Edges** and **All zones** offer **Steady light** without animation. Community documentation indicates that this mode's edge color may be fixed by firmware; a custom solid edge color is not guaranteed. An RGB change can affect both zones, and brightness and power are global.
 
-![RGB de escritorio con nombres y acceso al color fijo](screenshots/rgb-desktop.png)
+![Desktop RGB with named effects and a solid color shortcut](screenshots/rgb-desktop.png)
 
-## Corrección del envío
+The screenshot uses the Spanish desktop interface. The same controls and descriptive effect names are available in English.
 
-`Channel/SetRGBInfo` necesita tres entradas en `LightList`: el efecto principal ocupa la posición indicada por `SelectLightIndex`. Antes se enviaba una sola entrada, lo que no seleccionaba correctamente los efectos traseros. Los comandos antiguos de una entrada siguen siendo aceptados por el motor y se convierten al formato correcto antes del envío.
+## Scope by platform
 
-La tabla y las descripciones proceden de las [pruebas documentadas de RGB_LIGHTS.md](https://github.com/averhaegen/hacs-divoom-times-gate-dev/blob/e8475a1485e00340646bcd52f39971ad34429990/docs/RGB_LIGHTS.md). Los nombres en español describen su comportamiento; no son nombres oficiales de Divoom. La vista previa representa color y zona principal, no simula los efectos ni garantiza el estado de la zona secundaria.
+- **Windows/Linux desktop 3.1.1:** named effects, descriptions and the solid backlight shortcut.
+- **Python server / Docker 3.1.1:** the corrected RGB sender and restoration behavior are shared with desktop.
+- **Web interface 3.1.0:** visual color selection and numbered effect cards; commands pass through the corrected Python engine.
+- **Standalone Android/iOS 3.1.0:** the previous interface and mobile RGB implementation. The Python correction does not automatically update the autonomous phone engine, so equivalent zone behavior still needs implementation and testing there.
 
-## Comprobaciones
+## Sending correction
 
-- 126 pruebas Python aprobadas; incluyen direccionamiento por zona, compatibilidad de comandos anteriores, persistencia tras aceptación, importación sin envío automático y recuperación RGB sin detener las imágenes/GIF si falla la iluminación.
-- Interfaz y ejecutable Windows comprobados en demo; carga de imágenes/GIF y conversión de vídeo verificadas en el ejecutable compilado.
-- [Compilación final en GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) del commit [`9c4186f`](https://github.com/raishack/divoom-times-gate-controller/commit/9c4186f72252fac8f07d446e69729a2545e0cfd9): Windows, Linux, Android e iOS simulador terminados correctamente; Docker construido y arranque comprobado. Son pruebas de compilación y arranque, no validación en teléfonos físicos.
-- El Times Gate aceptó una prueba de luz continua violeta para ambas zonas. La apariencia física está pendiente de confirmación del usuario; una respuesta correcta de la API no demuestra el color visible.
-- `keeper/protocol.py` mantiene su SHA-256 original: `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
+`Channel/SetRGBInfo` uses three entries in `LightList`: the main effect belongs at the position selected by `SelectLightIndex`. Previously, only one entry was sent, which did not select rear effects correctly. The Python engine still accepts older one-entry commands and converts them to the corrected format before sending.
 
-## Descargar Windows 3.1.1
+The effect table and descriptions are based on the [documented observations in RGB_LIGHTS.md](https://github.com/averhaegen/hacs-divoom-times-gate-dev/blob/e8475a1485e00340646bcd52f39971ad34429990/docs/RGB_LIGHTS.md). The English and Spanish names describe behavior; they are not official Divoom names. The preview shows color and the main zone, not the real animation or a guaranteed secondary-zone state.
 
-Abre la [ejecución verificada](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) con una sesión de GitHub iniciada y descarga **windows-portable** desde **Artifacts**. Dentro está `DivoomKeeper-3.1.1-windows.zip`. Extrae toda la carpeta, incluida `_internal`, cierra la versión anterior desde **Salir** en la bandeja y abre `DivoomKeeperStudio.exe`.
+## Validation
 
-Los artefactos tienen la retención de GitHub Actions; si caducan, vuelve a ejecutar **Multiplatform builds** o compila desde el código. No se ha creado una nueva release binaria.
+- 126 Python tests passed, including zone addressing, older command compatibility, persistence after acceptance, import without automatic sending and RGB recovery without stopping images/GIFs when lighting fails.
+- Windows UI and packaged executable checked in demo mode; image/GIF loading and video conversion verified in the executable.
+- [Final GitHub Actions build](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691), from commit [`9c4186f`](https://github.com/raishack/divoom-times-gate-controller/commit/9c4186f72252fac8f07d446e69729a2545e0cfd9): Windows, Linux, Android and iOS simulator jobs passed; Docker built and startup checked. The shared frontend also passed 13 Node tests. These are build/startup checks, not physical phone validation.
+- Times Gate accepted a violet steady-light test for both zones. Physical appearance is still awaiting user confirmation; API success alone does not prove the visible color.
+- `keeper/protocol.py` retains its original SHA-256: `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
 
-La compilación 3.1.0 y la copia del código anterior permanecen en las carpetas locales `dist/3.1.0/` y `backups/`. La 3.1.1 se genera en `dist/3.1.1/`. Los cambios visuales de esta revisión corresponden al escritorio; el portal y las apps móviles conservan su interfaz anterior.
+## Download Windows 3.1.1
+
+Open the [verified run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) while signed in to GitHub and download **windows-portable** under **Artifacts**. It contains `DivoomKeeper-3.1.1-windows.zip`. Extract the entire folder, including `_internal`, exit the older version through **Exit** in its tray menu, and open `DivoomKeeperStudio.exe`.
+
+Artifacts follow GitHub Actions retention. If they expire, rerun **Multiplatform builds** or build from source. No new binary release has been created; the [original v0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3) remains available.
+
+The local 3.1.0 build and previous source backup were preserved in `dist/3.1.0/` and `backups/`; the local 3.1.1 build was generated in `dist/3.1.1/`. These private development paths are not public downloads.
+
+[README](../README.md) · [Desktop guide](ESCRITORIO.md) · [Platform installation](MULTIPLATAFORMA.md)

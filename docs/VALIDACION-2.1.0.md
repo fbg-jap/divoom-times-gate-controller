@@ -1,52 +1,54 @@
-# Validación 2.1.0
+# Validation · 2.1.0
 
-Fecha: 27 de septiembre de 2026.
+**Historical report.** Later versions add animated panoramas and other features. See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Paths below identify private local evidence, not public downloads.
 
-## Preservación
+Date: September 27, 2026.
 
-- Copia del código, datos y ZIP ejecutable 2.0.1 en `backups/working-v2.0.1-20260927-193746/`, con SHA-256 de los archivos.
-- El ejecutable 2.0.1 en `dist/DivoomKeeperStudio/` permanece separado de `dist/2.1.0/DivoomKeeperStudio/`.
-- `keeper/protocol.py` no se ha modificado durante esta ampliación; se conserva el envío que el usuario validó físicamente.
-- Se conserva el esquema 2 y la lectura de perfiles anteriores. Las listas son opcionales y mantienen un contenido de reserva compatible con la versión anterior.
+## Preservation
 
-## Pruebas
+- Source, data and the 2.0.1 executable ZIP saved in `backups/working-v2.0.1-20260927-193746/`, with file SHA-256 values.
+- The 2.0.1 executable in `dist/DivoomKeeperStudio/` remained separate from `dist/2.1.0/DivoomKeeperStudio/`.
+- `keeper/protocol.py` was unchanged, preserving the sender the user had physically validated.
+- Schema 2 and older profile reading retained. Optional playlists kept fallback content compatible with the previous version.
 
-68 pruebas del núcleo, HTTP, widgets e interfaz, incluidas:
+## Tests
 
-- Comparación de las peticiones JPG/PNG/GIF con el emisor original; IDs crecientes y protección del grupo nativo 0.
-- Rotación de listas con duraciones diferentes e independencia entre pantallas.
-- El tiempo de transferencia no consume la duración visible del elemento.
-- Un envío fallido no avanza la lista; reintentos con separación mínima de 5 segundos.
-- Una actualización de widget no reinicia la duración del elemento.
-- Pausa, automático desactivado, avisos temporales y restauración del elemento activo.
-- Escenas antiguas y nuevas, listas con contenido duplicado, exportación e importación de sus archivos.
-- Validación de listas vacías activas, tipos nativos y duraciones fuera de rango.
-- Recorte panorámico ordenado, conservación de la composición previa y rechazo de GIF animado como panorámica.
-- Tasas de red calculadas con diferencias de contadores, caché compartida y reinicio de contadores.
-- Disco ausente mostrado como N/D y renderizado de las cinco vistas del PC.
-- Guardado y cancelación de diálogos, orden/duración de listas y aplicación de la panorámica desde la interfaz.
+68 core, HTTP, widget and UI tests, including:
 
-Capturas revisadas en `artifacts/ui-2.1.0/`: siete secciones, tema claro, editor PC, listas, panorámica y cinco vistas del monitor.
+- JPG/PNG/GIF request comparison with the original sender, increasing IDs and native group 0 protection.
+- Playlist rotation with different item durations and independent screens.
+- Transfer time excluded from visible item duration.
+- Failed sends did not advance the playlist; retries were separated by at least five seconds.
+- Widget refresh did not restart item duration.
+- Pause, automatic updates off, temporary notices and restoration of the active item.
+- Old/new scenes, duplicate playlist content and media export/import.
+- Rejection of enabled empty playlists, native content types and out-of-range durations.
+- Ordered panorama crops, preservation of the previous layout and rejection of animated GIFs as panoramas in this version.
+- Network rates from counter differences, shared caching and counter resets.
+- Missing disk readings shown as N/D and rendering of five PC views.
+- Dialog save/cancel, playlist order/duration and panorama application through the UI.
 
-El ejecutable Windows empaquetado también supera la prueba de arranque, navegación, lectura de métricas, decodificación de GIF y calendario; resultado en `artifacts/packaged-ui-2.1.0/smoke-result.json`.
+Reviewed screenshots in `artifacts/ui-2.1.0/`: seven sections, light theme, PC editor, playlists, panorama and five monitor views.
 
-## Prueba en el Times Gate
+The packaged Windows executable also passed startup, navigation, metrics, GIF decoding and calendar checks. Result: `artifacts/packaged-ui-2.1.0/smoke-result.json`.
 
-- Panorámica numerada del 1 al 5, repartida entre las cinco pantallas.
-- Lista en la pantalla 3 alternando gráficos del PC y tráfico de red con datos reales durante unos 35 segundos.
-- Confirmación visual del usuario: «Sí, ambas funcionan».
-- Al terminar se restauró la composición previa, incluido el GIF. La configuración del usuario se conservó sin cambios durante la prueba.
-- Registro de peticiones y restauración en `artifacts/live-test-2.1.0.json`.
+## Physical Times Gate test
 
-## Límites
+- Panorama numbered 1–5 across all screens.
+- Screen 3 playlist alternated PC graphs and network traffic using real readings for about 35 seconds.
+- The user visually confirmed that both worked.
+- The previous layout, including the GIF, was restored afterward. User settings were unchanged during the test.
+- Request/restoration log: `artifacts/live-test-2.1.0.json`.
 
-- La CPU, RAM, disco y red no requieren un controlador adicional. GPU y temperatura NVIDIA dependen de nvidia-smi. No se añade un controlador de temperatura de CPU en Windows.
-- Las listas necesitan Studio abierto y actualización automática activa. Los GIF grandes o fuentes lentas pueden retrasar otras pantallas porque el envío es serial.
-- Las panorámicas son imágenes fijas y se envían por partes. No se ofrece sincronización de GIF entre pantallas.
-- La activación del PC nativo sigue siendo experimental; el grupo 0 continúa bloqueado. No se han ampliado comandos nativos.
-- Las pruebas automatizadas de escritura usan dobles y un servidor HTTP de prueba. La prueba física y su confirmación visual se documentan por separado arriba.
+## Limits at this version
 
-## Fuentes técnicas
+- CPU, RAM, disk and network metrics did not require extra drivers. NVIDIA GPU/temperature depended on `nvidia-smi`; no Windows CPU temperature driver was added.
+- Playlists required Studio and automatic updates. Large GIFs or slow sources could delay other screens because transfers were serialized.
+- Panoramas were still images sent in sections. Cross-screen GIF synchronization was not provided.
+- Native PC activation remained experimental, with group 0 blocked. No native commands were extended.
+- Automated writes used doubles and a test HTTP server; the separate physical test and visual confirmation are documented above.
 
-- [psutil: contadores de red, discos y sensores](https://psutil.io/).
-- [Pillow: ajustes y recorte de imágenes](https://pillow.readthedocs.io/en/stable/reference/ImageOps.html).
+## Technical sources
+
+- [psutil: network counters, disks and sensors](https://psutil.io/).
+- [Pillow: image fitting and cropping](https://pillow.readthedocs.io/en/stable/reference/ImageOps.html).

@@ -1,65 +1,69 @@
-# Historial de cambios
+# Changelog
 
-Las versiones 2.x y 3.0 se desarrollaron y comprobaron localmente. Esta actualización publica su evolución junto con la 3.1; no implica que existan releases binarias separadas para cada versión.
+Versions 2.x and 3.0 were developed and checked locally. Their evolution is published with the 3.1 source; this does not imply a separate binary release for every version. Desktop and the Python server are currently **3.1.1**; the shared web interface and standalone mobile apps remain **3.1.0**.
 
-## 3.1.1 · Corrección RGB de escritorio
+## 3.1.1 · Desktop RGB and Python engine fixes
 
-- Efectos con nombres y descripciones específicos para bordes y luz trasera.
-- Acceso directo a color fijo trasero sin ciclo multicolor y modo de luz continua en los bordes, con límites de color del firmware explicados.
-- Corregido el direccionamiento de efectos mediante las tres entradas de `LightList`.
-- Recuperación del último ajuste RGB aceptado al iniciar o reconectar, sin detener imágenes/GIF si falla el comando RGB.
-- 126 pruebas Python. Importar una copia deja la recuperación RGB en pausa hasta aplicar la iluminación. [Uso y validación](docs/RGB-3.1.1.md).
+- Named effects and descriptions specific to edges and backlight.
+- Solid backlight shortcut with color cycling disabled, plus steady edge lighting with documented firmware color limitations.
+- Correct effect addressing through the three entries in `LightList`.
+- Restore the last accepted RGB setting at startup or reconnection without stopping images/GIFs if the RGB command fails.
+- Importing a backup pauses RGB restoration until lighting is explicitly applied.
+- The corrected Python engine also serves the web portal; standalone mobile RGB retains its previous implementation.
+- 126 Python tests. Windows/Linux/Android/iOS simulator builds and Docker startup verified in CI. [Usage and validation](docs/RGB-3.1.1.md).
+- Documentation updated in English, with current platform versions, downloads and historical validation reports clearly distinguished.
+- Corrected the local Linux archive filename to match desktop version 3.1.1.
 
-## 3.1.0 · Colores y RGB visuales
+## 3.1.0 · Visual colors and RGB
 
-- Selector de tono y saturación/luminosidad, paleta de 16 muestras y ocho colores recientes por sesión.
-- Selección visual en pantallas, listas, diseñador y panel RGB de escritorio/web/móvil.
-- Vista previa de color, brillo y zonas; seis ambientes rápidos.
-- Tarjetas para los doce efectos existentes, encendido, ciclo multicolor y luz de teclas.
-- Persistencia por dispositivo tras aceptación. Aplicar RGB no pausa las pantallas ni cambia sus listas.
-- 121 pruebas Python y 13 Node; compilaciones locales Windows y APK debug Android.
-- Publicación del código completo, guías por plataforma y 14 capturas de ejemplo.
-- Compilaciones Windows/Linux/Android/iOS simulador y arranque Docker verificados en GitHub Actions. Corregidos el archivo de dependencias web, la instalación del SDK Android y el ancho de los botones de Actividad en Linux.
+- Hue and saturation/lightness selector, 16 swatches and eight recent colors per session.
+- Visual color selection in screen editors, playlists, the designer and RGB panels on desktop/web/mobile.
+- Color, brightness and zone preview; six quick presets.
+- Cards for the twelve existing effects, lighting power, color cycling and key lighting.
+- Per-device persistence after acceptance. Applying RGB does not pause screens or change playlists.
+- 121 Python tests and 13 Node tests; local Windows and Android debug APK builds.
+- Publication of the complete source, platform guides and 14 example screenshots.
+- Windows/Linux/Android/iOS simulator builds and Docker startup verified in GitHub Actions. Fixed the web dependency lockfile, Android SDK installation and Activity button widths on Linux.
 
-## 3.0.0 · Multiplataforma
+## 3.0.0 · Multiple platforms
 
-- Escritorio Linux con rutas XDG, autoarranque, MPRIS opcional y adaptación de métricas y sesión.
-- Portal FastAPI autenticado, biblioteca privada, edición con revisión y una sola cola de envío.
-- Docker con volumen persistente, conversión de medios y motor independiente del navegador.
-- Android/iOS autónomos: Capacitor, HTTP directo al Times Gate, almacenamiento y conversión locales.
-- Migración, ZIP portátiles y soporte móvil de sensores/MQTT WebSocket.
-- Limitaciones por plataforma visibles; tareas móviles en primer plano.
+- Linux desktop with XDG paths, autostart, optional MPRIS and platform-specific metrics/session handling.
+- Authenticated FastAPI portal, private media library, revision-aware editing and a single sending queue.
+- Docker with persistent storage, media conversion and an engine that runs independently of the browser.
+- Standalone Android/iOS: Capacitor, direct Times Gate HTTP, local storage and conversion.
+- Migration, portable ZIP backups and mobile sensors/MQTT over WebSocket.
+- Visible platform limitations; mobile tasks run in the foreground.
 
-## 2.3.0 · GIF y vídeo panorámicos
+## 2.3.0 · GIF and video panoramas
 
-- Recorte de GIF/vídeo, selección de inicio/duración/FPS y generación de cinco GIF.
-- Vista previa animada, pausa y búsqueda de fotogramas; conversión en segundo plano.
-- Conservación de cadencia y de la composición anterior como escena.
-- Animación confirmada en las cinco pantallas; sin garantía de sincronización física exacta.
+- GIF/video cropping, start/duration/FPS selection and generation of five GIFs.
+- Animated preview, pause and frame seeking; background conversion.
+- Preserved frame cadence and the previous layout saved as a scene.
+- Animation confirmed on all five screens; exact physical synchronization is not guaranteed.
 
-## 2.2.0 · Encuadre, diseño y automatizaciones
+## 2.2.0 · Framing, design and automation
 
-- Encuadre panorámico mediante arrastre, desplazamiento, zoom y giro.
-- Música de Windows, RSS/Atom y diseñador de texto/imágenes/barras.
-- Pomodoro, alertas, recordatorios y perfiles por proceso/bloqueo.
-- API local, MQTT, Home Assistant y sensores adicionales.
+- Panorama framing through dragging, offset, zoom and rotation.
+- Windows music, RSS/Atom and a text/image/bar designer.
+- Pomodoro, alerts, reminders and process/session-lock profiles.
+- Local API, MQTT, Home Assistant and additional sensors.
 
-## 2.1.0 · Listas y monitor avanzado
+## 2.1.0 · Playlists and advanced monitoring
 
-- Listas independientes por pantalla con duración por elemento.
-- Vistas de PC con gráficas, red, discos y temperaturas disponibles.
-- Panorámicas de imagen fija y rotación de escenas.
+- Independent per-screen playlists with item durations.
+- PC views with graphs, networking, disks and available temperatures.
+- Still-image panoramas and scene rotation.
 
 ## 2.0 / 2.0.1 · Keeper Studio
 
-- Interfaz renovada con temas, editor por pantalla, escenas y horarios.
-- Widgets locales, avisos, controles y herramientas del dispositivo.
-- Biblioteca propia, migración del perfil original y copias portátiles.
-- Corrección del envío para conservar el método de imágenes/GIF que funcionaba en la 0.1.3.
-- Separación del monitor PC de Keeper y la activación nativa experimental; bloqueo del grupo nativo 0.
+- Renewed interface with themes, per-screen editing, scenes and schedules.
+- Local widgets, notifications, device controls and tools.
+- Managed media library, original profile migration and portable backups.
+- Sending correction to preserve the image/GIF method that worked in v0.1.3.
+- Separate Keeper-rendered PC monitoring from experimental native activation; block native group 0.
 
-## 0.1.3 · Aplicación original
+## 0.1.3 · Original application
 
-- Cinco medios persistentes, imágenes/GIF, envío manual/periódico y recuperación al arrancar.
-- Descubrimiento LAN, selección de dispositivo, perfiles, bandeja, estado y autoarranque.
-- [Release original conservada](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3).
+- Five persistent media slots, images/GIFs, manual/periodic sending and startup recovery.
+- LAN discovery, device selection, profiles, tray, status and autostart.
+- [Original release preserved](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3).

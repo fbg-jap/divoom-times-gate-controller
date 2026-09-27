@@ -1,68 +1,72 @@
-# Divoom Keeper 3.1 · instalación
+# Divoom Keeper · Platform installation
 
-Keeper puede ejecutarse como escritorio Windows/Linux, servidor web o app autónoma Android/iOS. Todos usan el protocolo HTTP local del Times Gate. El teléfono y el servidor necesitan poder llegar a la IP privada del dispositivo; no se requiere una cuenta Divoom para enviar imágenes.
+Keeper runs as a Windows/Linux desktop app, a web server or a standalone Android/iOS app. All use the Times Gate's local HTTP protocol. The computer, server or phone must be able to reach its private IP address; sending images does not require a Divoom account.
 
-## Qué comparte cada versión
+**Current versions:** desktop and Python server **3.1.1**; shared web interface and standalone Android/iOS apps **3.1.0**. The latest [verified CI run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) built Windows, Linux, Android and the iOS simulator, and checked Docker startup.
 
-| Función | Linux escritorio | Docker / portal web | Android / iOS autónomos |
+## Feature comparison
+
+| Feature | Windows/Linux desktop | Docker / web portal | Standalone Android / iOS |
 | --- | --- | --- | --- |
-| Imágenes y GIF por pantalla | Sí | Sí | Sí |
-| Panorámica de imagen, GIF y vídeo con encuadre, zoom y giro | Sí | Sí, conversión en servidor | Sí, conversión en teléfono |
-| Escenas, cinco listas, rotación y horarios | Sí, proceso abierto | Sí, contenedor abierto aunque cierres el navegador | Sí, app en primer plano |
-| Texto, reloj, tiempo, RSS, ICS, cuenta atrás, servicios y diseño | Sí | Sí | Sí |
-| Pomodoro, recordatorios y avisos temporales | Sí | Sí | Sí, app activa |
-| Sensores HTTP y MQTT | Sí | Sí | Sí; MQTT necesita WebSocket del broker |
-| Home Assistant / órdenes MQTT | Sí | Sí | Sí, app activa; descubrimiento de botones de escenas |
-| Métricas CPU/RAM/discos/red | Equipo Linux | Entorno visible al contenedor | No; usar datos externos mediante sensores |
-| Música y carátula | MPRIS con `playerctl` | No se accede automáticamente a la sesión del escritorio | No se lee la música de otras apps |
-| Temperaturas | Sensores disponibles en `psutil` | Solo sensores expuestos al contenedor | Sensor externo |
-| Perfiles por proceso o bloqueo | Procesos locales; bloqueo con `loginctl` si la sesión lo publica | Procesos del contenedor; sin bloqueo del escritorio | No se observan procesos o bloqueo del PC |
-| API de integración entrante | API local opcional existente | API opcional existente + API del portal | Sin servidor HTTP entrante; MQTT para órdenes |
-| Copia ZIP con medios | Sí | Sí | Sí, importar/exportar con archivos locales |
-| Herramientas y controles nativos | Sí, según firmware | Sí, según firmware | Sí, según firmware |
-| Colores y panel RGB visual | Sí | Sí | Sí |
+| Per-screen images and GIFs | Yes | Yes | Yes |
+| Image/GIF/video panorama with crop, zoom and rotation | Yes | Yes, server conversion | Yes, phone conversion |
+| Scenes, five playlists, rotation and schedules | While the process runs | While the container runs, even with the browser closed | While the app runs in the foreground |
+| Text, clock, weather, RSS, ICS, countdown, services and layouts | Yes | Yes | Yes |
+| Pomodoro, reminders and temporary notices | Yes | Yes | While the app is active |
+| HTTP and MQTT sensors | Yes | Yes | Yes; MQTT requires the broker's WebSocket endpoint |
+| Home Assistant / MQTT commands | Yes | Yes | While active; scene-button discovery |
+| CPU/RAM/disk/network metrics | Local computer | Environment visible to the container | External sensors instead |
+| Music and artwork | Windows media session; Linux MPRIS with optional `playerctl` | No automatic access to the desktop session | Does not read music from other apps |
+| Temperatures | Available system/hardware providers | Only sensors exposed to the container | External sensor |
+| Process/session-lock profiles | Local processes and supported session state | Container processes; no desktop lock state | Does not observe PC processes or lock state |
+| Incoming integration API | Optional local API | Optional integration API plus portal API | No incoming HTTP server; MQTT commands |
+| ZIP backup including media | Yes | Yes | Import/export through local files |
+| Native tools and controls | Firmware-dependent | Firmware-dependent | Firmware-dependent |
+| Visual color picker and RGB panel | Yes | Yes | Yes |
+| Named RGB effects and solid backlight shortcut | Desktop 3.1.1 | Numbered effect cards | Numbered effect cards |
+| Corrected RGB zone addressing and restoration | Python 3.1.1 engine | Python 3.1.1 engine | Previous 3.1.0 mobile implementation; not updated by the Python fix |
 
-La interfaz muestra las limitaciones de la plataforma. No se generan valores ficticios de PC en móvil. Los diseños que importes con métricas del PC deben adaptarse a sensores externos o controlarse desde el equipo que recoge esas métricas.
+Platform limitations are shown in the interface. Mobile does not invent PC readings. Imported layouts that use PC metrics need external sensors or a controller running on the computer that supplies those metrics.
 
-Las herramientas nativas siguen dependiendo del firmware. El grupo nativo 0 permanece bloqueado porque durante las pruebas anteriores modificaba otras pantallas. Activar un reloj nativo no garantiza datos del PC. No se presenta ese modo como reparado.
+Native tools still depend on firmware. Native group 0 remains blocked because earlier tests changed other screens. Activating a native clock does not guarantee PC data. [RGB behavior and validation](RGB-3.1.1.md).
 
-## Migrar tus composiciones
+## Migrating your layouts
 
-1. En Windows 2.3 exporta una copia ZIP desde sus ajustes.
-2. Instala la nueva versión y usa **Copias y ajustes → Importar copia**.
-3. Comprueba la IP y revisa las funciones que dependen del sistema operativo.
-4. Cierra la otra instancia que esté controlando ese mismo Times Gate antes de enviar.
-5. Activa la actualización automática si quieres listas y widgets continuos.
+1. Export a ZIP backup from the current app's settings.
+2. Import it through **Settings → Import backup…** on desktop, or the backup/settings section in web/mobile.
+3. Check the device IP and review operating-system-specific features.
+4. Exit the other controller for that Times Gate before sending.
+5. Enable automatic updates for continuous playlists and widgets. In desktop/server 3.1.1, apply lighting explicitly to enable RGB restoration after import.
 
-La importación conserva una copia anterior de la configuración y desactiva el envío automático y las integraciones. Los ZIP portátiles excluyen credenciales de API/MQTT. Incluyen los archivos de pantallas, listas y escenas; las panorámicas generadas no necesitan el vídeo original. La exportación sirve también para conservar datos antes de desinstalar la app móvil.
+Import preserves a copy of the previous configuration and disables automatic sending and integrations. Portable ZIPs exclude API/MQTT credentials. They include screen, playlist and scene files; generated panoramas do not need the source video. Export a backup before uninstalling a mobile app.
 
-## Docker y portal web
+## Docker and web portal
 
-Requisitos: Docker Engine con Compose, acceso de red al Times Gate y puerto 8080 disponible. El contexto de construcción incluye los fuentes y `web/package-lock.json`; no incluye copias privadas, imágenes del usuario ni credenciales.
+Requirements: Docker Engine with Compose, network access to Times Gate and an available port 8080. The build context includes source and `web/package-lock.json`, excluding private backups, user images and credentials.
 
 ```sh
 docker compose up -d --build
 docker compose exec keeper cat /data/admin.token
 ```
 
-Abre `http://IP_DEL_SERVIDOR:8080` e introduce ese token. Se genera al primer arranque y queda dentro del volumen persistente `keeper-data`. Para fijarlo tú mismo, copia `.env.example` a `.env` y define `KEEPER_TOKEN` con al menos 24 caracteres. Si defines esa variable, usa su valor en lugar de leer `admin.token`.
+Open `http://SERVER_IP:8080` and enter the token. It is generated on first startup and kept in the persistent `keeper-data` volume. To choose your own, copy `.env.example` to `.env` and set `KEEPER_TOKEN` to at least 24 characters. When this variable is set, use its value instead of `admin.token`.
 
-El contenedor corre como usuario 10001 y mantiene datos en `/data`. La interfaz, la conversión y el motor de envío están incluidos en la imagen. No depende de un navegador abierto para seguir ejecutando listas, horarios, widgets o avisos. No uses varias réplicas contra el mismo volumen: el motor y el bloqueo están diseñados para una sola instancia.
+The container runs as user 10001 and stores data in `/data`. The image includes the interface, conversion and sending engine. Playlists, schedules, widgets and notices continue with the browser closed. Do not run multiple replicas against the same volume: the engine and locking support a single instance.
 
-La red bridge con salida hacia la LAN permite introducir directamente la IP del Times Gate. El descubrimiento de red puede no atravesar VLAN, aislamiento Wi-Fi o NAT; en ese caso utiliza la IP. El móvil conectado al portal es un cliente del servidor; **el APK autónomo es otra modalidad distinta**.
+A bridge network with outbound LAN access allows direct IP entry. Discovery may not cross VLANs, Wi-Fi isolation or NAT; use the device IP in that case. A phone connected to the portal is a server client; **the standalone APK is a separate mode**.
 
-Por defecto Compose publica el portal en todas las interfaces. `KEEPER_BIND=127.0.0.1` limita el acceso al propio servidor. Para un proxy HTTPS configura `KEEPER_ORIGINS=https://keeper.tu-dominio` con el origen exacto del navegador. Mantén el portal en tu LAN o detrás de un proxy autenticado/HTTPS si lo vas a publicar. Los endpoints `/api/*`, medios y copias requieren el token; `/healthz` solo indica disponibilidad.
+Compose publishes the portal on all interfaces by default. Set `KEEPER_BIND=127.0.0.1` to restrict it to the server itself. For an HTTPS proxy, set `KEEPER_ORIGINS=https://keeper.example.com` to the exact browser origin. Keep the portal on your LAN or behind an authenticated HTTPS proxy for remote access. The `/api/*` endpoints, media and backups require the token; `/healthz` only reports availability.
 
 ```sh
 docker compose logs --tail=100 keeper
-docker compose down       # conserva el volumen de datos
+docker compose down       # preserves the data volume
 ```
 
-Las estadísticas corresponden al entorno que ve el contenedor: no representan necesariamente los límites de CPU/memoria del servicio ni la sesión del PC. Música, bloqueo de escritorio y sensores de hardware no aparecen automáticamente en Docker. Para datos de otro ordenador usa sensores HTTP/MQTT.
+Metrics describe the environment visible to the container, not necessarily its configured CPU/memory limits or the desktop session. Music, desktop lock state and hardware sensors are not automatically available in Docker. Use HTTP/MQTT sensors for another computer's data.
 
-### Servidor sin Docker
+### Server without Docker
 
-Python 3.11+ y Node 22+ (compilación del frontend verificada con Node 24):
+Python 3.11+ and Node 22+; frontend builds were verified with Node 24:
 
 ```sh
 python3 -m venv .venv-server
@@ -74,43 +78,45 @@ cd ..
 .venv-server/bin/python server.py --host 0.0.0.0 --port 8080 --data-dir server-data
 ```
 
-El token queda en `server-data/admin.token`. Para una prueba sin transmitir al Times Gate añade `--demo` y usa otro directorio de datos. En Windows usa `.venv-server\Scripts\python.exe`. `packaging/keeper-server.service` es una plantilla de servicio de usuario systemd: ajusta las rutas antes de instalarla. No utiliza Qt.
+The token is stored in `server-data/admin.token`. To test without sending to Times Gate, add `--demo` and use a separate data directory. On Windows, use `.venv-server/Scripts/python.exe`. `packaging/keeper-server.service` is a systemd user-service template; adjust its paths before installing. The server does not use Qt.
 
-La API opcional de integraciones del escritorio (puerto 8787) es distinta de la API autenticada del portal (8080). Compose solo publica 8080. Puedes usar MQTT sin abrir otro puerto entrante. Para clientes de la API del portal el envío es `POST /api/action` con `{"action":"send","device_id":"ID","args":{}}` y cabecera `Authorization: Bearer TOKEN`; devuelve un trabajo que se consulta en `GET /api/jobs/ID`.
+The optional desktop integration API on port 8787 is separate from the authenticated portal API on 8080. Compose publishes only 8080. MQTT does not require an additional incoming port. Portal API clients send `POST /api/action` with `{"action":"send","device_id":"ID","args":{}}` and `Authorization: Bearer TOKEN`; the returned job can be checked at `GET /api/jobs/ID`.
 
-## Linux escritorio
+## Linux desktop
 
-Requisitos: distribución Linux con escritorio gráfico, Python 3.11+, `venv` y bibliotecas de Qt. En Debian/Ubuntu:
+Requirements: a Linux distribution with a graphical desktop, Python 3.11+, `venv` and Qt libraries. On Debian/Ubuntu:
 
 ```sh
 sudo apt install python3-venv libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 fonts-dejavu-core
 bash run_linux.sh
 ```
 
-El primer arranque crea `.venv-linux` e instala las dependencias. Los datos se guardan en `$XDG_DATA_HOME/divoom-keeper-studio` o `~/.local/share/divoom-keeper-studio`. El autoarranque usa un archivo Desktop Entry en `$XDG_CONFIG_HOME/autostart` o `~/.config/autostart`.
+First startup creates `.venv-linux` and installs dependencies. Data is stored in `$XDG_DATA_HOME/divoom-keeper-studio` or `~/.local/share/divoom-keeper-studio`. Autostart uses a Desktop Entry under `$XDG_CONFIG_HOME/autostart` or `~/.config/autostart`.
 
 ```sh
-sudo apt install playerctl    # opcional: música publicada por reproductores MPRIS
+sudo apt install playerctl    # optional: music from MPRIS players
 bash run_linux.sh --demo
-bash build_linux.sh           # genera dist/DivoomKeeperStudio-3.1.0-linux-ARQUITECTURA.tar.gz
+bash build_linux.sh
 ```
 
-El empaquetado debe hacerse en Linux para la arquitectura de destino. El paquete contiene el runtime Python/Qt, pero sigue dependiendo de bibliotecas gráficas de la distribución. Algunas sesiones Wayland no ofrecen bandeja; sin ella, cerrar la ventana termina el programa. La detección de bloqueo necesita una sesión con `XDG_SESSION_ID` y `loginctl` que exponga `LockedHint`.
+The local build produces `dist/DivoomKeeperStudio-3.1.1-linux-ARCHITECTURE.tar.gz`. Build artifacts are also available from the verified CI run.
 
-El código, los lanzadores y el workflow permiten compilar en Linux. Consulta los artefactos de una ejecución correcta de GitHub Actions para obtener un binario de CI. El archivo `linux-source.tar.gz` generado por `packaging/bundle_universal.py` es código fuente, no un binario precompilado.
+Build on Linux for the target architecture. The package includes Python/Qt but still needs system graphics libraries. Some Wayland sessions lack a tray; without one, closing the window exits the program. Lock detection requires `XDG_SESSION_ID` and a `loginctl` session exposing `LockedHint`.
 
-## Android autónomo
+The [verified CI run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) provides a **linux-x86_64** binary artifact. An interactive desktop test on physical Linux hardware remains pending. `linux-source.tar.gz` from `packaging/bundle_universal.py` contains source, not a compiled binary.
 
-El APK debug es instalable para pruebas y contiene interfaz, conversión, almacenamiento y transporte HTTP nativo. Android mínimo 7.0 / API 24. No hay una URL de servidor incrustada ni requiere Docker.
+## Standalone Android
 
-1. Compila el APK con los comandos inferiores o descarga `android-debug-apk` de una ejecución correcta de GitHub Actions; cópialo al teléfono e instálalo. El paquete local de desarrollo se denomina `DivoomKeeper-3.1.0-android-debug.apk`.
-2. Conéctalo a una red que alcance al Times Gate.
-3. Introduce la IP privada en **Dispositivo** o importa tu ZIP.
-4. Prueba primero una imagen en una sola pantalla y después un GIF/panorámica.
+The debug APK includes the interface, conversion, storage and native HTTP transport. Minimum Android version: 7.0 / API 24. It has no embedded server URL and does not require Docker.
 
-El APK usa la firma de depuración. Una distribución de producción necesita un keystore propio y una compilación release; conserva ese keystore para futuras actualizaciones. No se ha publicado en Google Play.
+1. Build using the commands below or download **android-debug-apk** from the verified CI run, copy it to the phone and install it. The local development package is named `DivoomKeeper-3.1.0-android-debug.apk`.
+2. Connect to a network that can reach Times Gate.
+3. Enter its private IP in the device section or import a ZIP backup.
+4. Start with an image on one screen, then a GIF and a short panorama.
 
-Para recompilar: Node 22+, JDK 21, Android SDK 36 y build-tools 36.0.0. Configura `ANDROID_HOME` o `web/android/local.properties` para tu SDK.
+The APK uses a debug signature. Production distribution requires your own keystore and a release build; keep the keystore for future updates. The app is not published on Google Play. Physical installation and transfers are still pending validation.
+
+To rebuild: Node 22+, JDK 21, Android SDK 36 and build-tools 36.0.0. Set `ANDROID_HOME` or `web/android/local.properties` to your SDK location.
 
 ```sh
 cd web
@@ -122,13 +128,13 @@ cd android
 ./gradlew assembleDebug
 ```
 
-En Windows usa `gradlew.bat`. El resultado está en `web/android/app/build/outputs/apk/debug/app-debug.apk`.
+On Windows, use `gradlew.bat`. Output: `web/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-## iOS autónomo
+## Standalone iOS
 
-Se entrega el proyecto de Xcode con los mismos fuentes y el transporte HTTP nativo, permisos de red local y declaración de privacidad del plugin de archivos. **No se ha generado un IPA ni probado una instalación en iPhone desde Windows.**
+The Xcode project includes the shared frontend, native HTTP transport, local-network permission and the file plugin's privacy declaration. **The simulator app built successfully in CI; no signed IPA or physical iPhone installation has been validated.**
 
-En un Mac con Node 22+, Xcode 26 y sus herramientas:
+On a Mac with Node 22+, Xcode 26 and its tools:
 
 ```sh
 cd web
@@ -138,21 +144,22 @@ npx cap sync ios
 npx cap open ios
 ```
 
-En Xcode selecciona el equipo de firma en **Signing & Capabilities**, conecta el iPhone y ejecuta la app. Acepta el acceso a la red local cuando iOS lo solicite. El identificador predeterminado es `com.raishack.divoomkeeper`; ajústalo si tu equipo necesita otro. Para distribución usa Archive y la firma correspondiente de Apple. Las dependencias nativas se resuelven mediante Swift Package Manager.
+In Xcode, select your team under **Signing & Capabilities**, connect the iPhone and run the app. Allow local-network access when prompted. The default identifier is `com.raishack.divoomkeeper`; change it if your team needs another. Use Archive and appropriate Apple signing for distribution. Native dependencies use Swift Package Manager.
 
-El HTTP sin TLS se permite porque el endpoint local del Times Gate es `http://IP/post`. No se desactiva la verificación de certificados HTTPS. La app no pide acceso a los archivos del PC ni a las sesiones de otras apps.
+Plain HTTP is enabled because the local Times Gate endpoint is `http://IP/post`. HTTPS certificate verification is not disabled. The app does not request access to PC files or other apps' sessions.
 
-## Límites de las apps móviles
+## Mobile limitations
 
-- Las tareas se ejecutan **en primer plano**. No se implementa un servicio Android permanente ni se promete ejecución ilimitada en segundo plano en iOS. Al suspenderse la app se detienen las tareas; no se recuperan horarios perdidos como una cola histórica.
-- Las imágenes y animaciones ya cargadas permanecen en el Times Gate, que reproduce sus GIF sin el teléfono. Mantén la app abierta durante la transferencia; si se interrumpe, vuelve a enviar la composición.
-- El vídeo se convierte con los códecs del teléfono. MP4 H.264 es la primera opción para comprobar compatibilidad; MKV/AVI u otros códecs pueden no abrirse. En escritorio y servidor se usa PyAV.
-- Máximo 100 MB por archivo; clips de hasta 30 s y 120 fotogramas por pantalla. A 10 FPS, el máximo es 12 s. No se transmite audio ni vídeo en directo. Cinco subidas secuenciales pueden quedar desfasadas.
-- IndexedDB conserva los archivos dentro de la app. Borrar sus datos o desinstalarla elimina esa biblioteca; usa exportación ZIP antes. La exportación nativa abre el diálogo Compartir/Guardar del sistema.
-- MQTT móvil necesita una URL `ws://` o `wss://` ofrecida por el broker. Host/puerto TCP son para escritorio/servidor. Las órdenes MQTT retenidas se ignoran para evitar repetir acciones antiguas al conectar.
-- Los widgets de PC/música y los perfiles por proceso/bloqueo se indican como no disponibles. Sensores HTTP/MQTT permiten mostrar datos publicados por otro equipo.
+- Tasks run **in the foreground**. There is no permanent Android background service or unlimited iOS background execution. Suspension stops tasks; missed schedules are not replayed later.
+- Uploaded images and animations remain on Times Gate, which plays GIFs without the phone. Keep the app open during transfer; resend the layout if interrupted.
+- Video conversion depends on phone codecs. MP4 H.264 is a useful first compatibility test; MKV/AVI or other codecs may not open. Desktop/server use PyAV.
+- Maximum 100 MB per file, 30 seconds and 120 frames per screen. At 10 FPS, the maximum is 12 seconds. No audio or live video streaming. Five sequential uploads can start out of sync.
+- IndexedDB stores media inside the app. Clearing app data or uninstalling removes the library; export a ZIP first. Native export opens the system share/save dialog.
+- Mobile MQTT requires a `ws://` or `wss://` broker endpoint. TCP host/port settings apply to desktop/server. Retained commands are ignored to avoid replaying old actions after reconnection.
+- PC/music widgets and process/lock profiles are marked unavailable. HTTP/MQTT sensors can display data published by another computer.
+- The standalone mobile RGB engine remains at 3.1.0; the desktop/server zone-addressing fix and desktop named-effect shortcut are not included.
 
-## Desarrollo y comprobaciones
+## Development and checks
 
 ```sh
 python -m pip install -r requirements.txt -r requirements-server.txt httpx
@@ -163,8 +170,12 @@ npm test
 npm run build
 ```
 
-`?mobile-demo=1` en el portal ejecuta el motor móvil con almacenamiento del navegador y envíos simulados, útil para desarrollo. No conecta con el dispositivo. El modo normal del navegador siempre utiliza el servidor; las apps nativas seleccionan el motor autónomo automáticamente.
+The portal's `?mobile-demo=1` mode runs the mobile engine with browser storage and simulated sends, without connecting to Times Gate. Normal browser mode always uses the server; native apps select the standalone engine automatically.
 
-`.github/workflows/multiplatform.yml` prepara Windows, Linux, Android, Docker y una app de simulador iOS sin firma. Consulta el resultado de cada ejecución en [GitHub Actions](https://github.com/raishack/divoom-times-gate-controller/actions/workflows/multiplatform.yml); los artefactos solo están disponibles para compilaciones correctas. El job iOS requiere Xcode 26. Un artefacto de simulador no puede instalarse en un iPhone real. Las compilaciones debug de Android pueden usar claves distintas entre equipos/ejecuciones: exporta una copia antes de sustituir una instalación con firma incompatible.
+`.github/workflows/multiplatform.yml` builds Windows, Linux, Android and an unsigned iOS simulator app, and checks Docker. The [verified 3.1.1 run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) passed all four jobs, with 126 Python and 13 Node tests. Downloads require a GitHub login and remain subject to artifact retention. Docker is built from source; no container registry image was published.
 
-Referencias: [entorno de Capacitor](https://capacitorjs.com/docs/getting-started/environment-setup), [HTTP nativo](https://capacitorjs.com/docs/apis/http), [despliegue de Qt para Python](https://doc.qt.io/qtforpython-6.8/deployment/index.html), [redes de Docker Compose](https://docs.docker.com/compose/how-tos/networking/).
+The iOS job requires Xcode 26. Simulator artifacts cannot be installed on a real iPhone. Android debug builds may use different keys across computers/runs: export a backup before replacing an installation with an incompatible signature.
+
+References: [Capacitor environment](https://capacitorjs.com/docs/getting-started/environment-setup), [native HTTP](https://capacitorjs.com/docs/apis/http), [Qt for Python deployment](https://doc.qt.io/qtforpython-6.8/deployment/index.html), [Docker Compose networking](https://docs.docker.com/compose/how-tos/networking/).
+
+[README](../README.md) · [Desktop guide](ESCRITORIO.md) · [RGB 3.1.1](RGB-3.1.1.md)

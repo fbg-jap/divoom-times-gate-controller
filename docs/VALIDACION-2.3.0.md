@@ -1,44 +1,46 @@
-# Validación 2.3.0
+# Validation · 2.3.0
 
-Fecha: 27 de septiembre de 2026.
+**Historical report for animated panoramas.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Local paths identify private development evidence and backups, not public downloads.
 
-## Conservación
+Date: September 27, 2026.
 
-La versión 2.2 se conserva en `dist/2.2.0/` y `backups/working-v2.2.0-20260927-203514/`, con código, pruebas, paquete, datos y manifiesto SHA-256. `run_stable_2.2.ps1` prepara una copia independiente en `compat/2.2.0-data/`, sin modificar el checkpoint ni registrar autoarranque. La recuperación 2.1 y la aplicación original siguen disponibles.
+## Preservation
 
-El SHA-256 de `keeper/protocol.py` sigue siendo `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`. Se usa el mismo transporte que ya funcionaba para imágenes y GIF, sin nuevos comandos nativos.
+Version 2.2 was preserved in `dist/2.2.0/` and `backups/working-v2.2.0-20260927-203514/`, with source, tests, package, data and a SHA-256 manifest. Local `run_stable_2.2.ps1` prepared an independent copy in `compat/2.2.0-data/`, without changing the checkpoint or registering autostart. The 2.1 recovery and original app remained available.
 
-## Pruebas automáticas
+`keeper/protocol.py` retained SHA-256 `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`. The same working image/GIF transport was used, without new native commands.
 
-**102 pruebas superadas**, incluidas las 92 de 2.2. Registro: `artifacts/tests-2.3.0.log`.
+## Automated checks
 
-- GIF con duraciones variables, zonas estáticas y expansión de fotogramas unidos por el codificador: las cinco partes mantienen el mismo número de fotogramas y cadencia.
-- Decodificación real de un MP4 generado con PyAV, selección de inicio, duración y final del archivo.
-- Recorte, zoom y giro aplicados a todos los fotogramas; reconstrucción de la vista previa desde los GIF guardados.
-- Validación de límites, cancelación, archivos inválidos y partes con distinta duración.
-- Conservación de la composición anterior y listas en una escena; copia portátil con medios y velocidad del clip.
-- Envío simulado de las cinco partes a su velocidad propia; el GIF normal sigue usando la velocidad global y el decodificador original.
-- Conversión asíncrona desde la interfaz, reproducción y búsqueda en la vista previa, guardado, recarga y cancelación; descarte de resultados obsoletos.
-- Liberación del archivo GIF de la vista previa al cerrar o cambiar de composición.
+**102 tests passed**, including the previous 92. Log: `artifacts/tests-2.3.0.log`.
 
-## Ejecutable
+- GIFs with variable durations, static regions and expansion of encoder-merged frames: all five parts retained the same frame count and cadence.
+- Actual decoding of a PyAV-generated MP4, with start, duration and end-of-file selection.
+- Crop, zoom and rotation applied to every frame; preview reconstructed from saved GIFs.
+- Limit validation, cancellation, invalid files and mismatched part durations.
+- Previous layout and playlists preserved in a scene; portable backup retained media and clip speed.
+- Simulated sending of all five parts at their clip speed; normal GIFs retained global speed and the original decoder.
+- Asynchronous UI conversion, playback, preview seeking, save, reload and cancel; outdated results discarded.
+- Preview GIF file released when closing or changing the layout.
 
-Compilación PyInstaller correcta en `dist/2.3.0/`, con PyAV y sus DLL de FFmpeg. La prueba del ejecutable terminó con código 0, `frozen: true`, nueve secciones, GIF panorámico y MP4 convertido a diez fotogramas. También se comprobaron las funciones anteriores de calendario, GIF, métricas del PC y lectura multimedia de Windows.
+## Packaged executable
 
-Registro: `artifacts/packaged-ui-2.3.0/smoke-result.json`. Captura revisada del diálogo animado: `artifacts/packaged-ui-2.3.0/18-panorama-video.png`. Los 48 archivos del checkpoint 2.2 coinciden con su manifiesto SHA-256.
+Successful PyInstaller build in `dist/2.3.0/`, including PyAV and its FFmpeg DLLs. The executable check returned exit 0, `frozen: true`, nine sections, a panoramic GIF and an MP4 converted to ten frames. Existing calendar, GIF, PC metrics and Windows media features were also checked.
 
-## Dispositivo físico
+Result: `artifacts/packaged-ui-2.3.0/smoke-result.json`. Reviewed animated-dialog screenshot: `artifacts/packaged-ui-2.3.0/18-panorama-video.png`. All 48 files in the 2.2 checkpoint matched its SHA-256 manifest.
 
-Prueba reversible con configuración temporal: GIF y MP4 de ocho fotogramas a 2 FPS, recortados desde la mitad inferior de una imagen de 640 × 256. Cada pantalla muestra su número, un contador y una barra en movimiento. Las cinco partes se cargaron usando el motor normal y sus GIF guardados.
+## Physical device
 
-Todas las peticiones fueron aceptadas con `error_code: 0`; se restauró la composición original y se comprobó que los bytes de la configuración del usuario no cambiaron. Registro: `artifacts/live-test-2.3.0.json`.
+A reversible test with temporary settings used GIF and MP4 clips of eight frames at 2 FPS, cropped from the lower half of a 640 × 256 image. Each screen showed its number, a counter and a moving bar. The five parts were uploaded through the normal engine using their saved GIFs.
 
-**Confirmación visual del usuario: «Sí, se animan las cinco».** Esta confirmación valida la animación en las cinco pantallas; no establece sincronización exacta entre ellas.
+All requests were accepted with `error_code: 0`; the original layout was restored and user configuration bytes were confirmed unchanged. Log: `artifacts/live-test-2.3.0.json`.
 
-## Límites
+**The user visually confirmed animation on all five screens.** This confirms playback across the device, not exact synchronization.
 
-Los cinco GIF comparten duración y cadencia, pero **no se garantiza inicio simultáneo ni sincronización física**: el transporte envía una pantalla cada vez. La vista previa sí reproduce las cinco partes juntas. No se añade transmisión de vídeo en directo ni audio.
+## Limits
 
-Archivos locales de hasta 100 MB, 30 s y 120 fotogramas por parte; 1, 2, 4, 5 o 10 FPS. Máximo 20 megapíxeles por fotograma. Los códecs dependen de FFmpeg incluido en PyAV 18.1.0. La prueba de vídeo usa MP4/MPEG-4; no implica que se hayan probado todas las combinaciones de contenedor y códec. El giro es manual. La conversión comprueba cancelación y límite de tiempo entre fotogramas, no puede interrumpir instantáneamente una llamada bloqueada en el decodificador.
+The five GIFs share duration and cadence, but **simultaneous startup and physical synchronization are not guaranteed**: the transport sends one screen at a time. The preview plays the parts together. No live video streaming or audio was added.
 
-Referencias de implementación: [PyAV: contenedores, seek y decode](https://pyav.org/docs/stable/api/container.html) y [Pillow: GIF](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif).
+Local files up to 100 MB, 30 seconds and 120 frames per part; 1, 2, 4, 5 or 10 FPS. Maximum 20 megapixels per frame. Codec support depended on FFmpeg bundled with PyAV 18.1.0. The test used MP4/MPEG-4; it did not cover every container/codec combination. Rotation was manual. Conversion checked cancellation and timeout between frames but could not instantly interrupt a blocked decoder call.
+
+Implementation references: [PyAV containers, seek and decode](https://pyav.org/docs/stable/api/container.html) and [Pillow GIF handling](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif).

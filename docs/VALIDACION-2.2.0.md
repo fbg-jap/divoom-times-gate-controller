@@ -1,54 +1,56 @@
-# Validación 2.2.0
+# Validation · 2.2.0
 
-Fecha: 27 de septiembre de 2026.
+**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Paths below identify private local evidence and backups, not public downloads.
 
-## Conservación de la versión funcional
+Date: September 27, 2026.
 
-- Código, pruebas, documentación, paquete 2.1.0 y datos del usuario preservados en `backups/working-v2.1.0-20260927-200013/`, con manifiesto SHA-256.
-- Ejecutable 2.1.0 intacto en `dist/2.1.0/`. La 2.2.0 se compila en `dist/2.2.0/`.
-- Recuperación mediante `run_stable_2.1.ps1`, con una copia independiente de los datos y los medios de 2.1 en `compat/2.1.0-data/`. No se escribe sobre el checkpoint.
-- `keeper/protocol.py` conserva SHA-256 `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`, idéntico a 2.1 y 2.0.1.
+## Preserving the working version
 
-## Pruebas automáticas
+- Source, tests, documentation, 2.1.0 package and user data preserved in `backups/working-v2.1.0-20260927-200013/`, with a SHA-256 manifest.
+- 2.1.0 executable left intact in `dist/2.1.0/`; 2.2.0 built separately in `dist/2.2.0/`.
+- Local recovery script `run_stable_2.1.ps1` used an independent copy of 2.1 data/media in `compat/2.1.0-data/`, without modifying the checkpoint.
+- `keeper/protocol.py` retained SHA-256 `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`, identical to 2.1 and 2.0.1.
 
-**92 pruebas superadas**, incluidas las 68 anteriores. Registro: `artifacts/tests-2.2.0.log`.
+## Automated checks
 
-Las ampliaciones comprueban:
+**92 tests passed**, including the previous 68. Log: `artifacts/tests-2.2.0.log`.
 
-- Recorte superior/inferior y horizontal, zoom y concordancia entre vista previa y archivo guardado.
-- Edición de RSS, creación de nuevos widgets en listas y arrastre en el diseñador.
-- Renderizado de los nuevos widgets, barras, sustitución de métricas y sensores ausentes.
-- Inclusión de imágenes del diseñador en las copias portátiles y exclusión de credenciales.
-- RSS/Atom, rotación, caché, tamaño máximo y rechazo de entidades XML.
-- Sensores MQTT con rutas JSON, datos caducados y selección de identificadores de hardware.
-- Alertas sostenidas, rearme, intervalo mínimo y ausencia de falsos avisos por sensores no disponibles.
-- Recordatorios tras pausa, avisos en cola y restauración.
-- Perfiles con prioridad, procesos sin distinción de mayúsculas y preservación de la composición guardada.
-- Pomodoro: pausa, continuación, cambio de fase, descanso largo y reinicio.
-- API con servidor HTTP real de pruebas: autenticación, rutas, límites de tamaño, validación de acciones, cola llena y separación entre recepción y envío al dispositivo.
-- MQTT con cliente simulado: suscripciones, recepción de sensores, Discovery y descarte de órdenes retenidas.
-- Configuraciones inválidas rechazadas sin guardar cambios parciales.
+Added coverage:
 
-## Ejecutable y aspecto visual
+- Top/bottom and horizontal crops, zoom and preview/output matching.
+- RSS editing, new playlist widgets and dragging in the designer.
+- New widgets, bars, metric substitution and missing sensors.
+- Designer images included in portable backups; credentials excluded.
+- RSS/Atom rotation, caching, size limits and XML entity rejection.
+- MQTT JSON paths, stale readings and hardware identifiers.
+- Sustained alerts, rearming, minimum interval and no false alerts for unavailable sensors.
+- Reminders after pause, queued notices and restoration.
+- Profile priorities, case-insensitive processes and preservation of the saved layout.
+- Pomodoro pause, resume, phase changes, long breaks and reset.
+- Local API with an actual test HTTP server: authentication, routes, size limits, action validation, full queue and separation of request acceptance from physical sending.
+- MQTT with a simulated client: subscriptions, sensor reception, Discovery and retained-command rejection.
+- Invalid settings rejected without saving partial changes.
 
-- Compilación PyInstaller correcta; conserva la resolución de ICU de Windows usada en 2.1.
-- Prueba del ejecutable empaquetado: salida 0, nueve secciones, calendario recurrente, GIF, CPU/RAM/disco y WinRT.
-- Lectura real de la sesión multimedia de Windows: título y carátula presentes, sin registrar su contenido privado en el informe.
-- Capturas revisadas: panorámica, diseñador, editor de alertas, automatizaciones, integraciones y nuevos widgets. Directorios: `artifacts/ui-2.2.0/` y `artifacts/packaged-ui-2.2.0-final/`.
+## Packaged executable and UI
 
-## Dispositivo físico
+- Successful PyInstaller build, preserving the Windows ICU resolution used by 2.1.
+- Packaged check: exit 0, nine sections, recurring calendar, GIF, CPU/RAM/disk and WinRT.
+- Actual Windows media session reading returned title and artwork; private media content was omitted from the report.
+- Reviewed panorama, designer, alert editor, automation, integration and widget screenshots in `artifacts/ui-2.2.0/` and `artifacts/packaged-ui-2.2.0-final/`.
 
-Prueba reversible con configuración temporal: dos encuadres panorámicos («ARRIBA» y «ABAJO»), música real, diseño con métricas reales del PC, Pomodoro, una fuente RSS local de prueba y un sensor simulado identificado como prueba. Aviso mediante la API HTTP local en la pantalla 3. El registro de ejecución, restauración y conservación de la configuración está en `artifacts/live-test-2.2.0.json`.
+## Physical device
 
-La ejecución terminó correctamente: todas las peticiones al dispositivo devolvieron `error_code: 0`, la API respondió 202 y la composición se restauró con la configuración intacta.
+A reversible test with temporary settings sent two panorama crops labeled “ARRIBA” and “ABAJO”, actual music metadata, a layout with real PC metrics, Pomodoro, a local test RSS feed and a simulated sensor explicitly labeled as a test. A notice was sent to screen 3 through the local HTTP API. Execution, restoration and configuration-preservation evidence: `artifacts/live-test-2.2.0.json`.
 
-La confirmación visual del usuario se registra por separado en ese archivo; la aceptación HTTP no equivale a validación visual.
+Execution completed successfully: all device requests returned `error_code: 0`, the API returned 202 and the original layout was restored with settings intact.
 
-## Límites de la validación
+Visual confirmation is tracked separately in that evidence file; HTTP acceptance alone is not visual validation.
 
-- No hay un broker/Home Assistant del usuario configurado en este entorno; MQTT se valida con simulación, no contra su instalación real.
-- El proveedor WMI de LibreHardwareMonitor no está disponible en este equipo durante la prueba. Su lectura se comprueba con datos simulados y se mantiene N/D cuando falta.
-- Los perfiles de bloqueo se comprueban mediante el estado de sesión simulado; no se ha bloqueado el escritorio del usuario durante la prueba.
-- La panorámica sigue siendo fija. No se promete sincronización de animaciones entre pantallas.
-- Las funciones nativas experimentales permanecen con las mismas restricciones; no se han añadido comandos nativos nuevos.
-- Las reglas y widgets requieren Studio abierto; las actualizaciones y automatizaciones requieren el envío automático. Las integraciones externas se activan solo al configurarlas.
+## Validation limits
+
+- No user broker/Home Assistant installation was configured; MQTT was validated through simulation.
+- LibreHardwareMonitor WMI was unavailable on this computer. Reads used simulated data and remained N/D when absent.
+- Lock profiles used simulated session state; the user's desktop was not locked during testing.
+- Panoramas remained still images in this version; animation synchronization was not promised.
+- Experimental native features retained their existing restrictions; no new native commands were added.
+- Rules and widgets required Studio to run; updates and automation required automatic sending. External integrations activated only when configured.

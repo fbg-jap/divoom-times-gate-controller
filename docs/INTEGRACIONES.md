@@ -1,90 +1,98 @@
-# Integraciones de Studio 2.2
+# Keeper integrations
 
-Studio debe permanecer abierto. Las integraciones están desactivadas inicialmente y se configuran desde **Integraciones → Guardar integraciones**. No cambian el protocolo de envío del Times Gate.
+The engine must stay running. Integrations are disabled initially and configured in the integrations section. They do not change the Times Gate image/GIF transport.
 
-## API local
+This guide covers the desktop/Python integration API and MQTT features. The web portal has a separate authenticated API; standalone mobile uses MQTT over WebSocket and has no incoming HTTP server. See [platform differences](MULTIPLATAFORMA.md#feature-comparison).
 
-Activa la API y copia su token. Por defecto escucha únicamente en `127.0.0.1:8787`. La opción de red local escucha en todas las interfaces; Studio no modifica el firewall. Usa HTTP solo en una red de confianza; para acceso remoto, utiliza una VPN o un proxy HTTPS autenticado.
+## Local API
 
-Todas las peticiones necesitan `Authorization: Bearer TU_TOKEN`. No acepta comandos arbitrarios del firmware ni ejecución de programas. Máximo 16 KiB por petición; no admite peticiones desde páginas web con cabecera Origin.
+Enable the API and copy its token. By default, it listens only on `127.0.0.1:8787`. The LAN option binds to all interfaces; Studio does not modify the firewall. Use plain HTTP only on a trusted network; use a VPN or an authenticated HTTPS proxy for remote access.
 
-Ejemplo PowerShell, solicitando el token sin dejarlo escrito en el historial:
+Every request requires `Authorization: Bearer YOUR_TOKEN`. The API does not accept arbitrary firmware commands or program execution. Requests are limited to 16 KiB; browser requests carrying an Origin header are rejected.
+
+PowerShell example, prompting for the token instead of putting it in command history:
 
 ```powershell
-$keeperToken = Read-Host 'Token de Studio'
+$keeperToken = Read-Host 'Studio token'
 $keeperHeaders = @{ Authorization = "Bearer $keeperToken" }
 Invoke-RestMethod 'http://127.0.0.1:8787/v1/status' -Headers $keeperHeaders
-$keeperBody = @{ action = 'notice'; panel = 3; text = 'Descansa un momento'; seconds = 15 } | ConvertTo-Json
+$keeperBody = @{ action = 'notice'; panel = 3; text = 'Take a short break'; seconds = 15 } | ConvertTo-Json
 Invoke-RestMethod 'http://127.0.0.1:8787/v1/action' -Method Post -Headers $keeperHeaders -ContentType 'application/json' -Body $keeperBody
 ```
 
-`GET /v1/status` devuelve los identificadores de dispositivos y escenas, sin credenciales. `POST /v1/action` acepta:
+`GET /v1/status` returns device and scene IDs without credentials. `POST /v1/action` accepts:
 
-| action | Campos |
+| action | Fields |
 | --- | --- |
-| `notice` | `panel`: 1–5, `text`: hasta 500 caracteres, `seconds`: 5–300; opcionales `title`, `buzzer` |
-| `scene` | `scene_id`: un ID existente |
+| `notice` | `panel`: 1–5, `text`: up to 500 characters, `seconds`: 5–300; optional `title`, `buzzer` |
+| `scene` | `scene_id`: an existing ID |
 | `brightness` | `value`: 0–100 |
-| `power` | `on`: booleano `true` o `false` |
-| `send` | Reenvía la composición |
+| `power` | `on`: boolean `true` or `false` |
+| `send` | Resend the layout |
 
-Todas admiten `device_id`; si se omite, usan el dispositivo seleccionado en Studio. Una respuesta **202** significa que la orden está en cola. El resultado del envío se consulta en Actividad; no equivale a confirmación visual en la pantalla. Una cola llena devuelve 503. Las acciones explícitas por API/MQTT pueden ejecutarse con la actualización automática desactivada; los avisos siguen necesitando una pantalla encendida con imagen o widget restaurable.
+All actions accept `device_id`; if omitted, they use the selected device. **202** means the command is queued. Check Activity for the send result; acceptance does not confirm its visual appearance. A full queue returns 503. Explicit API/MQTT commands can run with automatic updates disabled; notices still require a powered-on screen with a restorable image or widget.
 
-## MQTT y Home Assistant
+The portal's `POST /api/action` uses a different request shape and job endpoint; see [server API details](MULTIPLATAFORMA.md#server-without-docker).
 
-Configura el servidor, puerto, usuario y contraseña del broker que utiliza Home Assistant. Activa TLS si corresponde: valida el certificado con las autoridades del sistema. El prefijo debe ser único por instalación, por ejemplo `keeper_escritorio`.
+## MQTT and Home Assistant
 
-Con MQTT Discovery activo en Home Assistant, aparecerá un dispositivo por Times Gate con botones para sus escenas y para reenviar su composición. Studio publica:
+Configure the broker's host, port, username and password. Enable TLS when appropriate; certificates are checked against system authorities. Use a unique prefix per installation, such as `keeper_desktop`. Mobile requires a WebSocket URL instead of the desktop TCP connection.
 
-- `PREFIJO/availability`: `online` / `offline`, con último testamento.
-- `PREFIJO/status`: resumen sin credenciales, cada 30 segundos.
-- `homeassistant/button/keeper_DEVICE_SCENE/config`: descubrimiento de botones.
+With MQTT Discovery enabled in Home Assistant, each Times Gate appears with buttons for its scenes and for resending its layout. The engine publishes:
 
-Envía órdenes JSON a `PREFIJO/command`, con los mismos campos que la API. **No utilices retain** en órdenes: Studio descarta las órdenes retenidas al recibirlas para evitar reejecutarlas al reconectar.
+- `PREFIX/availability`: `online` / `offline`, with a last will.
+- `PREFIX/status`: a credential-free summary every 30 seconds.
+- `homeassistant/button/keeper_DEVICE_SCENE/config`: button discovery.
 
-### Mostrar un sensor de Home Assistant
+Send JSON commands to `PREFIX/command` using the same fields as the integration API. **Do not retain commands**: retained commands are discarded to prevent old actions from replaying after reconnection.
 
-Home Assistant debe publicar el valor en un tema. Studio no puede deducir automáticamente todas las entidades de Home Assistant solo por conectarse al broker.
+### Display a Home Assistant sensor
 
-Ejemplo de automatización que publica la temperatura elegida; sustituye `sensor.temperatura_salon` por tu entidad real:
+Home Assistant must publish the reading to a topic. Connecting to the broker does not automatically expose every Home Assistant entity to Keeper.
+
+Example automation; replace `sensor.living_room_temperature` with your actual entity:
 
 ```yaml
-alias: Temperatura del salón para Keeper
+alias: Living room temperature for Keeper
 triggers:
   - trigger: state
-    entity_id: sensor.temperatura_salon
+    entity_id: sensor.living_room_temperature
   - trigger: time_pattern
     minutes: "/1"
 actions:
   - action: mqtt.publish
     data:
-      topic: keeper_escritorio/sensor/salon
-      payload: "{{ states('sensor.temperatura_salon') }}"
+      topic: keeper_desktop/sensor/living_room
+      payload: "{{ states('sensor.living_room_temperature') }}"
       retain: true
 ```
 
-En Studio, selecciona **Sensor MQTT / hardware**, fuente MQTT, tema `keeper_escritorio/sensor/salon`, campo JSON vacío y unidad `°C`. Si publicas `{"temperature":23.5}`, usa `temperature` como campo. También admite rutas como `data.temperature` y posiciones de listas como `values.0`. Las lecturas caducan según el intervalo configurado; después muestran N/D. La caducidad se calcula desde la recepción, por lo que un valor retenido cuenta como recién recibido al reconectar.
+In the sensor widget, choose MQTT, topic `keeper_desktop/sensor/living_room`, an empty JSON field and unit `°C`. For a payload of `{"temperature":23.5}`, use `temperature` as the field. Paths such as `data.temperature` and array positions such as `values.0` are supported. Readings expire after the configured interval and then display N/D. Age is measured from receipt, so a retained reading counts as newly received after reconnection.
 
-Studio se suscribe a los temas concretos utilizados por widgets, listas, escenas y alertas, además de `PREFIJO/sensor/#`. MQTT no necesita el token de la API: usa la autenticación y los permisos del broker. Los botones de Discovery quedan almacenados en el broker al cerrar Studio y aparecen no disponibles hasta la siguiente conexión.
+The engine subscribes to topics used by widgets, playlists, scenes and alerts, plus `PREFIX/sensor/#`. MQTT uses broker authentication and permissions, not the API token. Discovery buttons remain stored in the broker when the engine exits and show as unavailable until it reconnects.
 
-## LibreHardwareMonitor
+## LibreHardwareMonitor on Windows
 
-Abre [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) y activa la lectura en Studio. Su proveedor WMI `root\LibreHardwareMonitor` debe estar disponible. **Actualizar lista de sensores** muestra nombre, tipo, identificador y lectura; la primera consulta se realiza en segundo plano, por lo que puede necesitar unos segundos.
+Run [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) and enable its provider in Studio. Its WMI namespace `root\LibreHardwareMonitor` must be available. Refreshing the sensor list shows names, types, identifiers and readings; the first query runs in the background and may take a few seconds.
 
-Para un widget Sensor, elige LibreHardwareMonitor y pega el identificador exacto. Para una alerta, elige métrica Sensor numérico, fuente LibreHardwareMonitor e identificador. Las temperaturas CPU/GPU disponibles se incorporan también al widget PC. No todos los sensores están disponibles en todos los equipos; Studio no instala ni carga controladores y no solicita elevación.
+For a sensor widget, choose LibreHardwareMonitor and paste the exact identifier. For an alert, choose a numeric sensor, the LibreHardwareMonitor source and its identifier. Available CPU/GPU temperatures also feed the PC widget. Availability varies by computer; Studio does not install or load drivers or request elevation.
 
-## Música
+## Music
 
-Utiliza la sesión multimedia actual que expone Windows. Se han comprobado metadatos y carátula en este PC. Algunos reproductores no publican sesión, artista o imagen; en ese caso solo se muestra la información disponible. No controla el audio ni inicia reproducción.
+Windows reads metadata and artwork from the current exposed media session; both were checked on the development PC. Linux uses MPRIS through optional `playerctl`. Some players do not expose a session, artist or artwork, so only available information is shown. Keeper does not control audio or start playback.
 
-## Credenciales y copias
+Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATAFORMA.md#feature-comparison).
 
-El token de API y la contraseña MQTT se guardan en la configuración local del usuario. Las exportaciones portátiles los omiten y desactivan las integraciones; tras importar hay que configurarlas de nuevo. Las copias completas del directorio de datos, como cualquier copia manual, pueden contener las credenciales que existían en ese momento.
+## Credentials and backups
 
-## Referencias
+The API token and MQTT password are stored in local user settings. Portable exports omit them and disable integrations; configure them again after importing. Complete copies of the data directory, including manual backups, may contain credentials present at the time.
 
-- [Microsoft: sesiones multimedia de Windows](https://learn.microsoft.com/en-us/uwp/api/windows.media.control).
-- [PyWinRT: operaciones asíncronas y tipos](https://pywinrt.readthedocs.io/en/stable/types.html).
-- [Microsoft: notificaciones de bloqueo y desbloqueo](https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change).
-- [Paho MQTT para Python](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
+## References
+
+- [Microsoft: Windows media sessions](https://learn.microsoft.com/en-us/uwp/api/windows.media.control).
+- [PyWinRT: asynchronous operations and types](https://pywinrt.readthedocs.io/en/stable/types.html).
+- [Microsoft: session lock/unlock notifications](https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change).
+- [Paho MQTT for Python](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
 - [Home Assistant MQTT](https://www.home-assistant.io/integrations/mqtt/).
+
+[README](../README.md) · [Desktop guide](ESCRITORIO.md)

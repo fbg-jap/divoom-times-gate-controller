@@ -1,46 +1,42 @@
-# Validación de Divoom Keeper Studio
+# Divoom Keeper Studio validation · 2.0 / 2.0.1
 
-Fecha: 27 de septiembre de 2026.
+**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Local paths below identify development evidence and private backups, not public downloads.
 
-## Corrección 2.0.1 tras el fallo comunicado por el usuario
+Date: September 27, 2026.
 
-- Conservada otra copia del código y de los datos de Studio en `backups/studio-before-fix-20260927-191324/`; la copia original 0.1.3 sigue intacta.
-- Reproducido el envío al dispositivo real con la clase `DivoomSender` extraída de la copia original, sin arrancar ni modificar la aplicación antigua.
-- Restablecidos PicID basados en segundos Unix (crecientes incluso con envíos rápidos), POST independiente, timeout de 10 segundos y espera de 100 ms tras cada fotograma, incluidas imágenes fijas.
-- Comparación automatizada del emisor corregido contra una referencia congelada del original: JSON, bytes JPEG, destino, tiempos y URL para JPG, PNG transparente y GIF, en las cinco pantallas. Las pruebas anteriores no detectaban estas diferencias.
-- 48 pruebas automatizadas correctas, incluidas las nuevas pruebas de regresión y el guardado del PC nativo sin IDs.
-- Envío con el motor corregido a las cinco pantallas reales: 3 imágenes, 1 GIF y 1 imagen con CPU/RAM/GPU. Todos los fotogramas aceptados; `Draw/GetHttpGifId` devuelve el identificador final enviado. Evidencia en `artifacts/device-send-2.0.1.json`.
-- Lecturas reales de CPU, RAM, disco, uso y temperatura NVIDIA disponibles; temperatura CPU no disponible en este Windows.
-- Ejecutable 2.0.1 probado con salida 0, siete secciones renderizadas, GIF y calendario recurrente. Dentro del ejecutable empaquetado también se obtienen datos reales de CPU, RAM, disco y NVIDIA; evidencia en `artifacts/packaged-ui-2.0.1/smoke-result.json`.
-- El modo nativo ya puede enviar métricas a un PC Monitor seleccionado en Divoom sin IDs de la nube. La activación directa bloquea el grupo 0 y no envía un DeviceId ficticio. Se registran los valores enviados.
-- El usuario confirma visualmente: «Se ven las imágenes, el GIF y los valores del PC». Esto valida la recuperación del contenido enviado. La documentación de Divoom exige IDs crecientes: el contador anterior con módulo podía retroceder; no se han probado de forma aislada las otras diferencias del transporte.
-- La nube devuelve una lista vacía para este dispositivo. Prueba real de activación nativa: reloj 625, grupo 0, pantalla índice 1, seguida de las seis métricas. Ambos comandos devolvieron `error_code: 0`, pero el usuario observó el monitor en dos pantallas sin datos y las otras tres vacías. Se restauró toda la composición y se bloqueó el grupo 0 tanto en la interfaz como en el motor y transporte. La aceptación HTTP no valida la selección de pantalla. Evidencia en `artifacts/native-pc-probe-2.0.1.json`.
+## 2.0.1 correction after the reported regression
 
-## Validación previa de 2.0 (insuficiente para detectar la regresión)
+- Preserved another copy of Studio source and data in `backups/studio-before-fix-20260927-191324/`; the original 0.1.3 backup remained intact.
+- Reproduced physical sends using the `DivoomSender` class extracted from the original backup, without starting or modifying the old app.
+- Restored Unix-second-based increasing PicIDs, separate POSTs, a ten-second timeout and a 100 ms pause after every frame, including still images.
+- Automated comparison against a frozen reference of the original sender: JSON, JPEG bytes, destination, timing and URL for JPG, transparent PNG and GIF across all five screens. Earlier tests had not caught these differences.
+- 48 automated tests passed, including new regression checks and native PC settings without cloud IDs.
+- Corrected engine sent three images, one GIF and one CPU/RAM/GPU image to the physical device. All frames were accepted; `Draw/GetHttpGifId` returned the final sent identifier. Evidence: `artifacts/device-send-2.0.1.json`.
+- Actual CPU, RAM, disk, NVIDIA usage and temperature readings were available; CPU temperature was unavailable on this Windows system.
+- Packaged 2.0.1 executable exited with code 0, rendered seven sections and handled GIFs and recurring calendars. It also read actual CPU, RAM, disk and NVIDIA data. Evidence: `artifacts/packaged-ui-2.0.1/smoke-result.json`.
+- Native mode could send metrics to a PC Monitor selected in the Divoom app without cloud IDs. Direct activation blocked group 0 and omitted fabricated DeviceIds. Sent metrics were logged.
+- The user visually confirmed that images, the GIF and PC values were visible. This validated restored content transfer. Divoom documentation requires increasing IDs; the earlier modulo counter could go backwards. Other transport differences were not tested in isolation.
+- The cloud returned an empty catalog for this device. A physical native activation test used clock 625, group 0, screen index 1, followed by six metrics. Both commands returned `error_code: 0`, but the user saw the monitor on two screens without data and the other three blank. The full layout was restored and group 0 was blocked in UI, engine and transport. HTTP acceptance did not validate screen selection. Evidence: `artifacts/native-pc-probe-2.0.1.json`.
 
-## Realizado
+## Earlier 2.0 checks that did not catch the regression
 
-- Copia de los cinco archivos originales y de la configuración previa antes de editar.
-- Verificación SHA-256 de los cinco archivos preservados.
-- Compilación sintáctica de los módulos Python.
-- Comprobación de dependencias con `pip check`.
-- El empaquetado excluye DLL ICU incompatibles encontradas en el PATH; Qt utiliza la API ICU de Windows 10/11.
-- 40 pruebas automatizadas del núcleo, HTTP, widgets e interfaz (unittest).
-- Renderizado de las siete secciones de la interfaz y del tema claro con Qt offscreen.
-- Ejecutable final PyInstaller probado: salida 0, siete páginas, decodificación de GIF y calendario recurrente. Resultado en `artifacts/packaged-ui/smoke-result.json` (`frozen: true`).
-- Migración de la configuración real en un directorio temporal: un dispositivo y cinco archivos disponibles; original sin cambios y automático desactivado.
-- Comprobación de la interfaz a 1120 × 760 sin desplazamiento horizontal.
-- Consultas de lectura al dispositivo configurado, recibidas con `error_code: 0`:
-  - `Channel/GetAllConf`: brillo 100, 24 horas, °C, sin espejo, pantallas encendidas.
-  - `Channel/GetIndex`: cinco índices devueltos.
-  - `Device/GetDeviceTime`: hora UTC y local devueltas.
+- Copied the five original files and previous settings before editing.
+- Verified SHA-256 values for the five preserved files.
+- Checked Python module syntax and dependencies with `pip check`.
+- Packaging excluded incompatible ICU DLLs found on PATH; Qt used the Windows 10/11 ICU API.
+- 40 automated core, HTTP, widget and UI tests passed.
+- Rendered seven UI sections and the light theme with offscreen Qt.
+- Final PyInstaller executable test: exit 0, seven pages, GIF decoding and recurring calendar. Result: `artifacts/packaged-ui/smoke-result.json`, with `frozen: true`.
+- Migrated actual settings in a temporary directory: one device and five available files, original unchanged and automatic sending disabled.
+- Checked the UI at 1120 × 760 without horizontal scrolling.
+- Read-only device queries returned `error_code: 0`: `Channel/GetAllConf` reported brightness 100, 24-hour time, °C, no mirroring and screens on; `Channel/GetIndex` returned five indices; `Device/GetDeviceTime` returned UTC and local time.
 
-## Alcance
+## Scope of the earlier 2.0 checks
 
-Las consultas reales no cambiaron imágenes, modos, brillo ni ajustes. Las pruebas de escritura se hicieron contra dobles de prueba y un servidor HTTP local que simula el dispositivo. No se ha verificado visualmente el resultado de los nuevos comandos en el Times Gate físico.
+Those read-only device queries did not change images, modes, brightness or settings. Write tests used test doubles and a local HTTP device simulator. The new commands' physical visual results had not yet been verified.
 
-Las funciones con mayor dependencia del firmware son RGB, selección de relojes, monitor PC nativo y herramientas por pantalla. La interfaz identifica esas rutas como experimentales o comunitarias. Los widgets generados por Pillow reutilizan el transporte JPEG probado en la aplicación original.
+RGB, clock selection, native PC Monitor and per-screen tools depended most on firmware. The UI identified these paths as experimental or community-supported. Pillow-generated widgets reused the original JPEG transport.
 
-Los errores `offline` que aparecen en algunas pruebas se provocan deliberadamente para verificar recuperación y aislamiento de fallos; no indican que la prueba haya fallado.
+Some tests deliberately produced `offline` errors to verify recovery and fault isolation; these did not indicate failed tests.
 
-Fuentes contrastadas para esta corrección: [protocolo de animaciones](https://docin.divoom-gz.com/web/#/5/133), [selección individual](https://docin.divoom-gz.com/web/#/5/119) y [monitor oficial](https://github.com/DivoomDevelop/DivoomPCMonitorTool/blob/main/DivoomPCMonitorTool/WindowsFormsApplication1/Form1.cs).
+Sources checked for the correction: [animation protocol](https://docin.divoom-gz.com/web/#/5/133), [individual selection](https://docin.divoom-gz.com/web/#/5/119) and [official PC monitor source](https://github.com/DivoomDevelop/DivoomPCMonitorTool/blob/main/DivoomPCMonitorTool/WindowsFormsApplication1/Form1.cs).

@@ -1,39 +1,41 @@
-# Validación de Keeper 3.0
+# Keeper 3.0 validation
 
-Fecha: 27 de septiembre de 2026. Entorno de trabajo: Windows. Este documento distingue implementación, compilación y pruebas reales en hardware.
+**Historical report for 3.0.0.** Later builds and current limitations are documented in [3.1.1 validation](RGB-3.1.1.md#validation) and the [platform guide](MULTIPLATAFORMA.md). Pending items below describe the state at this earlier checkpoint.
 
-## Comprobado
+Date: September 27, 2026. Development environment: Windows. This report distinguishes implementation, builds and physical hardware checks.
 
-- 115 pruebas Python aprobadas: las 102 previas, 9 del portal y 4 de adaptación Linux. Incluyen el protocolo, las colas, medios, escenas, listas, horarios, avisos, integración, UI Qt y conversión de panorámicas.
-- 10 pruebas Node aprobadas: equivalencia del payload HTTP móvil, rechazo de IP/valores inválidos y grupo nativo 0, orden de trabajos, recuperación de errores, duración de listas tras la transferencia, independencia de escenas, Pomodoro, pausa en segundo plano y migración de configuraciones antiguas.
-- Frontend Vite compilado y sincronizado con ambos proyectos nativos. Se ha corregido un bloqueo de arranque por un ciclo de importaciones asíncronas.
-- APK Android debug 3.0.0 compilado con Gradle 8.14.3, JDK 21 y SDK 36. Es un APK de pruebas con firma de depuración.
-- Portal real FastAPI ejecutado en modo demo sobre Windows: autenticación, rechazo de orígenes ajenos, archivos privados, guardado con revisión, conversión panorámica y envío simulado por las cinco pantallas.
-- Interfaz revisada en navegador a ancho de teléfono. El motor móvil se ejecutó con IndexedDB y simulación del transporte, sin depender de los endpoints del servidor para generar contenido.
-- GIF panorámico local: 8 fotogramas de 200 ms, selección del recorte inferior, vista previa animada y envío simulado a las cinco pantallas.
-- MP4 H.264 local: 10 fotogramas, 2 segundos, conversión con el decodificador del navegador y cinco GIF generados.
-- Dos guardados/envíos móviles consecutivos comprobados después de corregir la actualización de la revisión tras una orden.
-- ZIP exportado por el motor móvil e importado por el `ConfigStore` Python: cinco GIF de 8 fotogramas y velocidad de 200 ms conservados, escenas presentes y envío automático desactivado.
-- El módulo `keeper/protocol.py` conserva el SHA-256 de la versión 2.3: `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
+## Verified
 
-Los logs locales están en `artifacts/tests-3.0.0.log`, `artifacts/tests-mobile.log`, `artifacts/android-build-final.log`, `artifacts/web-build-final.log` y `artifacts/portable-check.json`. Los logs no se incluyen en los paquetes distribuibles.
+- 115 Python tests passed: the previous 102, nine portal tests and four Linux adaptation tests. Coverage included protocol, queues, media, scenes, playlists, schedules, notices, integrations, Qt UI and panorama conversion.
+- Ten Node tests passed: mobile HTTP payload equivalence, rejection of invalid IPs/values and native group 0, job ordering, error recovery, playlist duration after transfer, scene independence, Pomodoro, background pause and older settings migration.
+- Vite frontend built and synchronized with both native projects. Fixed a startup blockage caused by circular asynchronous imports.
+- Android 3.0.0 debug APK built with Gradle 8.14.3, JDK 21 and SDK 36, using a debug signature.
+- Actual FastAPI portal in demo mode on Windows: authentication, rejection of foreign origins, private files, revision-aware saving, panorama conversion and simulated five-screen sends.
+- Phone-width browser UI reviewed. The mobile engine used IndexedDB and simulated transport without relying on server endpoints to generate content.
+- Local panoramic GIF: eight frames at 200 ms, lower crop selection, animated preview and simulated five-screen send.
+- Local H.264 MP4: ten frames, two seconds, browser decoding and five generated GIFs.
+- Two consecutive mobile saves/sends checked after fixing revision updates following a command.
+- Mobile-exported ZIP imported into Python `ConfigStore`: five eight-frame GIFs and 200 ms timing retained, scenes present and automatic sending disabled.
+- `keeper/protocol.py` retained the 2.3 SHA-256: `54faa7df993e05cebee38fc072c2d5be028587eea123ee7bf55d41cc14c3ae59`.
 
-## Pendiente de validar en cada plataforma
+Local logs: `artifacts/tests-3.0.0.log`, `artifacts/tests-mobile.log`, `artifacts/android-build-final.log`, `artifacts/web-build-final.log` and `artifacts/portable-check.json`. Logs were excluded from distribution packages.
 
-| Entorno | Validación pendiente |
+## Pending at the 3.0 checkpoint
+
+| Environment | Validation still pending at that time |
 | --- | --- |
-| Android físico | Instalación del APK, permiso/conectividad LAN, envío real, selección de archivos, compartir ZIP y comportamiento al suspender/reanudar |
-| iPhone | Compilación con Xcode, firma, instalación, permiso de red local, HTTP nativo, códecs y exportación |
-| Linux | Arranque de Qt en una distribución real, empaquetado PyInstaller, bandeja, autoinicio, sensores, MPRIS y bloqueo de sesión |
-| Docker | Construcción y arranque de la imagen con Docker Engine; red hacia el Times Gate y persistencia del volumen |
-| MQTT móvil | Broker WebSocket real, autenticación, sensores y descubrimiento en Home Assistant |
+| Physical Android | APK installation, LAN permission/connectivity, actual sends, file selection, ZIP sharing and suspend/resume |
+| iPhone | Xcode build, signing, installation, local-network permission, native HTTP, codecs and export |
+| Linux | Qt startup on a real distribution, PyInstaller packaging, tray, autostart, sensors, MPRIS and session lock |
+| Docker | Image build/startup with Docker Engine, Times Gate networking and volume persistence |
+| Mobile MQTT | Actual WebSocket broker, authentication, sensors and Home Assistant discovery |
 
-El workflow de GitHub está preparado pero no se ha ejecutado aquí. No hay IPA firmado, binario Linux ni imagen Docker preconstruida en esta entrega. La comprobación del portal en Windows no equivale a una prueba de Docker, y la del motor móvil en navegador no equivale a una prueba del APK en Android.
+At this checkpoint the GitHub workflow was prepared but had not run. There was no signed IPA, Linux binary or prebuilt Docker image in the delivery. Testing the portal on Windows did not validate Docker, and testing the mobile engine in a browser did not validate the Android APK. Subsequent CI builds are linked at the top.
 
-## Compatibilidad conservada
+## Preserved compatibility
 
-Windows 2.3 sigue en `dist/2.3.0/`, con copia de seguridad previa en `backups/working-v2.3.0-20260927-210000/`. Esta entrega no reemplaza ese ejecutable ni sus datos. Las pruebas nuevas usaron configuración demo independiente y no enviaron contenido al Times Gate físico.
+Windows 2.3 was preserved in `dist/2.3.0/`, with the earlier backup in `backups/working-v2.3.0-20260927-210000/`. This delivery did not replace that executable or its data. Tests used independent demo settings and did not send content to the physical Times Gate.
 
-El usuario ya había confirmado en la versión 2.3 la animación panorámica real en las cinco pantallas. Eso valida la base del protocolo y el dispositivo, pero no sustituye la prueba pendiente del transporte nativo de los nuevos teléfonos.
+The user had already visually confirmed animated panoramas across all five screens in 2.3. That validated the underlying device protocol, but did not replace the pending tests of native phone transport.
 
-Para la primera prueba en cada plataforma: cerrar el controlador anterior, introducir la IP, enviar una imagen a una sola pantalla, enviar un GIF corto y después una panorámica corta. Revisar la actividad y volver a importar la copia previa si se quiere restaurar la composición.
+For a first physical test on each platform: exit the previous controller, enter the IP, send a single image, then a short GIF and panorama. Check Activity and import the previous backup to restore the layout if needed.
