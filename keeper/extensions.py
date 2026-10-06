@@ -96,6 +96,14 @@ def validate_extensions(data):
                 raise ValueError("Invalid MQTT server or prefix")
 
 
+# Legacy Spanish phase values; only used to migrate previously saved/loaded state.
+LEGACY_PHASES = {"Preparado": "Ready", "Trabajo": "Work", "Descanso": "Break", "Descanso largo": "Long break"}
+
+
+def normalize_phase(phase):
+    return LEGACY_PHASES.get(phase, phase)
+
+
 class ExtraSources:
     def __init__(self, providers):
         from .windows_sources import AsyncProbe, read_media, HARDWARE_SCRIPT
@@ -107,7 +115,7 @@ class ExtraSources:
         self.hardware_enabled = False
         self.sensor_lock = threading.Lock()
         self.mqtt_values = {}
-        self.pomodoro = {"phase": "Preparado", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
+        self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
 
     def music(self):
@@ -276,7 +284,7 @@ def render_extra(s, providers):
         lines(title, 28, int(s.get("news_size", 13)), 5)
     elif kind == "pomodoro":
         data = extra.pomodoro
-        phase = {"Preparado": "Ready", "Trabajo": "Work", "Descanso": "Break", "Descanso largo": "Long break"}.get(data["phase"], data["phase"])
+        phase = normalize_phase(data["phase"])
         lines(s.get("title") or phase.upper(), 8, 12, 1, accent)
         seconds = max(0, math.ceil(data["remaining"]))
         lines(f"{seconds//60:02}:{seconds%60:02}", 40, 32, 1)

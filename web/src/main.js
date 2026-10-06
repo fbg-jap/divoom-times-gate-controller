@@ -1813,14 +1813,9 @@ function automationPage(main) {
 }
 function pomoText() {
   const p = state.runtime?.pomodoro || {};
-  // The backend reports Spanish phase names as stable protocol values.
-  const phases = {
-    Preparado: "Ready",
-    Trabajo: "Work",
-    Descanso: "Break",
-    "Descanso largo": "Long break",
-  };
-  return `${phases[p.phase] || p.phase || "Ready"} · ${Math.floor((p.remaining || 0) / 60)}:${Math.floor(
+  // Legacy Spanish phase names (older backends) map to the English values.
+  const legacy = { Preparado: "Ready", Trabajo: "Work", Descanso: "Break", "Descanso largo": "Long break" };
+  return `${legacy[p.phase] || p.phase || "Ready"} · ${Math.floor((p.remaining || 0) / 60)}:${Math.floor(
     (p.remaining || 0) % 60,
   )
     .toString()

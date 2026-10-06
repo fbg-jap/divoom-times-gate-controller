@@ -185,11 +185,16 @@ class AutomationTests(FixtureCase):
         timer = Pomodoro(); timer.command("start", device_id=self.d["id"], work=1, rest=1, long_rest=2, cycles=2)
         self.now = 120; timer.command("pause"); self.assertEqual(timer.remaining, 40)
         self.now = 300; timer.command("resume")
-        self.assertEqual(timer.advance(341), "Descanso")
-        self.assertEqual(timer.advance(402), "Trabajo")
-        self.assertEqual(timer.advance(463), "Descanso largo")
+        self.assertEqual(timer.advance(341), "Break")
+        self.assertEqual(timer.advance(402), "Work")
+        self.assertEqual(timer.advance(463), "Long break")
         self.assertEqual(timer.remaining, 120)
-        timer.command("reset"); self.assertFalse(timer.running); self.assertEqual(timer.phase, "Preparado")
+        timer.command("reset"); self.assertFalse(timer.running); self.assertEqual(timer.phase, "Ready")
+
+    def test_pomodoro_restore_migrates_legacy_spanish_phase(self):
+        for legacy, english in (("Preparado", "Ready"), ("Trabajo", "Work"), ("Descanso", "Break"), ("Descanso largo", "Long break")):
+            timer = Pomodoro(); timer.restore({"phase": legacy, "remaining": 10, "total": 60, "running": True, "cycle": 2})
+            self.assertEqual(timer.snapshot(), {"phase": english, "remaining": 10, "total": 60, "running": True, "cycle": 2})
 
     def test_invalid_rules_rollback(self):
         before = self.store.snapshot()
