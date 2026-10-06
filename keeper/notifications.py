@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import os
+import re
 import threading
 import time
 import unicodedata
@@ -50,6 +51,40 @@ def app_allowed(app, allow, deny):
         return False
     allowed = {str(a).casefold() for a in allow or []}
     return not allowed or name in allowed
+
+
+TEAMS_DEFAULTS = {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com",
+                                                  "teams.cloud.microsoft", "teams.live.com"],
+                  "show_preview": False, "chats": True, "mentions": True, "calls": True, "panel": 0, "seconds": 0,
+                  "call_seconds": 20, "buzzer_on_call": False}
+TEAMS_COLOR = "#6264a7"
+CALL_WORDS = ("calling", "incoming call", "is calling", "meeting started", "joined the meeting", "ringer", "llamando", "ruft an")
+MENTION_WORDS = ("mentioned", "nævnte", "mencionó", "erwähnt")
+# An @-mention starts a word; an @ inside an address such as ana@example.com is not one.
+AT_MENTION = re.compile(r"(?<!\S)@\S")
+
+
+def classify_teams(app, summary, body, patterns):
+    """None when this is not a Teams notification, else {'kind': call|mention|chat, 'sender', 'preview'}."""
+    try:
+        if not all(isinstance(v, str) for v in (app, summary, body)) or not isinstance(patterns, (list, tuple)):
+            return None
+        sender, preview = clean(summary, TEXT_MAX), clean(body, TEXT_MAX)
+        haystack = f"{clean(app, TITLE_MAX)} {sender} {preview}".casefold()
+        if not any(isinstance(p, str) and p.strip() and p.strip().casefold() in haystack for p in patterns):
+            return None
+        text = f"{sender} {preview}".casefold()
+        kind = "call" if any(w in text for w in CALL_WORDS) else \
+            "mention" if any(w in text for w in MENTION_WORDS) or AT_MENTION.search(text) else "chat"
+        cuts = [i for i in (sender.casefold().find(" " + w) for w in CALL_WORDS[:3] + MENTION_WORDS[:1]) if i > 0]
+        sender = sender[:min(cuts)] if cuts else sender
+        for suffix in (" (via teams)", " in "):
+            cut = sender.casefold().rfind(suffix)
+            if cut > 0:
+                sender = sender[:cut]
+        return {"kind": kind, "sender": sender[:TITLE_MAX - 8].strip() or "Teams", "preview": preview}
+    except Exception:
+        return None
 
 
 class RateLimiter:
@@ -218,11 +253,29 @@ class NotificationService:
                 return False
             if not self.limiter.allow(cfg.get("per_minute", 6)):
                 return False
+            teams = {**TEAMS_DEFAULTS, **(cfg.get("teams") or {})}
+            found = classify_teams(app, summary, body, teams["patterns"]) if teams["enabled"] else None
+            panel = min(max(int(cfg.get("panel", 1)), 1), 5) - 1
+            seconds = min(max(int(cfg.get("seconds", 8)), 5), 60)
+            if found:
+                kind = found["kind"]
+                if not teams[{"chat": "chats", "mention": "mentions", "call": "calls"}[kind]]:
+                    return False
+                preview = found["preview"] if teams["show_preview"] else ""
+                text = {"chat": preview or "New message", "mention": clean(f"Mentioned you {preview}", TEXT_MAX),
+                        "call": "Incoming call"}[kind]
+                if teams["panel"]:
+                    panel = min(max(int(teams["panel"]), 1), 5) - 1
+                if kind == "call":
+                    seconds = min(max(int(teams["call_seconds"]), 5), 60)
+                elif teams["seconds"]:
+                    seconds = min(max(int(teams["seconds"]), 5), 60)
+                self.engine.automations.enqueue(self.device_id, panel, text, clean("Teams · " + found["sender"], TITLE_MAX),
+                                                seconds, kind == "call" and bool(teams["buzzer_on_call"]), TEAMS_COLOR)
+                return True
             shown = format_notification(app, summary, body, bool(cfg.get("show_body")))
             if shown is None:
                 return False
-            panel = min(max(int(cfg.get("panel", 1)), 1), 5) - 1
-            seconds = min(max(int(cfg.get("seconds", 8)), 5), 60)
             self.engine.automations.enqueue(self.device_id, panel, shown[1], shown[0], seconds, False)
             return True
         except Exception as error:

@@ -4,6 +4,7 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 
 ## Unreleased
 
+- **Microsoft Teams in PC notifications**: Teams chat, mention and call pop-ups (native app, `teams-for-linux`, or Teams in a browser matched by domain) are recognised and shown as `Teams · <sender>` with a purple accent, per-kind filters, own screen, longer call notices with optional buzzer; sender only by default (preview opt-in). Heuristic on notification text, untested against a real Teams client. See [Integrations](docs/INTEGRATIONS.md#microsoft-teams).
 - Spotify widget **Display** option (`spotify_display`: `both`, `art` or `text`) on desktop and the web editor; the default `both` leaves the layout unchanged. See [Integrations](docs/INTEGRATIONS.md#spotify).
 - New **Spotify** widget (now playing, read-only) over the Spotify Web API with PKCE; connect from the desktop app (loopback redirect) or the server portal (`/api/spotify/callback`). Only the client ID and refresh token are stored. Tested with a fake session only, not a real account. See [Integrations](docs/INTEGRATIONS.md#spotify).
 - Spotify **Redirect URI** setting (`integrations.spotify.redirect_uri`) and a paste-back desktop connect flow that works with any registered `https` redirect address (no local server), for Dashboards that reject the `http://127.0.0.1` loopback URI. Tested with a fake session only. See [Integrations](docs/INTEGRATIONS.md#spotify).

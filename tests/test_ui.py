@@ -247,6 +247,21 @@ class UiTests(unittest.TestCase):
         self.window.automation_panel.control("start"); self.drain()
         self.assertTrue(self.engine.automations.pomodoro.running)
 
+    def test_teams_notification_group_round_trips(self):
+        panel = self.window.integration_panel
+        panel.tm_on.setChecked(True); panel.tm_calls.setChecked(False); panel.tm_preview.setChecked(True)
+        panel.tm_panel.setCurrentIndex(panel.tm_panel.findData(3)); panel.tm_call_seconds.setValue(33)
+        panel.tm_buzzer.setChecked(True); panel.tm_patterns.setText("microsoft teams, teams.example.org")
+        panel.save()
+        teams = self.store.snapshot()["integrations"]["notifications"]["teams"]
+        self.assertEqual((teams["enabled"], teams["calls"], teams["show_preview"], teams["panel"], teams["call_seconds"], teams["buzzer_on_call"]),
+                         (True, False, True, 3, 33, True))
+        self.assertEqual(teams["patterns"], ["microsoft teams", "teams.example.org"])
+        panel.tm_on.setChecked(False); panel.tm_panel.setCurrentIndex(0)
+        panel.reload()
+        self.assertTrue(panel.tm_on.isChecked()); self.assertEqual(panel.tm_panel.currentData(), 3)
+        self.assertEqual(panel.tm_patterns.text(), "microsoft teams, teams.example.org")
+
     def test_saving_integrations_keeps_a_token_rotated_since_the_panel_loaded(self):
         panel = self.window.integration_panel
         self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T0"))

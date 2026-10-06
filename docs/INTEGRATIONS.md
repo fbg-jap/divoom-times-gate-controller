@@ -161,6 +161,16 @@ The status line shows `Running`, `Disabled` or `Unavailable (reason)`; toggling 
 
 **Windows** uses the `UserNotificationListener` API through `winrt` and requires allowing notification access to Keeper in Windows settings. This backend is **unverified**: it has not been run on a real Windows machine.
 
+### Microsoft Teams
+
+Keeper can recognise Teams chat, mention and call pop-ups from this PC and show them with a Teams layout (title `Teams · <sender>`, purple accent). There is no Microsoft sign-in and no Graph access: it only reads the desktop notifications that Teams itself raises. Enable **Microsoft Teams** in **Integrations > Notifications**; it applies only while *Enable PC notifications* is also on.
+
+- **What is matched**: a notification is treated as Teams when any entry of the *patterns* list (case-insensitive) appears in its app name, summary or body. Defaults: `microsoft teams` (the native Windows app), `msteams`, `teams-for-linux` (the unofficial Linux client) and the domains `teams.microsoft.com`, `teams.cloud.microsoft`, `teams.live.com` (Teams running as a browser app, where Chrome or Brave notifications carry the site domain).
+- **Kinds**: *call* (the text says calling, incoming call, meeting started, `ringer`, `llamando`, `ruft an`), *mention* (mentioned, `nævnte`, `mencionó`, `erwähnt`, or an `@`), otherwise *chat*. Each kind can be switched off. Calls stay on screen for *call seconds* and can sound the buzzer.
+- **Privacy**: by default only the sender and `New message` / `Mentioned you` / `Incoming call` are shown; the message preview appears only with *Show message preview*.
+- **Screen and filters**: the Teams *screen* can differ from the general one (0 = same). The general rate limit still applies first, and the general blocked-apps list still wins over Teams (a blocked app is dropped before Teams is evaluated); an allowed-apps list that excludes the app also excludes it.
+- **Limitations**: the kinds are heuristics on the notification text, so they depend on the Teams display language. Teams must have operating-system notifications enabled; Focus assist / Do not disturb silences them and Keeper sees nothing. Linux needs `jeepney` as above. The Windows backend is still unverified, and no real Teams client has been tested yet.
+
 ## Credentials and backups
 
 The API token and MQTT password are stored in local user settings. Portable exports omit them and disable integrations; configure them again after importing. Complete copies of the data directory, including manual backups, may contain credentials present at the time.

@@ -488,6 +488,16 @@ export const en = {
   "ui.allowed_apps": "Allowed apps (comma separated)",
   "ui.blocked_apps": "Blocked apps (comma separated)",
   "ui.show_body": "Show the message body",
+  "ui.teams_enable": "Enable Microsoft Teams",
+  "ui.teams_chats": "Chats",
+  "ui.teams_mentions": "Mentions",
+  "ui.teams_calls": "Calls",
+  "ui.teams_preview": "Show message preview",
+  "ui.teams_screen": "Screen (0 = same as above, 1-5)",
+  "ui.teams_call_seconds": "Call seconds (5-60)",
+  "ui.teams_buzzer": "Buzzer on calls",
+  "ui.teams_patterns": "Patterns (comma separated)",
+  "ui.teams_hint": "Requires the PC notifications above to be enabled. For privacy only the sender and \"New message\" are shown unless you enable the preview. Teams in a browser is matched by its domain.",
 };
 
 export const es = {
@@ -978,6 +988,16 @@ export const es = {
   "ui.allowed_apps": "Apps permitidas (separadas por comas)",
   "ui.blocked_apps": "Apps bloqueadas (separadas por comas)",
   "ui.show_body": "Mostrar el cuerpo del mensaje",
+  "ui.teams_enable": "Activar Microsoft Teams",
+  "ui.teams_chats": "Chats",
+  "ui.teams_mentions": "Menciones",
+  "ui.teams_calls": "Llamadas",
+  "ui.teams_preview": "Mostrar vista previa del mensaje",
+  "ui.teams_screen": "Pantalla (0 = igual que arriba, 1-5)",
+  "ui.teams_call_seconds": "Segundos de llamada (5-60)",
+  "ui.teams_buzzer": "Zumbador en llamadas",
+  "ui.teams_patterns": "Patrones (separados por comas)",
+  "ui.teams_hint": "Requiere activar las notificaciones del PC arriba. Por privacidad solo se muestra el remitente y \"Nuevo mensaje\" salvo que actives la vista previa. Teams en el navegador se reconoce por su dominio.",
 };
 export const languages = { en: "English", es: "Español" };
 const tables = { en, es };

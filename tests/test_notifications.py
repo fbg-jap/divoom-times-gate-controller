@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from keeper import notifications as nt
 from keeper.notifications import (NotificationService, RateLimiter, Unavailable, app_allowed,
-                                  clean, format_notification, new_toasts)
+                                  classify_teams, clean, format_notification, new_toasts)
 
 
 class FakeAutomations:
@@ -197,6 +197,124 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("jeepney not installed", str(ctx.exception))
 
 
+PATTERNS = nt.TEAMS_DEFAULTS["patterns"]
+
+
+class TeamsClassifyTests(unittest.TestCase):
+    def kind(self, app, summary, body=""):
+        found = classify_teams(app, summary, body, PATTERNS)
+        return found and found["kind"]
+
+    def test_kinds_and_languages(self):
+        self.assertEqual(self.kind("Microsoft Teams", "Ana Ruiz", "see you at 5"), "chat")
+        for text in ("Ana is calling you", "Incoming call", "Ana ringer til dig", "Ana te está llamando", "Ana ruft an"):
+            self.assertEqual(self.kind("Microsoft Teams", text), "call", text)
+        for text in ("Ana mentioned you", "Ana nævnte dig", "Ana te mencionó", "Ana hat Sie erwähnt", "Ana", "@Jakob hi"):
+            body = "@Jakob hi" if text == "Ana" else ""
+            self.assertEqual(self.kind("Microsoft Teams", text, body), "mention", text)
+
+    def test_apps(self):
+        self.assertEqual(self.kind("teams-for-linux", "Ana", "hi"), "chat")
+        self.assertEqual(self.kind("Brave", "Ana in General", "hi teams.microsoft.com"), "chat")
+        self.assertEqual(self.kind("Google Chrome", "Ana", "https://teams.cloud.microsoft"), "chat")
+        self.assertIsNone(self.kind("Firefox", "Ana", "hello"))
+        self.assertIsNone(classify_teams("Mail", "Teams meeting notes", "", PATTERNS))
+
+    def test_sender_trimming(self):
+        self.assertEqual(classify_teams("Microsoft Teams", "Ana in General", "", PATTERNS)["sender"], "Ana")
+        self.assertEqual(classify_teams("Microsoft Teams", "Ana (via Teams)", "", PATTERNS)["sender"], "Ana")
+        self.assertEqual(classify_teams("Microsoft Teams", "Ana is calling you", "", PATTERNS)["sender"], "Ana")
+        self.assertEqual(classify_teams("Microsoft Teams", "Ana mentioned you in General", "", PATTERNS)["sender"], "Ana")
+        self.assertLessEqual(len(classify_teams("Microsoft Teams", "x" * 999, "", PATTERNS)["sender"]), 72)
+
+    def test_odd_input(self):
+        for args in ((None, "a", "b", PATTERNS), ("Microsoft Teams", 5, "", PATTERNS), ("Microsoft Teams", "a", b"x", PATTERNS),
+                     ("Microsoft Teams", "a", "", None), ("a", "b", "c", [None, 5, ""])):
+            self.assertIsNone(classify_teams(*args))
+        start = time.monotonic()
+        self.assertEqual(classify_teams("Microsoft Teams", "x" * 10 ** 6, "y" * 10 ** 6, PATTERNS)["kind"], "chat")
+        self.assertLess(time.monotonic() - start, 1)
+
+
+class TeamsServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = FakeEngine()
+        self.service = NotificationService(self.engine, lambda stop: iter(()))
+        self.service.device_id = "dev1"
+
+    def configure(self, teams=None, **general):
+        self.service.config = data(teams={"enabled": True, **(teams or {})}, **general)["integrations"]["notifications"]
+
+    def test_privacy_default_hides_preview(self):
+        self.configure()
+        self.assertTrue(self.service.handle("Microsoft Teams", "Ana in General", "secret text"))
+        self.assertEqual(self.engine.automations.calls,
+                         [("dev1", 2, "New message", "Teams · Ana", 8, False, "#6264a7")])
+
+    def test_show_preview_is_capped(self):
+        self.configure({"show_preview": True})
+        self.service.handle("Microsoft Teams", "Ana", "z" * 900)
+        self.assertEqual(len(self.engine.automations.calls[0][2]), 500)
+        self.service.handle("Microsoft Teams", "Ana mentioned you", "hello")
+        self.assertIn("Mentioned you", self.engine.automations.calls[1][2])
+        self.assertIn("hello", self.engine.automations.calls[1][2])
+
+    def test_mention_without_preview(self):
+        self.configure()
+        self.service.handle("Microsoft Teams", "Ana mentioned you", "secret")
+        self.assertEqual(self.engine.automations.calls[0][2], "Mentioned you")
+
+    def test_kind_filters_drop(self):
+        self.configure({"chats": False, "mentions": False, "calls": False})
+        for summary in ("Ana", "Ana mentioned you", "Ana is calling you"):
+            self.assertFalse(self.service.handle("Microsoft Teams", summary, ""))
+        self.assertEqual(self.engine.automations.calls, [])
+
+    def test_call_seconds_and_buzzer(self):
+        self.configure({"call_seconds": 30, "buzzer_on_call": True, "seconds": 10})
+        self.service.handle("Microsoft Teams", "Ana is calling you", "")
+        self.assertEqual(self.engine.automations.calls[0], ("dev1", 2, "Incoming call", "Teams · Ana", 30, True, "#6264a7"))
+        self.service.handle("Microsoft Teams", "Ana", "")
+        self.assertEqual(self.engine.automations.calls[1][4:6], (10, False))
+
+    def test_panel_override_and_fallback(self):
+        self.configure({"panel": 5})
+        self.service.handle("Microsoft Teams", "Ana", "")
+        self.assertEqual(self.engine.automations.calls[0][1], 4)
+        self.configure({"panel": 0})
+        self.service.handle("Microsoft Teams", "Ana", "")
+        self.assertEqual(self.engine.automations.calls[1][1], 2)
+
+    def test_deny_and_allow_lists_apply_to_teams(self):
+        self.configure(deny_apps=["microsoft teams"])
+        self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
+        self.configure(allow_apps=["Mail"])
+        self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
+
+    def test_rate_limiter_still_first(self):
+        self.configure(per_minute=1)
+        self.assertTrue(self.service.handle("Microsoft Teams", "Ana", ""))
+        with patch.object(nt, "classify_teams") as classify:
+            self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
+            classify.assert_not_called()
+
+    def test_non_teams_path_is_unchanged_with_teams_enabled(self):
+        self.configure()
+        self.assertTrue(self.service.handle("Mail", "Hello", "body"))
+        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Hello", "Mail", 8, False)])
+
+    def test_teams_disabled_or_missing_uses_old_path(self):
+        self.service.config = data(teams={"enabled": False})["integrations"]["notifications"]
+        self.service.handle("Microsoft Teams", "Ana", "")
+        self.service.config = data()["integrations"]["notifications"]   # old config without teams
+        self.service.handle("Microsoft Teams", "Ana", "")
+        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Ana", "Microsoft Teams", 8, False)] * 2)
+
+    def test_partial_teams_config_gets_defaults(self):
+        self.configure({"enabled": True})
+        self.assertTrue(self.service.handle("teams-for-linux", "Ana", ""))
+
+
 class BridgeIntegrationTests(unittest.TestCase):
     def test_status_exposes_notifications(self):
         from keeper.integrations import Bridge
@@ -251,3 +369,18 @@ class BridgeIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TeamsMentionRuleTests(unittest.TestCase):
+    PATTERNS = ["microsoft teams"]
+
+    def kind(self, body):
+        from keeper.notifications import classify_teams
+        return classify_teams("Microsoft Teams", "Ana Lopez", body, self.PATTERNS)["kind"]
+
+    def test_at_mention_needs_a_word_start_and_an_email_address_is_a_chat(self):
+        self.assertEqual(self.kind("@Jakob can you look at this?"), "mention")
+        self.assertEqual(self.kind("thanks @Jakob"), "mention")
+        self.assertEqual(self.kind("mail me at ana@example.com"), "chat")
+        self.assertEqual(self.kind("price is 5 @ 10 each"), "chat")
+        self.assertEqual(self.kind("lone @"), "chat")

@@ -29,6 +29,24 @@ class IntegrationConfigTests(unittest.TestCase):
         self.assertEqual(loaded.data["integrations"]["mail"]["port"], 993)
         self.assertEqual(loaded.data["integrations"]["api"]["port"], 9000)
 
+    def test_old_notifications_config_gets_teams_defaults(self):
+        raw = copy.deepcopy(self.store.data)
+        raw["integrations"]["notifications"].pop("teams")
+        self.store.path.write_text(json.dumps(raw))
+        teams = ConfigStore(self.root / "store", migrate=False).data["integrations"]["notifications"]["teams"]
+        self.assertFalse(teams["enabled"]); self.assertEqual(teams["call_seconds"], 20); self.assertIn("microsoft teams", teams["patterns"])
+
+    def test_teams_validation(self):
+        for key, value in (("enabled", 1), ("chats", "y"), ("panel", 6), ("seconds", 3), ("seconds", 61), ("call_seconds", 4),
+                           ("patterns", ["a"] * 21), ("patterns", [""]), ("patterns", ["a" * 65]), ("patterns", "teams")):
+            data = defaults()
+            data["integrations"]["notifications"]["teams"][key] = value
+            with self.assertRaises(ValueError, msg=f"{key}={value!r}"):
+                validate(data)
+        data = defaults()
+        data["integrations"]["notifications"]["teams"].update(enabled=True, panel=0, seconds=0, call_seconds=60, patterns=["a"] * 20)
+        validate(data)
+
     def test_validation_bounds(self):
         bad = [("mail", "port", 70000), ("notifications", "seconds", 4), ("notifications", "panel", 6),
                ("notifications", "per_minute", 0), ("prtg", "base_url", "ftp://x"),

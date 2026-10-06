@@ -356,6 +356,25 @@ class IntegrationPanel(QWidget):
                         (t("Apps bloqueadas (separadas por comas)", "Blocked apps (comma separated)"), self.nt_deny)]:
             form.addRow(text, w)
         form.addRow(self.nt_body)
+        tm = notif["teams"] if isinstance(notif.get("teams"), dict) else {}
+        tm = {**base["notifications"]["teams"], **tm}
+        self.tm_on = QCheckBox(t("Activar Microsoft Teams", "Enable Microsoft Teams")); self.tm_on.setChecked(tm["enabled"])
+        self.tm_chats = QCheckBox(t("Chats", "Chats")); self.tm_chats.setChecked(tm["chats"])
+        self.tm_mentions = QCheckBox(t("Menciones", "Mentions")); self.tm_mentions.setChecked(tm["mentions"])
+        self.tm_calls = QCheckBox(t("Llamadas", "Calls")); self.tm_calls.setChecked(tm["calls"])
+        self.tm_preview = QCheckBox(t("Mostrar vista previa del mensaje", "Show message preview")); self.tm_preview.setChecked(tm["show_preview"])
+        self.tm_panel = combo([(0, t("Igual que arriba", "Same as above"))] + [(i, str(i)) for i in range(1, 6)], tm["panel"])
+        self.tm_call_seconds = number(5, 60, tm["call_seconds"])
+        self.tm_buzzer = QCheckBox(t("Zumbador en llamadas", "Buzzer on calls")); self.tm_buzzer.setChecked(tm["buzzer_on_call"])
+        self.tm_patterns = QLineEdit(", ".join(tm["patterns"]))
+        self.tm_seconds = tm["seconds"]
+        form.addRow(QLabel("Microsoft Teams")); form.addRow(self.tm_on)
+        form.addRow(self.tm_chats); form.addRow(self.tm_mentions); form.addRow(self.tm_calls); form.addRow(self.tm_preview)
+        form.addRow(t("Pantalla", "Screen"), self.tm_panel); form.addRow(t("Segundos de llamada", "Call seconds"), self.tm_call_seconds)
+        form.addRow(self.tm_buzzer)
+        form.addRow(t("Patrones (separados por comas)", "Patterns (comma separated)"), self.tm_patterns)
+        form.addRow(hint(t("Requiere activar las notificaciones del PC arriba. Por privacidad solo se muestra el remitente y «Nuevo mensaje» salvo que actives la vista previa. Teams en el navegador se reconoce por su dominio.",
+                           "Requires the PC notifications above to be enabled. For privacy only the sender and 'New message' are shown unless you enable the preview. Teams in a browser is matched by its domain.")))
         self.nt_status = QLabel(); form.addRow(self.nt_status)
         tabs.addTab(page, t("Notificaciones", "Notifications"))
         self.refresh_spotify_status()
@@ -437,7 +456,11 @@ class IntegrationPanel(QWidget):
                   "mail": {"enabled": self.mail_on.isChecked(), "host": self.mail_host.text().strip(), "port": self.mail_port.value(), "user": self.mail_user.text().strip(),
                            "password": self.mail_password.text(), "mailbox": self.mail_box.text().strip() or "INBOX", "show_subject": self.mail_subject.isChecked()},
                   "notifications": {"enabled": self.nt_on.isChecked(), "panel": self.nt_panel.value(), "seconds": self.nt_seconds.value(), "allow_apps": names(self.nt_allow),
-                                    "deny_apps": names(self.nt_deny), "show_body": self.nt_body.isChecked(), "per_minute": self.nt_rate.value()},
+                                    "deny_apps": names(self.nt_deny), "show_body": self.nt_body.isChecked(), "per_minute": self.nt_rate.value(),
+                                    "teams": {"enabled": self.tm_on.isChecked(), "patterns": names(self.tm_patterns), "show_preview": self.tm_preview.isChecked(),
+                                              "chats": self.tm_chats.isChecked(), "mentions": self.tm_mentions.isChecked(), "calls": self.tm_calls.isChecked(),
+                                              "panel": self.tm_panel.currentData(), "seconds": self.tm_seconds, "call_seconds": self.tm_call_seconds.value(),
+                                              "buzzer_on_call": self.tm_buzzer.isChecked()}},
                   "hardware": self.hardware.isChecked(),
                   "api": {"enabled": self.api_on.isChecked(), "host": "0.0.0.0" if self.api_lan.isChecked() else "127.0.0.1", "port": self.api_port.value(), "token": self.token.text().strip()},
                   "mqtt": {"enabled": self.mqtt_on.isChecked(), "host": self.mqtt_host.text().strip(), "port": self.mqtt_port.value(), "prefix": self.mqtt_prefix.text().strip(), "username": self.user.text(), "password": self.password.text(), "tls": self.tls.isChecked()}}
@@ -474,6 +497,11 @@ class IntegrationPanel(QWidget):
         self.mail_password.setText(ml["password"]); self.mail_box.setText(ml["mailbox"]); self.mail_subject.setChecked(ml["show_subject"])
         self.nt_on.setChecked(nt["enabled"]); self.nt_panel.setValue(nt["panel"]); self.nt_seconds.setValue(nt["seconds"]); self.nt_rate.setValue(nt["per_minute"])
         self.nt_allow.setText(", ".join(nt["allow_apps"])); self.nt_deny.setText(", ".join(nt["deny_apps"])); self.nt_body.setChecked(nt["show_body"])
+        tm = {**defaults()["integrations"]["notifications"]["teams"], **(nt.get("teams") if isinstance(nt.get("teams"), dict) else {})}
+        self.tm_on.setChecked(tm["enabled"]); self.tm_chats.setChecked(tm["chats"]); self.tm_mentions.setChecked(tm["mentions"]); self.tm_calls.setChecked(tm["calls"])
+        self.tm_preview.setChecked(tm["show_preview"]); self.tm_panel.setCurrentIndex(max(0, self.tm_panel.findData(tm["panel"])))
+        self.tm_call_seconds.setValue(tm["call_seconds"]); self.tm_buzzer.setChecked(tm["buzzer_on_call"])
+        self.tm_patterns.setText(", ".join(tm["patterns"])); self.tm_seconds = tm["seconds"]
 
     def poll_sensors(self):
         extra = self.window.engine.renderer.providers.extra

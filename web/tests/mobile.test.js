@@ -215,3 +215,16 @@ test("spotify_display is kept on a screen and passes validation", () => {
   validate(cfg);
   assert.equal(normalize(cfg).devices[0].screens[0].spotify_display, "art");
 });
+
+test("older configurations without notifications.teams receive Teams defaults", () => {
+  const old = defaults();
+  delete old.integrations.notifications.teams;
+  const cfg = normalize(old);
+  assert.equal(cfg.integrations.notifications.teams.enabled, false);
+  assert.equal(cfg.integrations.notifications.teams.call_seconds, 20);
+  const partial = defaults();
+  partial.integrations.notifications.teams = { enabled: true };
+  const merged = normalize(partial).integrations.notifications.teams;
+  assert.equal(merged.enabled, true);
+  assert.ok(merged.patterns.includes("microsoft teams"));
+});

@@ -94,6 +94,18 @@ export function defaults() {
         deny_apps: [],
         show_body: false,
         per_minute: 6,
+        teams: {
+          enabled: false,
+          patterns: ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"],
+          show_preview: false,
+          chats: true,
+          mentions: true,
+          calls: true,
+          panel: 0,
+          seconds: 0,
+          call_seconds: 20,
+          buzzer_on_call: false,
+        },
       },
       hardware: false,
     },
@@ -128,6 +140,10 @@ export function normalize(value) {
       ...defaults().integrations[key],
       ...cfg.integrations[key],
     };
+  cfg.integrations.notifications.teams = {
+    ...defaults().integrations.notifications.teams,
+    ...cfg.integrations.notifications.teams,
+  };
   cfg.devices = cfg.devices.map((d) => ({
     ...device(),
     ...d,

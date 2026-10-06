@@ -43,7 +43,10 @@ def defaults():
                              "mail": {"enabled": False, "host": "", "port": 993, "user": "", "password": "",
                                       "mailbox": "INBOX", "show_subject": False},
                              "notifications": {"enabled": False, "panel": 1, "seconds": 8, "allow_apps": [],
-                                               "deny_apps": [], "show_body": False, "per_minute": 6},
+                                               "deny_apps": [], "show_body": False, "per_minute": 6,
+                                               "teams": {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"],
+                                                         "show_preview": False, "chats": True, "mentions": True, "calls": True, "panel": 0,
+                                                         "seconds": 0, "call_seconds": 20, "buzzer_on_call": False}},
                              "hardware": False}}
 
 

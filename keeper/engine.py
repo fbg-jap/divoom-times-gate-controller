@@ -320,7 +320,8 @@ class Engine(threading.Thread):
             current, _, _, _ = self.playlist_content(d, panel)
             if current["kind"] in {"empty", "native", "pc_native"}:
                 raise ValueError("The notice needs a screen with restorable content (image or widget)")
-            self.send_panel(d, panel, True, slot("text", title=args.get("title", "NOTICE"), text=args["text"]))
+            self.send_panel(d, panel, True, slot("text", title=args.get("title", "NOTICE"), text=args["text"],
+                                                **({"color": args["color"]} if args.get("color") else {})))
             self.overrides[(d["id"], panel)] = time.monotonic() + args.get("seconds", 15)
             if args.get("buzzer"):
                 self.command(d, {"Command": "Device/PlayBuzzer", "ActiveTimeInCycle": 150,

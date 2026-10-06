@@ -100,10 +100,12 @@ class Automations:
             return {**d, **composition(scene)}
         return d
 
-    def enqueue(self, device_id, panel, text, title, seconds=15, buzzer=False):
+    def enqueue(self, device_id, panel, text, title, seconds=15, buzzer=False, color=None):
         if len(self.notice_queue) < 20:
-            self.notice_queue.append((time.monotonic() + 120, device_id, {"panel": panel, "text": text,
-                "title": title, "seconds": seconds, "buzzer": buzzer}))
+            args = {"panel": panel, "text": text, "title": title, "seconds": seconds, "buzzer": buzzer}
+            if color:
+                args["color"] = color
+            self.notice_queue.append((time.monotonic() + 120, device_id, args))
 
     def update(self, config, now):
         phase = self.pomodoro.advance(now)
