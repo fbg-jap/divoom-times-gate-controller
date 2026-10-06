@@ -117,6 +117,10 @@ class Window(QMainWindow):
             register(int(self.winId()), 0)
         if store.migration_note:
             self.toast(store.migration_note)
+        elif store.language_notice:
+            self.toast(self.t("Ahora puedes cambiar el idioma en Ajustes.", "You can change the language in Settings."))
+            store.language_notice = False
+            store.change(lambda data: data.update(language_notice_shown=True))
 
     def nativeEvent(self, event_type, message):
         if os.name == "nt" and not self.demo:
