@@ -8,7 +8,7 @@ import time
 import psutil
 
 from .content import composition
-from .extensions import finite, normalize_phase
+from .extensions import finite
 
 
 
@@ -18,14 +18,6 @@ class Pomodoro:
         self.running, self.cycle, self.stamp = False, 0, time.monotonic()
         self.settings = {"work": 25, "rest": 5, "long_rest": 15, "cycles": 4}
         self.device_id, self.panel, self.buzzer = None, 0, False
-
-    def restore(self, state):
-        """Load a saved snapshot, migrating legacy Spanish phase names."""
-        self.phase = normalize_phase(state.get("phase", self.phase))
-        for key in ("remaining", "total", "running", "cycle"):
-            if key in state:
-                setattr(self, key, state[key])
-        self.stamp = time.monotonic()
 
     def snapshot(self):
         return {k: getattr(self, k) for k in ("phase", "remaining", "total", "running", "cycle")}

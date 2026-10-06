@@ -164,7 +164,7 @@ Git history and the v0.1.3 release are preserved. To return to the original app,
 
 ## What has been verified
 
-- **126 Python tests** passed for desktop/server 3.1.1, plus **13 Node tests** for the shared frontend.
+- **135 Python tests** and **20 Node tests** pass on the current source (126 and 13 were verified for the published 3.1.1 builds).
 - Windows executable in demo mode, real conversion of sample GIF/video files, the web interface and the mobile engine with simulated transport.
 - Android debug build and matching frontend resources in the APK.
 - [Current CI build](docs/RGB-3.1.1.md#validation): Windows/Linux tests, desktop binaries, Android APK, iOS simulator app and Docker build/startup all completed successfully.

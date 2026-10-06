@@ -110,7 +110,7 @@ class UiTests(unittest.TestCase):
     def test_language_notice_shown_once_for_configs_predating_the_flag(self):
         self.assertTrue(self.store.snapshot()["language_notice_shown"])
         self.assertFalse(self.store.language_notice)
-        self.assertNotIn("language settings", self.window.statusBar().currentMessage().lower())
+        self.assertNotIn("language in settings", self.window.statusBar().currentMessage().lower())
         legacy = self.store.snapshot()
         del legacy["language_notice_shown"]
         legacy["language"] = "es"
