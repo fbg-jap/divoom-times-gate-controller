@@ -159,6 +159,9 @@ class Automations:
         if r["metric"] in {"prtg_down", "prtg_warning"}:
             data = provider.extra.prtg()
             return None if data is None else data[r["metric"][5:]]
+        if r["metric"] == "mail_unread":
+            data = provider.extra.mail()
+            return None if data is None else data["unread"]
         return finite(provider.pc().get(r["metric"]))
 
     def deliver(self, d, now):

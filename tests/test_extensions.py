@@ -1,6 +1,10 @@
 import copy
 import json
+import imaplib
 import queue
+import socket
+import ssl
+import threading
 import time
 import unittest
 import zipfile
@@ -10,6 +14,7 @@ from unittest.mock import Mock, patch
 from PIL import Image, ImageDraw
 import requests
 
+from keeper import mail
 from keeper.config import slot, uid
 from keeper.content import composition, split_panorama
 from keeper.engine import Engine
@@ -172,6 +177,162 @@ class PrtgTests(unittest.TestCase):
         validate_content(slot("prtg"))
 
 
+class FakeImap:
+    """Stands in for imaplib: records every command and never touches the network."""
+    def __init__(self, unseen=3, header=b"Subject: =?utf-8?q?Caf=C3=A9_report?=\r\n\r\n", starttls_fails=False, login_error=None, status_error=None):
+        self.log, self.unseen, self.header = [], unseen, header
+        self.starttls_fails, self.login_error, self.status_error = starttls_fails, login_error, status_error
+
+    def starttls(self, ssl_context=None):
+        self.log.append("starttls")
+        if self.starttls_fails:
+            raise imaplib.IMAP4.error("STARTTLS refused by secret-banner")
+
+    def login(self, user, password):
+        self.log.append("login")
+        if self.login_error:
+            raise self.login_error
+
+    def select(self, mailbox, readonly=False):
+        self.log.append(("select", mailbox, readonly)); return "OK", [b"1"]
+
+    def status(self, mailbox, what):
+        self.log.append(("status", mailbox, what))
+        if self.status_error:
+            raise self.status_error
+        return "OK", [b'"INBOX" (UNSEEN %d)' % self.unseen]
+
+    def search(self, charset, criterion):
+        self.log.append(("search", criterion)); return "OK", [b"4 7 9"]
+
+    def fetch(self, message_id, parts):
+        self.log.append(("fetch", message_id, parts))
+        return "OK", [(b"9 (BODY[HEADER.FIELDS (SUBJECT)] {10}", self.header), b")"]
+
+    def logout(self):
+        self.log.append("logout")
+
+
+class MailTests(unittest.TestCase):
+    CONF = {"enabled": True, "host": "imap.test", "port": 993, "user": "user-secret", "password": "pw-secret", "mailbox": "INBOX", "show_subject": False}
+
+    def run_fetch(self, fake, **conf):
+        calls = []
+        def connector(host, port, timeout, context):
+            calls.append((host, port, timeout, context)); return fake
+        return mail.fetch_unread({**self.CONF, **conf}, connector=connector), calls
+
+    def test_count_uses_examine_and_never_fetches_without_show_subject(self):
+        fake = FakeImap(unseen=5)
+        result, calls = self.run_fetch(fake)
+        self.assertEqual(result, {"unread": 5, "subject": None})
+        self.assertEqual(calls[0][:3], ("imap.test", 993, 10)); self.assertIsInstance(calls[0][3], ssl.SSLContext)
+        self.assertIn(("select", '"INBOX"', True), fake.log)
+        self.assertFalse([x for x in fake.log if isinstance(x, tuple) and x[0] in {"search", "fetch"}])
+        self.assertNotIn("starttls", fake.log); self.assertEqual(fake.log[-1], "logout")
+
+    def test_subject_peek_only_for_newest_unseen_and_decoded(self):
+        fake = FakeImap(header=b"Subject: =?utf-8?q?Caf=C3=A9_report?=\r\n\x07x\r\n\r\n")
+        result, _ = self.run_fetch(fake, show_subject=True)
+        self.assertEqual(result["subject"], "Café report")
+        fetch = [x for x in fake.log if isinstance(x, tuple) and x[0] == "fetch"]
+        self.assertEqual(fetch, [("fetch", b"9", "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")])
+        long = FakeImap(header=b"Subject: " + b"a" * 300 + b"\r\n\r\n")
+        self.assertEqual(len(self.run_fetch(long, show_subject=True)[0]["subject"]), 80)
+        self.assertIsNone(self.run_fetch(FakeImap(unseen=0), show_subject=True)[0]["subject"])
+
+    def test_starttls_on_143_and_password_withheld_when_it_fails(self):
+        fake = FakeImap()
+        self.run_fetch(fake, port=143)
+        self.assertEqual(fake.log[:2], ["starttls", "login"])
+        fake = FakeImap(starttls_fails=True)
+        with self.assertRaises(mail.MailError) as caught:
+            self.run_fetch(fake, port=143)
+        self.assertNotIn("login", fake.log); self.assertEqual(fake.log[-1], "logout")
+        self.assertEqual(str(caught.exception), "protocol error")
+
+    def test_errors_map_to_fixed_reasons_without_secrets(self):
+        cases = [(FakeImap(login_error=imaplib.IMAP4.error("LOGIN failed pw-secret user-secret imap.test")), "authentication failed"),
+                 (FakeImap(status_error=socket.timeout("pw-secret")), "timeout"),
+                 (FakeImap(status_error=imaplib.IMAP4.error("pw-secret")), "protocol error"),
+                 (FakeImap(status_error=RuntimeError("user-secret")), "protocol error")]
+        for fake, reason in cases:
+            with self.assertRaises(mail.MailError) as caught:
+                self.run_fetch(fake)
+            self.assertEqual(str(caught.exception), reason)
+        def refuse(*args):
+            raise ConnectionRefusedError("pw-secret imap.test")
+        with self.assertRaises(mail.MailError) as caught:
+            mail.fetch_unread(self.CONF, connector=refuse)
+        self.assertEqual(str(caught.exception), "cannot connect")
+        for text in ("pw-secret", "user-secret", "imap.test"):
+            self.assertNotIn(text, str(caught.exception))
+        self.assertEqual(str(mail.MailError("server said hello")), "protocol error")
+
+    def test_mailbox_is_quoted_and_control_characters_rejected(self):
+        fake = FakeImap(); self.run_fetch(fake, mailbox='My "Box"')
+        self.assertIn(("select", '"My \\"Box\\""', True), fake.log)
+        with self.assertRaises(mail.MailError):
+            self.run_fetch(FakeImap(), mailbox="INBOX\r\nA1 DELETE x")
+
+    def test_async_probe_defaults_unchanged_and_custom_stale(self):
+        from keeper.windows_sources import AsyncProbe
+        default = AsyncProbe(lambda: 1)
+        self.assertEqual((default.interval, default.stale), (5, 30))
+        clock = [1000.]
+        with patch("time.monotonic", lambda: clock[0]):
+            for probe, expect_at in ((AsyncProbe(lambda: 1, 10**9), 31), (AsyncProbe(lambda: 1, 10**9, 600), 601)):
+                probe.read()
+                for _ in range(200):
+                    if probe.updated > 0:
+                        break
+                    time.sleep(.005)
+                clock[0] = 1000.; probe.updated = 1000.
+                clock[0] = 1000. + expect_at - 2; self.assertEqual(probe.read()[0], 1)
+                clock[0] = 1000. + expect_at; self.assertIsNone(probe.read()[0])
+                clock[0] = 1000.
+
+    def test_sampler_lifecycle_is_lazy_single_flight_and_config_scoped(self):
+        p = Providers(); extra = p.extra
+        with patch("keeper.mail.fetch_unread") as fetch:
+            self.assertEqual(extra.mail_state(), (None, "not configured"))
+            extra.mail_conf = {**self.CONF, "enabled": False}
+            self.assertEqual(extra.mail_state(), (None, "not configured")); fetch.assert_not_called()
+            gate = threading.Event(); fetch.side_effect = lambda conf: (gate.wait(2), {"unread": 2, "subject": None})[1]
+            extra.mail_conf = dict(self.CONF)
+            extra.mail_state(); extra.mail_state(); extra.mail_state()
+            time.sleep(.05); self.assertEqual(fetch.call_count, 1)
+            gate.set()
+            for _ in range(200):
+                if extra.mail() is not None:
+                    break
+                time.sleep(.01)
+            self.assertEqual(extra.mail(), {"unread": 2, "subject": None})
+            self.assertEqual(fetch.call_args.args[0]["password"], "pw-secret")
+            extra.mail_conf = {**self.CONF, "host": "other.test"}
+            self.assertIsNone(extra.mail())  # new config discards the old reading
+
+    def test_demo_data_respects_show_subject(self):
+        p = Providers(demo=True)
+        self.assertEqual(p.extra.mail_state(), ({"unread": 3, "subject": None}, ""))
+        p.extra.mail_conf = {"show_subject": True}
+        self.assertEqual(p.extra.mail()["subject"], "Weekly report")
+
+    def test_render_states_and_validation(self):
+        from keeper.extensions import render_extra
+        p = Providers()
+        for state in ((None, "not configured"), (None, "Waiting for first reading"), (None, "authentication failed"),
+                      ({"unread": 0, "subject": None}, ""), ({"unread": 12, "subject": "Weekly report"}, "")):
+            with patch.object(p.extra, "mail_state", return_value=state):
+                self.assertEqual(render_extra(slot("mail"), p).size, (128, 128))
+        with patch.object(p.extra, "mail_state", return_value=({"unread": 0, "subject": None}, "")):
+            green = render_extra(slot("mail"), p)
+        with patch.object(p.extra, "mail_state", return_value=({"unread": 4, "subject": None}, "")):
+            amber = render_extra(slot("mail"), p)
+        self.assertIn((74, 222, 128), green.getdata()); self.assertIn((251, 191, 36), amber.getdata())
+        validate_content(slot("mail"))
+
+
 class AutomationTests(FixtureCase):
     def setUp(self):
         super().setUp()
@@ -208,6 +369,14 @@ class AutomationTests(FixtureCase):
         with patch.object(self.engine.renderer.providers.extra, "prtg", return_value=None):
             self.assertIsNone(self.auto.value(self.rule(metric="prtg_down")))
         self.store.change(lambda data: data.update(alerts=[self.rule(metric="prtg_down")]))
+
+    def test_mail_unread_alert_metric(self):
+        extra = self.engine.renderer.providers.extra
+        with patch.object(extra, "mail", return_value={"unread": 7, "subject": None}):
+            self.assertEqual(self.auto.value(self.rule(metric="mail_unread")), 7)
+        with patch.object(extra, "mail", return_value=None):
+            self.assertIsNone(self.auto.value(self.rule(metric="mail_unread")))
+        self.store.change(lambda data: data.update(alerts=[self.rule(metric="mail_unread")]))
 
     def test_reminders_do_not_catch_up_after_pause(self):
         rule = self.rule(minutes=1); self.store.change(lambda data: data.update(reminders=[rule]))

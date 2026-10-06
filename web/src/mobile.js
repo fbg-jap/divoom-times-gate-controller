@@ -382,6 +382,9 @@ export class MobileEngine {
       case "prtg":
         text(t("mob.prtg_desktop_only"), 32, 15);
         break;
+      case "mail":
+        text(t("mob.mail_desktop_only"), 32, 15);
+        break;
       case "weather": {
         let v = { temperature_2m: 23, relative_humidity_2m: 48 };
         if (!this.demo)

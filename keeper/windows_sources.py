@@ -74,8 +74,8 @@ def powershell_json(script):
 
 class AsyncProbe:
     """Reading Windows metadata never blocks image uploads or the GUI."""
-    def __init__(self, script, interval=5):
-        self.script, self.interval = script, interval
+    def __init__(self, script, interval=5, stale=30):
+        self.script, self.interval, self.stale = script, interval, stale
         self.lock = threading.Lock()
         self.value, self.error = None, "Waiting for first reading"
         self.started, self.updated, self.running = -1e12, -1e12, False
@@ -86,7 +86,7 @@ class AsyncProbe:
             if not self.running and now - self.started >= self.interval:
                 self.started, self.running = now, True
                 threading.Thread(target=self._sample, daemon=True, name="keeper-windows-reader").start()
-            value = self.value if now - self.updated < 30 else None
+            value = self.value if now - self.updated < self.stale else None
             return value, self.error
 
     def _sample(self):

@@ -115,6 +115,7 @@ export const kinds = lazy({
   pomodoro: "Pomodoro",
   sensor: "Sensor",
   prtg: "PRTG",
+  mail: "ui.mail_unread",
   native: "model.native_unmanaged",
   pc_native: "model.experimental_native_pc",
 });

@@ -83,6 +83,17 @@ Windows reads metadata and artwork from the current exposed media session; both 
 
 Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATFORM.md#feature-comparison).
 
+## Unread mail (IMAP)
+
+The **Unread mail** widget and the `mail_unread` alert metric show how many unread messages a mailbox holds. Configure the server, user, password and mailbox under Integrations → Mail.
+
+- Port 993 uses TLS from the start; port 143 uses STARTTLS and Keeper never sends the password unless STARTTLS succeeded. Certificates are always verified; there is no option to disable it.
+- Use an **app password** with providers that require one: Gmail (Google Account → Security → App passwords, IMAP must be enabled) and Fastmail (Settings → Privacy & Security → App passwords, IMAP scope). Your normal account password usually does not work.
+- Privacy: only the unread count is read by default (`STATUS ... (UNSEEN)` on a read-only `EXAMINE`d mailbox). Keeper never marks mail as read and never downloads message bodies. With **Show the subject** on, it also fetches only the Subject header of the newest unread message (`BODY.PEEK`), shown on the widget; it is off by default.
+- The mailbox is polled every 120 seconds in the background, never on the display loop; a reading older than 10 minutes is treated as unavailable and the alert does not fire. Errors are shown as a short reason (authentication failed, cannot connect, timeout, protocol error) that never includes your credentials.
+- The password is stored in `config.json` (mode 0600) and is blanked in exports.
+- Standalone mobile apps cannot use IMAP; the widget shows a placeholder there. Not yet tried against a real IMAP server.
+
 ## Credentials and backups
 
 The API token and MQTT password are stored in local user settings. Portable exports omit them and disable integrations; configure them again after importing. Complete copies of the data directory, including manual backups, may contain credentials present at the time.

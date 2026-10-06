@@ -272,6 +272,7 @@ export function contentForm(s, inList = false) {
     );
   }
   if (s.kind === "prtg") form.append(hint(t("ui.prtg_widget_hint")));
+  if (s.kind === "mail") form.append(hint(t("ui.mail_widget_hint")));
   if (s.kind === "pomodoro")
     form.append(
       hint(

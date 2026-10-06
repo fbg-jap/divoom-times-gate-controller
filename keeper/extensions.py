@@ -77,7 +77,7 @@ def validate_extensions(data):
                 if group == "reminders" and not 1 <= int(r.get("minutes", 30)) <= 10080:
                     raise ValueError("Invalid reminder interval")
                 if group == "alerts":
-                    if r.get("metric") not in {k for k, _ in METRICS} | {"disk_free", "service", "sensor"} | PRTG_METRICS:
+                    if r.get("metric") not in {k for k, _ in METRICS} | {"disk_free", "service", "sensor"} | PRTG_METRICS | {"mail_unread"}:
                         raise ValueError("Unknown alert metric")
                     if r.get("operator", "above") not in {"above", "below"} or finite(r.get("threshold", 80)) is None:
                         raise ValueError("Invalid threshold")
@@ -167,6 +167,7 @@ class ExtraSources:
         self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
         self.prtg_conf = {}
+        self.mail_conf, self.mail_key, self.mail_probe = {}, None, None
 
     def music(self):
         if self.providers.demo:
@@ -212,6 +213,25 @@ class ExtraSources:
         if not self.providers.demo and not conf.get("enabled"):
             return None
         return self.providers.prtg(conf.get("base_url", ""), conf.get("token", ""), conf.get("verify_tls", True))
+
+    def mail_state(self):
+        """(data, error): data is {"unread","subject"} or None; error is "" or a short reason."""
+        conf = self.mail_conf or {}
+        if self.providers.demo:
+            return {"unread": 3, "subject": "Weekly report" if conf.get("show_subject") else None}, ""
+        if not conf.get("enabled") or not conf.get("host") or not conf.get("user") or not conf.get("password"):
+            return None, "not configured"
+        key = tuple(conf.get(k) for k in ("host", "port", "user", "password", "mailbox", "show_subject"))
+        if key != self.mail_key:
+            from .mail import fetch_unread
+            from .windows_sources import AsyncProbe
+            snapshot = dict(conf)
+            self.mail_key, self.mail_probe = key, AsyncProbe(lambda: fetch_unread(snapshot), 120, 600)
+        value, error = self.mail_probe.read()
+        return value, error or ""
+
+    def mail(self):
+        return self.mail_state()[0]
 
     def news(self, url, seconds=15):
         if not url:
@@ -369,4 +389,21 @@ def render_extra(s, providers):
                 draw.text((x, y), str(data[key]), fill=color, font=face)
                 draw.text((x, y + 24), key.upper(), fill=color, font=font(8))
             lines(data["worst"] or "All sensors OK", 92, 10, 3, "white" if data["worst"] else "#4ade80")
+    elif kind == "mail":
+        data, error = extra.mail_state()
+        lines(s.get("title") or "Unread mail", 7, 11, 1, accent)
+        if data is None and error == "not configured":
+            lines("Mail not configured", 40, 13, 3, "#ff6b6b")
+        elif data is None and error.startswith("Waiting"):
+            lines("Checking mail…", 40, 13, 2, "#9aa4b5")
+        elif data is None:
+            lines("Mail unavailable", 34, 13, 1, "#ff6b6b")
+            lines(error or "protocol error", 56, 10, 3, "#9aa4b5")
+        else:
+            color = "#4ade80" if data["unread"] == 0 else "#fbbf24"
+            text = str(data["unread"])
+            face = font(46, True)
+            draw.text(((128 - draw.textlength(text, font=face)) / 2, 28), text, fill=color, font=face)
+            if data.get("subject"):
+                lines(data["subject"], 92, 10, 3)
     return image

@@ -219,6 +219,7 @@ export function automationPage(main) {
                       sensor: "Sensor",
                       prtg_down: t("ui.prtg_down_sensors"),
                       prtg_warning: t("ui.prtg_warning_sensors"),
+                      mail_unread: t("ui.mail_unread"),
                     },
               ),
               el(
