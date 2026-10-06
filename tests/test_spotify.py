@@ -517,6 +517,12 @@ class PortalTests(unittest.TestCase):
 
 
 class WidgetTests(unittest.TestCase):
+    def setUp(self):
+        # These tests cover the non-blocking placeholder path; the first-read wait has its own test below.
+        patcher = unittest.mock.patch("keeper.extensions.FIRST_READ_WAIT", 0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def render(self, providers, **conf):
         providers.extra.spotify_conf = conf
         return Renderer.__new__(Renderer), providers
@@ -542,6 +548,15 @@ class WidgetTests(unittest.TestCase):
             with unittest.mock.patch.object(providers.extra, "spotify_state", return_value=(payload, "")), \
                     unittest.mock.patch("keeper.extensions.Image.open", side_effect=Image.DecompressionBombError("bomb")):
                 self.assertEqual(self.image(providers).size, (128, 128))
+
+    def test_first_draw_waits_briefly_so_the_widget_is_not_stuck_on_connecting(self):
+        providers = Providers()
+        providers.extra.spotify_conf = {"enabled": True, "client_id": "c", "refresh_token": "r"}
+        session = FakeSession(token=[token()], playing=[FakeResponse(204)] * 5)
+        with unittest.mock.patch("keeper.spotify.requests.Session", lambda: session), \
+                unittest.mock.patch("keeper.extensions.FIRST_READ_WAIT", 2):
+            data, error = providers.extra.spotify_state()
+        self.assertEqual((data, error), ({"idle": True}, ""))  # real answer on the very first call
 
     def test_lazy_start_and_states(self):
         providers = Providers()

@@ -79,14 +79,20 @@ class AsyncProbe:
         self.lock = threading.Lock()
         self.value, self.error = None, "Waiting for first reading"
         self.started, self.updated, self.running = -1e12, -1e12, False
+        self.first = threading.Event()
 
-    def read(self):
+    def read(self, wait=0.0):
+        """Latest (value, error). `wait` > 0 holds the caller for at most that many seconds until the first sample
+        has finished, so a widget's first draw shows data instead of a placeholder; later reads never wait."""
         with self.lock:
             now = time.monotonic()
             if not self.running and now - self.started >= self.interval:
                 self.started, self.running = now, True
                 threading.Thread(target=self._sample, daemon=True, name="keeper-windows-reader").start()
-            value = self.value if now - self.updated < self.stale else None
+        if wait > 0 and not self.first.is_set():
+            self.first.wait(wait)
+        with self.lock:
+            value = self.value if time.monotonic() - self.updated < self.stale else None
             return value, self.error
 
     def _sample(self):
@@ -100,3 +106,4 @@ class AsyncProbe:
         finally:
             with self.lock:
                 self.running = False
+            self.first.set()

@@ -12,6 +12,8 @@ from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
+# Seconds a widget's very first draw may wait for its background sampler before showing a placeholder.
+FIRST_READ_WAIT = 2.5
 METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disk %"),
            ("cpu_temp", "CPU °C"), ("gpu_temp", "GPU °C"), ("download", "Descarga B/s"), ("upload", "Subida B/s")]
 PRTG_METRICS = {"prtg_down", "prtg_warning"}
@@ -246,7 +248,7 @@ class ExtraSources:
                 except Exception:
                     raise RuntimeError("PRTG request failed") from None  # the original message can carry the URL with the token
             self.prtg_key, self.prtg_probe = key, AsyncProbe(sample, 30, 120)
-        value, error = self.prtg_probe.read()
+        value, error = self.prtg_probe.read(wait=FIRST_READ_WAIT)
         return value, error or ""
 
     def prtg(self):
@@ -266,7 +268,7 @@ class ExtraSources:
             from .windows_sources import AsyncProbe
             snapshot = dict(conf)
             self.mail_key, self.mail_probe = key, AsyncProbe(lambda: fetch_unread(snapshot), 120, 600)
-        value, error = self.mail_probe.read()
+        value, error = self.mail_probe.read(wait=FIRST_READ_WAIT)
         return value, error or ""
 
     def mail(self):
@@ -288,7 +290,7 @@ class ExtraSources:
             # Started lazily (first render of a Spotify widget) and rebuilt when the client id or a reconnected token changes.
             source = self.spotify_source = SpotifySource(conf["client_id"], conf["refresh_token"], self.spotify_save)
             self.spotify_probe = AsyncProbe(source.poll, 5, 30)
-        value, error = self.spotify_probe.read()
+        value, error = self.spotify_probe.read(wait=FIRST_READ_WAIT)
         return value, error or ""
 
     def news(self, url, seconds=15):

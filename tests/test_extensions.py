@@ -124,6 +124,12 @@ class NewContentTests(FixtureCase):
 
 
 class PrtgTests(unittest.TestCase):
+    def setUp(self):
+        # These tests cover the non-blocking placeholder path; the first-read wait has its own tests.
+        patcher = patch("keeper.extensions.FIRST_READ_WAIT", 0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def reply(self, payload, status=200):
         raw = json.dumps(payload).encode()
         response = Mock(); response.status_code = status
@@ -219,6 +225,21 @@ class PrtgTests(unittest.TestCase):
         gate.set()
         self.wait_for(p.extra, lambda: p.extra.prtg() is not None)
 
+    def test_first_draw_waits_briefly_for_the_first_sample_but_never_hangs(self):
+        conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
+        p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS)); p.extra.prtg_conf = dict(conf)
+        with patch("keeper.extensions.FIRST_READ_WAIT", 2):
+            data, error = p.extra.prtg_state()
+        self.assertEqual((data["down"], error), (1, ""))             # first call already has real data
+        gate = threading.Event(); q = Providers(); q.extra.prtg_conf = dict(conf)
+        q.prtg_fetch = lambda base, token, verify: (gate.wait(5), {"up": 1, "warning": 0, "down": 0, "paused": 0, "unusual": 0, "worst": ""})[1]
+        started = time.monotonic()
+        with patch("keeper.extensions.FIRST_READ_WAIT", 0.2):
+            data, error = q.extra.prtg_state()
+        self.assertIsNone(data)                                       # a slow source gives the placeholder after the cap
+        self.assertLess(time.monotonic() - started, 1.5)
+        gate.set()
+
     def test_sampler_rebuilt_only_when_the_connection_changes(self):
         p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
         conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
@@ -267,6 +288,12 @@ class FakeImap:
 
 
 class MailTests(unittest.TestCase):
+    def setUp(self):
+        # These tests cover the non-blocking placeholder path; the first-read wait has its own tests.
+        patcher = patch("keeper.extensions.FIRST_READ_WAIT", 0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     CONF = {"enabled": True, "host": "imap.test", "port": 993, "user": "user-secret", "password": "pw-secret", "mailbox": "INBOX", "show_subject": False}
 
     def run_fetch(self, fake, **conf):
@@ -334,6 +361,24 @@ class MailTests(unittest.TestCase):
         self.assertIn(("select", '"My \\"Box\\""', True), fake.log)
         with self.assertRaises(mail.MailError):
             self.run_fetch(FakeImap(), mailbox="INBOX\r\nA1 DELETE x")
+
+    def test_async_probe_first_read_can_wait_for_the_first_sample(self):
+        import threading
+        from keeper.windows_sources import AsyncProbe
+        fast = AsyncProbe(lambda: "ready", 5, 30)
+        self.assertEqual(fast.read(wait=2), ("ready", ""))          # first call already returns the sample
+        release = threading.Event()
+        slow = AsyncProbe(lambda: (release.wait(5), "late")[1], 5, 30)
+        value, error = slow.read(wait=0.05)                          # sampler still running: placeholder, not a hang
+        self.assertIsNone(value)
+        self.assertEqual(error, "Waiting for first reading")
+        release.set()
+        slow.first.wait(2)
+        self.assertEqual(slow.read(wait=0.05), ("late", ""))
+        failing = AsyncProbe(lambda: 1 / 0, 5, 30)
+        self.assertEqual(failing.read(wait=2)[1], "division by zero")  # an error also ends the wait
+        plain = AsyncProbe(lambda: "x", 5, 30)
+        self.assertEqual(plain.read(), (None, "Waiting for first reading"))  # default read() never waits
 
     def test_async_probe_defaults_unchanged_and_custom_stale(self):
         from keeper.windows_sources import AsyncProbe
