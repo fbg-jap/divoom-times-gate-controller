@@ -120,7 +120,7 @@ def linux_hardware():
     return result
 
 
-def linux_startup(enabled, config_root):
+def linux_startup(enabled, config_root, ui_args=()):
     root = Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "autostart"
     path = root / "divoom-keeper-studio.desktop"
     if not enabled:
@@ -140,7 +140,7 @@ def linux_startup(enabled, config_root):
     args = [appimage] if appimage else [sys.executable]
     if not appimage and not getattr(sys, "frozen", False):
         args.append(str(Path(__file__).resolve().parents[1] / "app.py"))
-    args += ["--minimized", "--config-dir", str(config_root)]
+    args += [*ui_args, "--minimized", "--config-dir", str(config_root)]
     root.mkdir(parents=True, exist_ok=True)
     path.write_text("[Desktop Entry]\nType=Application\nName=Divoom Keeper Studio\nExec=" +
                     " ".join(quote(x) for x in args) + "\nTerminal=false\n", encoding="utf-8")

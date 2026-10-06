@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Wrap the PyInstaller onedir (dist/linux/DivoomKeeperStudio, from build_linux.sh) into an AppImage.
+# Optional env: APP_NAME (default DivoomKeeperStudio; DivoomKeeperStudioWeb for the Qt-free web shell),
+# ONEDIR (default dist/linux/$APP_NAME), OUT_NAME (default $APP_NAME).
 # appimagetool is taken from $APPIMAGETOOL or PATH; it is never downloaded here.
 # Optional: APPIMAGE_RUNTIME=/path/to/runtime-x86_64 (https://github.com/AppImage/type2-runtime/releases, tag 20251108).
 set -euo pipefail
@@ -12,17 +14,21 @@ if [[ -z "$TOOL" || ! -x "$TOOL" ]]; then
   exit 1
 fi
 
-ONEDIR="dist/linux/DivoomKeeperStudio"
-if [[ ! -x "$ONEDIR/DivoomKeeperStudio" ]]; then
-  echo "error: $ONEDIR/DivoomKeeperStudio not found. Run build_linux.sh first." >&2
+APP_NAME="${APP_NAME:-DivoomKeeperStudio}"
+ONEDIR="${ONEDIR:-dist/linux/$APP_NAME}"
+OUT_NAME="${OUT_NAME:-$APP_NAME}"
+DESKTOP_ID="divoom-keeper-studio"
+if [[ "$APP_NAME" == *Web ]]; then DESKTOP_ID="divoom-keeper-studio-web"; fi
+if [[ ! -x "$ONEDIR/$APP_NAME" ]]; then
+  echo "error: $ONEDIR/$APP_NAME not found. Run build_linux.sh first (add --ui web for DivoomKeeperStudioWeb)." >&2
   exit 1
 fi
 
 VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' keeper/__init__.py)"
 if [[ -z "$VERSION" ]]; then echo "error: cannot read version from keeper/__init__.py" >&2; exit 1; fi
 ARCH="${ARCH:-$(uname -m)}"
-OUT="dist/DivoomKeeperStudio-${VERSION}-${ARCH}.AppImage"
-APPDIR="dist/appimage/DivoomKeeperStudio.AppDir"
+OUT="dist/${OUT_NAME}-${VERSION}-${ARCH}.AppImage"
+APPDIR="dist/appimage/${APP_NAME}.AppDir"
 
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/lib/divoom"
@@ -30,21 +36,21 @@ cp -a "$ONEDIR/." "$APPDIR/usr/lib/divoom/"
 cp packaging/divoom-keeper-studio.png "$APPDIR/divoom-keeper-studio.png"
 cp packaging/divoom-keeper-studio.png "$APPDIR/.DirIcon"
 
-cat > "$APPDIR/divoom-keeper-studio.desktop" <<DESKTOP
+cat > "$APPDIR/$DESKTOP_ID.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Divoom Keeper Studio
 Comment=Control the Divoom Times Gate
-Exec=DivoomKeeperStudio
+Exec=$APP_NAME
 Icon=divoom-keeper-studio
 Categories=Utility;
 Terminal=false
 DESKTOP
 
-cat > "$APPDIR/AppRun" <<'APPRUN'
+cat > "$APPDIR/AppRun" <<APPRUN
 #!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/lib/divoom/DivoomKeeperStudio" "$@"
+HERE="\$(dirname "\$(readlink -f "\$0")")"
+exec "\$HERE/usr/lib/divoom/$APP_NAME" "\$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 

@@ -31,6 +31,7 @@ from .content import all_screens, assets, panorama_canvas
 from .engine import Engine
 from .panorama_media import decode_clip, VIDEO_EXTENSIONS, rgb
 from .protocol import valid_ip
+from .timesync import timesource
 from . import spotify
 from .widgets import png_bytes
 from . import platform_support
@@ -107,13 +108,15 @@ class PortalEngine(Engine):
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
 
+HOST_PATTERN = re.compile(r"(\[[0-9a-f:]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?", re.I)
+
+
 def host_name(header):
-    """Hostname of a Host header without its port ('' when malformed)."""
-    header = (header or "").strip().lower()
-    if header.startswith("["):
-        end = header.find("]")
-        return header[:end + 1] if end > 0 and header[end + 1:end + 2] in ("", ":") else ""
-    return header.split(":", 1)[0]
+    """Lower-cased hostname of a strictly valid Host header (name or [ipv6], optional port <= 65535); '' otherwise."""
+    match = HOST_PATTERN.fullmatch(header or "")
+    if not match or (match.group(2) and int(match.group(2)) > 65535):
+        return ""
+    return match.group(1).lower()
 
 
 class LaunchCodes:
@@ -125,6 +128,7 @@ class LaunchCodes:
     def __init__(self, clock=time.monotonic, ttl=60, limit=8, max_failures=10, window=60):
         self.clock, self.ttl, self.limit, self.max_failures, self.window = clock, ttl, limit, max_failures, window
         self.codes, self.failures = {}, deque()
+        self.on_redeem = None  # called (outside the lock) after a successful redeem
         self.lock = threading.Lock()
 
     def issue(self):
@@ -156,7 +160,9 @@ class LaunchCodes:
             if expires is None or expires <= now:
                 self.failures.append(now)
                 return False
-            return True
+        if self.on_redeem:
+            self.on_redeem()
+        return True
 
 
 def validate_portal(data, media_dir):
@@ -227,7 +233,8 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     async def security(request, call_next):
         # The browser returns from accounts.spotify.com without the Bearer header. Only this exact GET is exempt, and the
         # handler itself requires a single-use `state` that an authenticated /api/spotify/connect call issued.
-        if shell_mode and host_name(request.headers.get("host")) not in LOOPBACK_HOSTS | extra_hosts:
+        hosts = request.headers.getlist("host")
+        if shell_mode and (len(hosts) != 1 or host_name(hosts[0]) not in LOOPBACK_HOSTS | extra_hosts):
             # DNS rebinding: a page on another origin must not reach the local server under its own hostname.
             return JSONResponse({"error": "Host not allowed"}, status_code=421)
         public = request.method == "GET" and request.url.path == "/api/spotify/callback"
@@ -334,6 +341,12 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             denied = JSONResponse({"error": "Invalid or expired launch code"}, status_code=401)
             if host_name(request.headers.get("host")) not in LOOPBACK_HOSTS:
                 return denied
+            # Cross-site callers are rejected before the failure limiter so a website cannot burn the login attempts.
+            origin = request.headers.get("origin")
+            if origin and origin != str(request.base_url).rstrip("/"):
+                return JSONResponse({"error": "Origin not allowed"}, status_code=403)
+            if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+                return JSONResponse({"error": "Content-Type must be application/json"}, status_code=415)
             if app.state.launch_codes.limited():
                 return JSONResponse({"error": "Too many attempts"}, status_code=429)
             try:
@@ -379,7 +392,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         with engine.portal_lock:
             events = list(engine.activity)
         return {"config": data, "revision": revision(data), "events": events, "version": __version__, "desktop": shell_mode,
-                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot()},
+                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status()},
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
                     "metrics_label": "Metrics of the machine running the server; in Docker, of the container"}}

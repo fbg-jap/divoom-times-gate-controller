@@ -123,6 +123,15 @@ bash run_linux.sh --demo
 
 Install the [Qt libraries and Linux prerequisites](docs/MULTIPLATFORM.md#linux-desktop) first (Debian/Ubuntu and Fedora commands are listed there). The script picks Python 3.13, 3.12 or 3.11 if available; set `PYTHON=python3.12` to choose one. Very new Python releases may not have PySide6 or PyAV wheels yet.
 
+### Browser shell (`--ui web`, no Qt)
+
+```sh
+python app.py --ui web            # or: python shell_main.py
+python app.py --ui web --demo     # device-free preview
+```
+
+This runs the engine and the web portal on `127.0.0.1`, opens the interface in an app-mode browser window (Brave, Chrome, Chromium or Edge; any other browser gets a normal tab) and logs in with a one-time launch code, so the access token never appears on a command line. A tray icon is shown when the optional `pystray` package and a tray are available. The Qt window is still the default and the previous Qt AppImage and builds are unchanged. The Qt-free build is `bash build_linux.sh --ui web` (builds `web/dist` first if missing) and, as a single file, `APP_NAME=DivoomKeeperStudioWeb bash packaging/build_appimage.sh` (CI artifact **linux-appimage-web-x86_64**); on Windows use `build_windows.ps1 -Ui web` (untested). `python tools/smoke_shell.py <binary or command>` starts the shell in demo mode and checks the launch flow end to end.
+
 ### Docker and web portal
 
 ```sh

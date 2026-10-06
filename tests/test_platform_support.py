@@ -32,6 +32,31 @@ class LinuxSupportTests(unittest.TestCase):
             platform.linux_startup(False, root)
             self.assertFalse(entry.exists())
 
+    def test_startup_repeats_the_web_ui_arguments_only_when_given(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'XDG_CONFIG_HOME': folder}):
+            for name in ('APPIMAGE', 'APPDIR'):
+                os.environ.pop(name, None)
+            entry = Path(folder) / 'autostart/divoom-keeper-studio.desktop'
+            platform.linux_startup(True, Path(folder) / 'data', ['--ui', 'web'])
+            self.assertIn('"--ui" "web" "--minimized" "--config-dir" "', entry.read_text(encoding='utf-8'))
+            platform.linux_startup(True, Path(folder) / 'data')
+            text = entry.read_text(encoding='utf-8')
+            self.assertNotIn('--ui', text)
+            self.assertIn('"--minimized" "--config-dir"', text)
+
+    def test_set_startup_passes_the_ui_arguments_set_by_the_shell(self):
+        from keeper import startup
+        try:
+            with patch.object(startup.os, 'name', 'posix'), patch.object(platform, 'linux_startup') as linux:
+                startup.set_ui_args([])
+                startup.set_startup(True, Path('/x'))
+                linux.assert_called_with(True, Path('/x'), [])
+                startup.set_ui_args(['--ui', 'web'])
+                startup.set_startup(True, Path('/x'))
+                linux.assert_called_with(True, Path('/x'), ['--ui', 'web'])
+        finally:
+            startup.set_ui_args([])
+
     def test_startup_uses_appimage_path_when_frozen_inside_the_appdir(self):
         with tempfile.TemporaryDirectory() as folder:
             appdir = Path(folder) / 'mount'

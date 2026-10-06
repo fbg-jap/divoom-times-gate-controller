@@ -1,12 +1,15 @@
 """Browser-based desktop shell: engine + portal on 127.0.0.1, UI in the browser, optional tray. No Qt."""
 from __future__ import annotations
 
+import argparse
 from contextlib import suppress
+import html
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+import secrets
 import shutil
 import signal
 import socket
@@ -30,6 +33,100 @@ WINDOWS_BROWSERS = [
     r"Microsoft\Edge\Application\msedge.exe",
 ]
 log = logging.getLogger("keeper.shell")
+PRIVATE_DIR, PRIVATE_FILE = 0o700, 0o600
+
+
+class PrivateRotatingFileHandler(RotatingFileHandler):
+    """Log file readable by the owner only, including after a rollover."""
+
+    def _open(self):
+        stream = super()._open()
+        if os.name != "nt":
+            with suppress(OSError):
+                os.chmod(self.baseFilename, PRIVATE_FILE)
+        return stream
+
+
+def write_private(path, text):
+    """Write `text` to `path` as an owner-only (0600) file; an existing file is truncated and its mode tightened."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PRIVATE_FILE)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        if os.name != "nt":
+            os.chmod(path, PRIVATE_FILE)
+        handle.write(text)
+
+
+def launch_page(root, url):
+    """Create a 0600 `open-<random>.html` in `root` that redirects to `url`; returns its Path.
+
+    The one-time launch code travels inside this file, never on a command line (argv is world-readable through
+    /proc), so only the data-directory owner can read it. O_EXCL means an existing file or symlink is never reused.
+    """
+    path = Path(root) / f"open-{secrets.token_hex(8)}.html"
+    page = ('<!doctype html><meta charset="utf-8"><title>Keeper</title>'
+            f'<meta http-equiv="refresh" content="0;url={html.escape(url, quote=True)}">'
+            f'<script>location.replace({json.dumps(url).replace("<", chr(92) + "u003c")})</script>')
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE_FILE)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(page)
+    return path
+
+
+def remove_stale_launch_pages(root):
+    for stale in Path(root).glob("open-*.html"):
+        with suppress(OSError):
+            stale.unlink()
+
+
+class LaunchPages:
+    """Issues launch codes wrapped in short-lived launch pages and deletes each page once its code is spent or expired."""
+
+    def __init__(self, root, codes, clock=time.monotonic):
+        self.root, self.codes, self.clock = root, codes, clock
+        self.pages, self.lock = {}, threading.Lock()
+        codes.on_redeem = self.sweep
+
+    def create(self, base):
+        """file:// URI of a fresh launch page for `base`, or None when it cannot be written (never a URL with the code)."""
+        code = self.codes.issue()
+        try:
+            path = launch_page(self.root, base + "#launch=" + code)
+        except OSError as error:
+            log.warning("Could not write the launch page (%s); opening the login page instead", error)
+            return None
+        with self.lock:
+            self.pages[path] = (code, self.clock() + self.codes.ttl)
+        return path.as_uri()
+
+    def sweep(self):
+        with self.codes.lock:
+            live = set(self.codes.codes)
+        now = self.clock()
+        with self.lock:
+            for path, (code, expires) in list(self.pages.items()):
+                if code not in live or now >= expires:
+                    with suppress(OSError):
+                        path.unlink()
+                    del self.pages[path]
+
+    def close(self):
+        with self.lock:
+            for path in self.pages:
+                with suppress(OSError):
+                    path.unlink()
+            self.pages.clear()
+
+
+def parse_args(argv=None):
+    """Arguments of the Qt-free entry point (shell_main.py); mirrors `app.py --ui web`."""
+    parser = argparse.ArgumentParser(description="Divoom Keeper Studio (web shell)")
+    parser.add_argument("--demo", action="store_true", help="Synthetic data; no device/network writes")
+    parser.add_argument("--config-dir", type=Path)
+    parser.add_argument("--minimized", action="store_true")
+    parser.add_argument("--ui", choices=("web",), default="web", help=argparse.SUPPRESS)
+    parser.add_argument("--port", type=int, help="Local port (default 8765, KEEPER_SHELL_PORT)")
+    parser.add_argument("--print-launch-url", action="store_true", help="DEBUG ONLY: print the one-time login URL")
+    return parser.parse_args(argv)
 
 
 def find_app_browser(which=shutil.which, exists=os.path.exists, environ=None, platform=None):
@@ -74,6 +171,8 @@ def pick_socket(port):
     """Bound, listening 127.0.0.1 socket on `port`, or on any free port when that one is busy."""
     for candidate in (port, 0):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if os.name == "nt":  # never SO_REUSEADDR on Windows: it would let another process share the port
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         try:
             sock.bind(("127.0.0.1", candidate))
         except OSError:
@@ -126,9 +225,17 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
     A second instance only opens the browser on the running one; the page then asks for the access token as the
     plain web portal does (the launch code is in-process only, so a second process cannot obtain one).
     """
+    from .startup import set_ui_args
+    set_ui_args(["--ui", "web"])  # autostart relaunches this same mode
     root, temp = resolve_root(args)
-    root.mkdir(parents=True, exist_ok=True)
-    lock = FileLock(root / "studio.lock", timeout=0)
+    owned = not args.config_dir or not root.exists()
+    root.mkdir(mode=PRIVATE_DIR, parents=True, exist_ok=True)
+    if owned and os.name != "nt":
+        try:
+            os.chmod(root, PRIVATE_DIR)
+        except OSError as error:
+            log.warning("Could not restrict %s to its owner: %s", root, error)
+    lock = FileLock(root / "studio.lock", timeout=0, mode=PRIVATE_FILE)
     try:
         lock.acquire()
     except Timeout:
@@ -137,29 +244,44 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
             opener(f"http://127.0.0.1:{port}/")
         print("Keeper is already running" + (f": http://127.0.0.1:{port}/" if port else "."), file=sys.stderr)
         return 0
-    handler = RotatingFileHandler(root / "studio.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+    remove_stale_launch_pages(root)
+    handler = PrivateRotatingFileHandler(root / "studio.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
     logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(asctime)s [%(levelname)s] %(message)s")
     quit_event = quit_event or threading.Event()
-    sock = server = thread = tray = None
+    sock = server = thread = tray = pages = None
     code = 0
     try:
         from .portal import create_app
         app = create_app(root, demo=args.demo, shell_mode=True)
         app.state.quit_event = quit_event
-        sock = pick_socket(args.port or int(os.getenv("KEEPER_SHELL_PORT", DEFAULT_PORT)))
+        wanted = args.port or int(os.getenv("KEEPER_SHELL_PORT", DEFAULT_PORT))
+        sock = pick_socket(wanted)
         port = sock.getsockname()[1]
+        fallback = bool(wanted) and port != wanted
+        if fallback:
+            log.warning("Port %s is in use; using %s", wanted, port)
+        pages = LaunchPages(root, app.state.launch_codes)
         server, thread = serve(app, sock)
         if not healthy(port):
             log.error("The portal did not start")
             return 1
-        (root / "shell.json").write_text(json.dumps({"port": port, "pid": os.getpid()}), encoding="utf-8")
+        write_private(root / "shell.json", json.dumps({"port": port, "pid": os.getpid(), "fallback": fallback}))
         base = f"http://127.0.0.1:{port}/"
 
         def open_browser():
-            opener(base + "#launch=" + app.state.launch_codes.issue())
+            # Only a file:// URI (the 0600 launch page) reaches the browser's argv; never the code itself.
+            # Chromium `--app=file:///...` then redirects to http://127.0.0.1 via location.replace: the app window
+            # keeping its chrome-less mode across that redirect is UNVERIFIED; adjust launch_page/open_ui if it does not.
+            opener(pages.create(base) or base)
 
         if args.print_launch_url:
-            print(base + "#launch=" + app.state.launch_codes.issue(), flush=True)
+            # A live code on a captured stdout is readable by whoever reads the pipe/log. Print it only to a terminal.
+            # KEEPER_ALLOW_PIPED_LAUNCH_URL=1 is a TEST-ONLY opt-in (tools/smoke_shell.py must set it to read the URL).
+            if sys.stdout.isatty() or os.getenv("KEEPER_ALLOW_PIPED_LAUNCH_URL") == "1":
+                print(base + "#launch=" + app.state.launch_codes.issue(), flush=True)
+            else:
+                print(base, flush=True)
+                print("launch URL suppressed (stdout is not a terminal); use the data-dir login", file=sys.stderr)
         log.info("Keeper portal on %s", base)
         factory = tray_loader()
         if factory:
@@ -170,6 +292,11 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
                                 "set_startup": lambda on: (set_startup(on, root), app.state.store.change(lambda d: d.update(startup=on)))})
             except Exception as error:
                 log.warning("Tray unavailable: %s", error)
+        if fallback and tray:
+            try:
+                tray.notify("Keeper", f"Port {wanted} is in use; using {port}")
+            except Exception as error:
+                log.warning("Tray notification failed: %s", error)
         if not args.minimized:
             open_browser()
         elif not tray:
@@ -179,6 +306,7 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
                 signal.signal(signal.SIGTERM, lambda *_: quit_event.set())
         try:
             while not quit_event.wait(.5):
+                pages.sweep()
                 if thread is not None and not thread.is_alive():
                     log.error("The portal server stopped unexpectedly")
                     code = 1
@@ -195,6 +323,8 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
             thread.join(30)
         if sock:
             sock.close()
+        if pages:
+            pages.close()
         (root / "shell.json").unlink(missing_ok=True)
         lock.release()
         handler.close()

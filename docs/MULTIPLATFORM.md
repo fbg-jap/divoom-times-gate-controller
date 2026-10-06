@@ -130,6 +130,8 @@ chmod +x DivoomKeeperStudio-*-x86_64.AppImage
 - Autostart writes `~/.config/autostart/divoom-keeper-studio.desktop` pointing at the AppImage file, so keep it at a stable path.
 - To build locally: `bash build_linux.sh`, then `APPIMAGETOOL=/path/to/appimagetool bash packaging/build_appimage.sh`.
 
+CI also builds `DivoomKeeperStudioWeb-VERSION-x86_64.AppImage` (artifact **linux-appimage-web-x86_64**): the Qt-free browser shell (`--ui web`, see the README) with PySide6 excluded and `web/dist` bundled. It needs no Qt or xcb libraries, only a browser, and relaunches itself in the same mode on autostart. Build it with `bash build_linux.sh --ui web` and `APP_NAME=DivoomKeeperStudioWeb bash packaging/build_appimage.sh` (`ONEDIR` and `OUT_NAME` are also overridable). The Qt AppImage above is unchanged and stays the default.
+
 ## Standalone Android
 
 The debug APK includes the interface, conversion, storage and native HTTP transport. Minimum Android version: 7.0 / API 24. It has no embedded server URL and does not require Docker.
