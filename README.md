@@ -80,7 +80,7 @@ PC metrics, music, hardware and profiles vary by platform. Docker reports the en
 ## Getting started
 
 1. Connect your computer, server or phone to a network that can reach the Times Gate.
-2. Open **Device** and enter its private IP address; desktop also offers LAN discovery.
+2. Open **Device** and enter its private IP address; desktop also offers LAN discovery. Newer firmware (hardware 402) also needs the **Local token** shown in the Divoom app under the device's settings; leave **Port** empty and Keeper finds it (80 or 9000).
 3. In **Screens**, choose an image or widget and click **Save and send**.
 4. Enable automatic updates for continuous widgets, playlists, schedules and notifications.
 5. Save a scene or export a ZIP backup before trying a different layout.

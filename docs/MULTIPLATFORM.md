@@ -155,7 +155,7 @@ npx cap open ios
 
 In Xcode, select your team under **Signing & Capabilities**, connect the iPhone and run the app. Allow local-network access when prompted. The default identifier is `com.raishack.divoomkeeper`; change it if your team needs another. Use Archive and appropriate Apple signing for distribution. Native dependencies use Swift Package Manager.
 
-Plain HTTP is enabled because the local Times Gate endpoint is `http://IP/post`. HTTPS certificate verification is not disabled. The app does not request access to PC files or other apps' sessions.
+Plain HTTP is enabled because the local Times Gate endpoint is `http://IP/post` (hardware 400) or `http://IP:9000/divoom_api` (hardware 402). HTTPS certificate verification is not disabled. The app does not request access to PC files or other apps' sessions.
 
 ## Mobile limitations
 
