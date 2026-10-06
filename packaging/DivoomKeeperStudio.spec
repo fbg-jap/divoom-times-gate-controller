@@ -3,6 +3,7 @@
 # QtCore to fail before the GUI starts (e.g. ucnv_open vs ucnv_open_78).
 from pathlib import Path
 import re
+import sys
 from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH).parent
@@ -15,7 +16,8 @@ a = Analysis(
     pathex=[str(root)],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    # jeepney is imported lazily by keeper.notifications, so PyInstaller cannot see it.
+    hiddenimports=["jeepney", "jeepney.io.blocking"] if sys.platform == "linux" else [],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

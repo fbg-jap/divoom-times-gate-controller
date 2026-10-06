@@ -335,6 +335,7 @@ class IntegrationPanel(QWidget):
                         (t("Apps bloqueadas (separadas por comas)", "Blocked apps (comma separated)"), self.nt_deny)]:
             form.addRow(text, w)
         form.addRow(self.nt_body)
+        self.nt_status = QLabel(); form.addRow(self.nt_status)
         tabs.addTab(page, t("Notificaciones", "Notifications"))
         self.refresh_spotify_status()
 
@@ -362,6 +363,7 @@ class IntegrationPanel(QWidget):
     def poll(self):
         self.api_status.setText("Status: " + self.window.engine.bridge.api_status)
         self.mqtt_status.setText("Status: " + self.window.engine.bridge.mqtt_status)
+        self.nt_status.setText("Status: " + self.window.engine.bridge.notifications.status)
 
     def reload(self):
         from .config import defaults

@@ -5,6 +5,7 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 ## Unreleased
 
 - New **Unread mail** widget and `mail_unread` alert metric over IMAP (read-only, count only unless the subject is enabled; STARTTLS enforced on port 143). Polled every 120 s in the background. Not yet tried against a real IMAP server. See [Integrations](docs/INTEGRATIONS.md#unread-mail-imap).
+- PC notifications on the Times Gate (off by default, app name and summary only unless the body is enabled, allow/deny app lists, per-minute limit). Linux uses D-Bus through the optional `jeepney` package; the Windows listener is unverified. See [Integrations](docs/INTEGRATIONS.md#pc-notifications).
 - Support for hardware revision 402 firmware: the local API on `http://<ip>:9000/divoom_api` replying with `ReturnCode`, plus the device's local token.
 - New per-device **Port** and **Local token** fields on desktop, web portal and mobile. With the port left empty (auto), Keeper tries port 80, then port 9000, and remembers the one that answers. Existing configurations keep working unchanged.
 - The Pomodoro `phase` value in `/state` and the `pomodoro` events is now English (`Ready`, `Work`, `Break`, `Long break`) instead of Spanish. Scripts or Home Assistant automations that match the old Spanish values must be updated.
