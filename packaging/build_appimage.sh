@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Wrap the PyInstaller onedir (dist/linux/DivoomKeeperStudio, from build_linux.sh) into an AppImage.
 # appimagetool is taken from $APPIMAGETOOL or PATH; it is never downloaded here.
+# Optional: APPIMAGE_RUNTIME=/path/to/runtime-x86_64 (https://github.com/AppImage/type2-runtime/releases, tag 20251108).
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
@@ -49,5 +50,9 @@ chmod +x "$APPDIR/AppRun"
 
 mkdir -p dist
 rm -f "$OUT"
-ARCH="$ARCH" "$TOOL" "$APPDIR" "$OUT"
+# Without a runtime file appimagetool downloads the rolling "continuous" runtime at build time; pass
+# $APPIMAGE_RUNTIME (a pinned, checksum-verified runtime-x86_64) for reproducible, offline builds.
+ARGS=()
+if [[ -n "${APPIMAGE_RUNTIME:-}" ]]; then ARGS+=(--runtime-file "$APPIMAGE_RUNTIME"); fi
+ARCH="$ARCH" "$TOOL" ${ARGS[@]+"${ARGS[@]}"} "$APPDIR" "$OUT"
 echo "Built $OUT"

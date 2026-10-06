@@ -70,9 +70,12 @@ jobs:
   appimage:
     runs-on: ubuntu-22.04
     env:
-      # Pinned release; fill APPIMAGETOOL_SHA256 from the release page (sha256sum of the downloaded file) before relying on this job.
+      # Pinned releases with sha256 checksums (computed from the downloaded files). appimagetool would
+      # otherwise fetch the rolling "continuous" runtime at build time, so the runtime is pinned and passed in.
       APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
       APPIMAGETOOL_SHA256: 46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1
+      APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+      APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libfontconfig1 libdbus-1-3 fonts-dejavu-core
@@ -84,14 +87,17 @@ jobs:
       - run: bash build_linux.sh
         env:
           PYTHON: python3.12
-      - name: Download appimagetool (pinned, checksum verified)
+      - name: Download appimagetool and runtime (pinned, checksum verified)
         run: |
           curl -fsSL -o "$RUNNER_TEMP/appimagetool" "$APPIMAGETOOL_URL"
           echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/appimagetool"
+          curl -fsSL -o "$RUNNER_TEMP/runtime-x86_64" "$APPIMAGE_RUNTIME_URL"
+          echo "$APPIMAGE_RUNTIME_SHA256  $RUNNER_TEMP/runtime-x86_64" | sha256sum -c -
       - run: bash packaging/build_appimage.sh
         env:
           APPIMAGETOOL: ${{ runner.temp }}/appimagetool
+          APPIMAGE_RUNTIME: ${{ runner.temp }}/runtime-x86_64
           APPIMAGE_EXTRACT_AND_RUN: '1'
       - name: Smoke test
         run: |
