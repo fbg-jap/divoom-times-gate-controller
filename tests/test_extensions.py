@@ -15,7 +15,7 @@ from keeper.content import composition, split_panorama
 from keeper.engine import Engine
 from keeper.widgets import Providers, Renderer
 from keeper.automation import Pomodoro
-from keeper.extensions import custom_image, validate_content
+from keeper.extensions import custom_image, normalize_phase, validate_content
 from test_core import FixtureCase, FakeClient
 
 
@@ -191,10 +191,10 @@ class AutomationTests(FixtureCase):
         self.assertEqual(timer.remaining, 120)
         timer.command("reset"); self.assertFalse(timer.running); self.assertEqual(timer.phase, "Ready")
 
-    def test_pomodoro_restore_migrates_legacy_spanish_phase(self):
+    def test_normalize_phase_maps_legacy_spanish_values(self):
         for legacy, english in (("Preparado", "Ready"), ("Trabajo", "Work"), ("Descanso", "Break"), ("Descanso largo", "Long break")):
-            timer = Pomodoro(); timer.restore({"phase": legacy, "remaining": 10, "total": 60, "running": True, "cycle": 2})
-            self.assertEqual(timer.snapshot(), {"phase": english, "remaining": 10, "total": 60, "running": True, "cycle": 2})
+            self.assertEqual(normalize_phase(legacy), english)
+            self.assertEqual(normalize_phase(english), english)
 
     def test_invalid_rules_rollback(self):
         before = self.store.snapshot()

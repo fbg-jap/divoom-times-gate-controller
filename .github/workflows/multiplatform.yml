@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt -r requirements-server.txt httpx pyinstaller
-      - run: python -m unittest discover -s tests
+      - run: python -m unittest discover -s tests -t tests
       - run: python -m PyInstaller --noconfirm --distpath dist/windows packaging/DivoomKeeperStudio.spec
       - name: Package portable application
         shell: pwsh
@@ -46,7 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: pip install -r requirements.txt -r requirements-server.txt httpx pyinstaller
-      - run: python -m unittest discover -s tests
+      - run: python -m unittest discover -s tests -t tests
       - run: npm ci && npm test && npm run build
         working-directory: web
       - run: python -m PyInstaller --noconfirm --distpath dist/linux packaging/DivoomKeeperStudio.spec
