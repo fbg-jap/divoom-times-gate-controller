@@ -75,7 +75,7 @@ export function defaults() {
         password: "",
         tls: false,
       },
-      spotify: { enabled: false, client_id: "", refresh_token: "" },
+      spotify: { enabled: false, client_id: "", refresh_token: "", redirect_uri: "" },
       prtg: { enabled: false, base_url: "", token: "", verify_tls: true },
       mail: {
         enabled: false,

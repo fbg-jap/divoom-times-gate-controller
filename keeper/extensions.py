@@ -122,6 +122,26 @@ def _names(conf, key):
         raise ValueError(f"Invalid {key}")
 
 
+def spotify_redirect_kind(value):
+    """"loopback" (empty or http on 127.0.0.1 / [::1]), "https", or None when Spotify would not accept it."""
+    from urllib.parse import urlparse
+    value = (value or "").strip()
+    if not value:
+        return "loopback"
+    if len(value) > 300:
+        return None
+    try:
+        url = urlparse(value)
+        host, _port = url.hostname, url.port
+    except ValueError:
+        return None
+    if not host or url.username is not None or url.password is not None or url.fragment or "#" in value:
+        return None
+    if url.scheme == "https":
+        return "https"
+    return "loopback" if url.scheme == "http" and host in ("127.0.0.1", "::1") else None
+
+
 def validate_new_integrations(integrations):
     from .widgets import http_url
     for name in ("spotify", "prtg", "mail", "notifications"):
@@ -132,6 +152,8 @@ def validate_new_integrations(integrations):
             _flag(conf, key)
         if name == "spotify":
             _text(conf, "client_id", 128); _text(conf, "refresh_token", 1024)
+            if spotify_redirect_kind(_text(conf, "redirect_uri", 300)) is None:
+                raise ValueError("Invalid redirect_uri")
         elif name == "prtg":
             _text(conf, "token", 512)
             if _text(conf, "base_url", 300):

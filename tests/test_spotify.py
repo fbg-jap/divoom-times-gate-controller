@@ -77,6 +77,56 @@ def track(**over):
     return FakeResponse(200, {"is_playing": True, "progress_ms": 1000, "currently_playing_type": "track", "item": item, **over})
 
 
+class ManualFlowTests(unittest.TestCase):
+    REDIRECT = "https://example.org/callback"
+
+    def start(self):
+        url, verifier, state = spotify.begin_manual("cid", self.REDIRECT)
+        return url, verifier, state
+
+    def finish(self, session, verifier, state, pasted):
+        return spotify.finish_manual(session, "cid", self.REDIRECT, verifier, state, pasted)
+
+    def test_begin_manual_url(self):
+        url, verifier, state = self.start()
+        q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+        self.assertEqual(q["redirect_uri"], self.REDIRECT)
+        self.assertEqual(q["state"], state)
+        self.assertEqual(q["code_challenge_method"], "S256")
+        self.assertEqual(q["code_challenge"], base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("="))
+        self.assertEqual(q["scope"], spotify.SCOPES)
+
+    def test_full_url_and_query_forms(self):
+        for template in ("https://example.org/callback?code=CODE-1&state={s}", "http://other.test/x?state={s}&code=CODE-1#frag",
+                         "code=CODE-1&state={s}", "?code=CODE-1&state={s}"):
+            url, verifier, state = self.start()
+            session = FakeSession(token=[token(refresh="R9")])
+            self.assertEqual(self.finish(session, verifier, state, "  " + template.format(s=state) + " "), "R9")
+            payload = session.of("post", spotify.TOKEN_URL)[0][2]
+            self.assertEqual((payload["code"], payload["redirect_uri"], payload["code_verifier"]), ("CODE-1", self.REDIRECT, verifier))
+
+    def test_rejections_make_no_request_and_leak_nothing(self):
+        url, verifier, state = self.start()
+        cases = ["https://x.test/cb?code=SECRETCODE&state=WRONG", "https://x.test/cb?code=SECRETCODE",
+                 f"https://x.test/cb?error=access_denied&state={state}", f"https://x.test/cb?state={state}",
+                 "", "no query at all", "code=SECRETCODE&state=" + state + "&x=" + "a" * 3000]
+        for pasted in cases:
+            session = FakeSession()
+            with self.assertRaises(spotify.SpotifyError) as caught:
+                self.finish(session, verifier, state, pasted)
+            for secret in ("SECRETCODE", state, verifier):
+                self.assertNotIn(secret, str(caught.exception))
+            self.assertEqual(session.calls, [])
+
+    def test_exchange_failure_text_has_no_secrets(self):
+        url, verifier, state = self.start()
+        session = FakeSession(token=[FakeResponse(400, {"error": "invalid_grant"})])
+        with self.assertRaises(spotify.SpotifyAuthError) as caught:
+            self.finish(session, verifier, state, f"code=SECRETCODE&state={state}")
+        for secret in ("SECRETCODE", state, verifier):
+            self.assertNotIn(secret, str(caught.exception))
+
+
 class ProtocolTests(unittest.TestCase):
     def test_pkce_pair(self):
         verifier, challenge = spotify.make_pkce_pair()

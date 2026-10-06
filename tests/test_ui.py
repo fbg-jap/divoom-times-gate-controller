@@ -5,7 +5,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 import queue
 import tempfile
+import time
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 from PIL import Image
@@ -241,6 +243,60 @@ class UiTests(unittest.TestCase):
         self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T3"))  # rotated after the disconnect was saved
         panel.save()
         self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "T3")
+
+    def spotify_flow(self, redirect, pasted, opener_result=True):
+        import keeper.spotify as sp
+        panel = self.window.integration_panel
+        calls = {"open": [], "prompt": [], "loopback": 0, "exchange": []}
+        panel.sp_client.setText("cid"); panel.sp_redirect.setText(redirect); panel.sp_dirty = False; panel.sp_token = ""
+        panel.spotify_opener = lambda url: calls["open"].append(url) or opener_result
+        panel.spotify_prompt = lambda title, label: calls["prompt"].append(label) or (pasted(calls) if callable(pasted) else pasted)
+        def fake_loopback(client_id, opener, **kw):
+            calls["loopback"] += 1
+            return "LOOP-TOKEN"
+        def fake_exchange(session, client_id, code, verifier, redirect_uri):
+            calls["exchange"].append((code, redirect_uri))
+            return {"refresh_token": "R-HTTPS", "access_token": "a", "expires_in": 1}
+        with unittest.mock.patch.object(sp, "connect_loopback", fake_loopback), unittest.mock.patch.object(sp, "exchange_code", fake_exchange):
+            panel.spotify_connect()
+            for _ in range(100):
+                if panel.sp_job is None:
+                    break
+                time.sleep(0.02); self.app.processEvents()
+        return panel, calls
+
+    def test_spotify_https_paste_back_flow(self):
+        from urllib.parse import parse_qs, urlparse
+        redirect = "https://example.org/callback"
+        paste = lambda calls: (f"{redirect}?code=C1&state=" + parse_qs(urlparse(calls["open"][0]).query)["state"][0], True)
+        panel, calls = self.spotify_flow(redirect, paste)
+        self.assertEqual(calls["loopback"], 0)
+        self.assertIn(redirect, calls["prompt"][0])
+        self.assertEqual(calls["exchange"], [("C1", redirect)])
+        self.assertTrue(panel.sp_dirty)
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "R-HTTPS")
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["redirect_uri"], redirect)
+
+    def test_spotify_bad_paste_and_cancel_store_nothing(self):
+        self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token=""))
+        panel, calls = self.spotify_flow("https://example.org/callback", ("https://example.org/callback?code=C1&state=WRONG", True))
+        self.assertEqual(calls["exchange"], [])
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "")
+        self.assertIn("failed", panel.sp_status.text())
+        panel, calls = self.spotify_flow("https://example.org/callback", ("", False))
+        self.assertEqual(calls["exchange"], [])
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "")
+
+    def test_spotify_browser_failure_still_prompts(self):
+        panel, calls = self.spotify_flow("https://example.org/callback", ("", False), opener_result=False)
+        self.assertEqual(len(calls["prompt"]), 1)
+        self.assertIn("clipboard", panel.sp_status.text())
+
+    def test_spotify_loopback_flow_for_empty_or_http_loopback_uri(self):
+        for redirect in ("", "http://127.0.0.1/callback"):
+            panel, calls = self.spotify_flow(redirect, ("", False))
+            self.assertEqual((calls["loopback"], calls["prompt"]), (1, []))
+            self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "LOOP-TOKEN")
 
     def test_edit_widget_save_and_send(self):
         self.window.text_content.setPlainText("Hello world")

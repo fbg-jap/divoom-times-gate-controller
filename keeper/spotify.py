@@ -338,6 +338,37 @@ def connect_loopback(client_id, opener, session=None, timeout=180, on_ready=None
         server.server_close()
 
 
+PASTE_LIMIT = 2048
+
+
+def begin_manual(client_id, redirect_uri):
+    """Paste-back flow, step 1: (authorize_url, verifier, state). The caller keeps verifier and state in memory."""
+    verifier, challenge = make_pkce_pair()
+    state = secrets.token_urlsafe(24)
+    return build_authorize_url(client_id, redirect_uri, state, challenge), verifier, state
+
+
+def finish_manual(session, client_id, redirect_uri, verifier, state, pasted):
+    """Paste-back flow, step 2: the full redirected address (or its `code=...&state=...` query) -> refresh token."""
+    text = str(pasted or "").strip()
+    if not text or len(text) > PASTE_LIMIT:
+        raise SpotifyError("the pasted address is empty or too long")
+    query = urlparse(text).query if "://" in text else text.split("#", 1)[0].split("?", 1)[-1]
+    params = {k: v[0] for k, v in parse_qs(query).items()}
+    if params.get("error"):
+        raise SpotifyError("Spotify did not authorize Keeper")
+    got = params.get("state", "")
+    if not got or not hmac.compare_digest(got.encode(), state.encode()):
+        raise SpotifyError("the pasted address does not belong to this connection attempt; start again")
+    code = params.get("code", "")
+    if not code:
+        raise SpotifyError("the pasted address has no authorization code")
+    data = exchange_code(session, client_id, code, verifier, redirect_uri)
+    if not data["refresh_token"]:
+        raise SpotifyError("Spotify returned no refresh token")
+    return data["refresh_token"]
+
+
 class PendingAuth:
     """Server mode: PKCE verifiers keyed by single-use `state`, valid for 5 minutes, bounded."""
     TTL, LIMIT = 300, 20

@@ -106,6 +106,18 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
 4. Press **Connect Spotify** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. On the portal, reload the page afterwards.
 5. Add a Spotify widget to a screen.
 
+**Two ways to connect from the desktop app.** Spotify's documentation permits `http` redirect URIs on loopback IP literals (`127.0.0.1`, `[::1]`; the port may be omitted), but some Dashboards demand `https` anyway. Keeper therefore has a *Redirect URI* setting (`integrations.spotify.redirect_uri`, empty by default, not a secret):
+
+- **Empty or `http://127.0.0.1...`**: the loopback flow above; Keeper runs a one-shot local server and nothing needs pasting.
+- **Any `https` address** (one you control, or even a placeholder such as `https://example.org/callback`): the paste-back flow, with no local server:
+  1. Register that exact address under **Redirect URIs** in the Spotify Dashboard.
+  2. Enter the same address in Integrations → Spotify → **Redirect URI** and press Save.
+  3. Press **Connect Spotify**. Keeper opens the authorization page (if it cannot open a browser it copies the address to the clipboard so you can paste it into one).
+  4. Approve. Spotify redirects to your address; the page itself may show an error or not load at all, which is fine.
+  5. Copy the **full address from the browser's address bar** (it looks like `https://example.org/callback?code=...&state=...`) and paste it into the dialog Keeper shows. A bare `code=...&state=...` query string also works; the `state` is always required and checked.
+
+  The code is exchanged immediately with the PKCE verifier kept in memory; the pasted address is never stored or logged. Pasted text is limited to 2048 characters. The portal flow ignores this setting and derives its address from the request.
+
 What is stored: only the **client ID** and the **refresh token** (`integrations.spotify`, in `config.json`, mode 0600; the token is blanked in exports). Access tokens live in memory, authorization codes are never stored, and neither is logged. Spotify refresh tokens last about six months; Keeper stores a replacement if Spotify issues one.
 
 To disconnect press **Disconnect** (this clears the token; on the portal press Save afterwards), and optionally remove Keeper under spotify.com/account/apps.

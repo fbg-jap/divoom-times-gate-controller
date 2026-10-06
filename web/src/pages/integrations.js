@@ -75,6 +75,8 @@ export function integrationPage(main) {
         "Spotify",
         field(ctx.cfg.integrations.spotify, "enabled", t("ui.enable_spotify"), "checkbox"),
         field(ctx.cfg.integrations.spotify, "client_id", "Client ID"),
+        field(ctx.cfg.integrations.spotify, "redirect_uri", t("ui.spotify_redirect_uri")),
+        hint(t("ui.spotify_redirect_uri_hint")),
         hint(
           ctx.cfg.integrations.spotify.refresh_token
             ? t("ui.spotify_connected")

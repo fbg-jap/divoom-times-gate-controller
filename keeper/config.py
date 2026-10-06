@@ -38,7 +38,7 @@ def defaults():
             "scenes": [], "schedules": [], "alerts": [], "reminders": [], "profiles": [],
             "integrations": {"api": {"enabled": False, "host": "127.0.0.1", "port": 8787, "token": ""},
                              "mqtt": {"enabled": False, "host": "", "port": 1883, "prefix": "keeper", "username": "", "password": "", "tls": False},
-                             "spotify": {"enabled": False, "client_id": "", "refresh_token": ""},
+                             "spotify": {"enabled": False, "client_id": "", "refresh_token": "", "redirect_uri": ""},
                              "prtg": {"enabled": False, "base_url": "", "token": "", "verify_tls": True},
                              "mail": {"enabled": False, "host": "", "port": 993, "user": "", "password": "",
                                       "mailbox": "INBOX", "show_subject": False},

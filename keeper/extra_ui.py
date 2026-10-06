@@ -5,13 +5,15 @@ import json
 import secrets
 import threading
 
+import requests
+
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QTabWidget, QCheckBox, QComboBox, QLabel, QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox,
-    QPushButton, QListWidget, QMessageBox, QDialogButtonBox)
+    QPushButton, QListWidget, QMessageBox, QDialogButtonBox, QInputDialog)
 
 from .config import uid
-from .extensions import METRICS, normalize_phase, validate_content
+from .extensions import METRICS, normalize_phase, validate_content, spotify_redirect_kind
 from .content import assets
 from .platform_support import open_external
 from .widgets import http_url
@@ -307,13 +309,16 @@ class IntegrationPanel(QWidget):
         page = QWidget(); form = QFormLayout(page)
         self.sp_on = QCheckBox(t("Activar Spotify", "Enable Spotify")); self.sp_on.setChecked(spotify["enabled"])
         self.sp_client = QLineEdit(spotify["client_id"]); self.sp_token = spotify["refresh_token"]; self.sp_dirty = False
+        self.sp_redirect = QLineEdit(spotify["redirect_uri"])
+        self.sp_redirect.setPlaceholderText(t("http://127.0.0.1/callback o una dirección https", "http://127.0.0.1/callback or an https address"))
         self.sp_status = QLabel()
-        form.addRow(self.sp_on); form.addRow("Client ID", self.sp_client); form.addRow(self.sp_status)
+        form.addRow(self.sp_on); form.addRow("Client ID", self.sp_client); form.addRow(t("URI de redirección", "Redirect URI"), self.sp_redirect); form.addRow(self.sp_status)
         self.sp_connect = btn(t("Conectar Spotify", "Connect Spotify"), self.spotify_connect)
         form.addRow(self.sp_connect); form.addRow(btn(t("Desconectar", "Disconnect"), self.spotify_disconnect))
-        form.addRow(hint(t("Crea una app en developer.spotify.com, registra la URI de redirección http://127.0.0.1/callback y pega aquí su Client ID. Solo se guarda el token de actualización.",
-                           "Create an app at developer.spotify.com, register the redirect URI http://127.0.0.1/callback and paste its Client ID here. Only the refresh token is stored.")))
+        form.addRow(hint(t("Crea una app en developer.spotify.com y registra O BIEN http://127.0.0.1/callback O cualquier dirección https que controles, o incluso una de relleno como https://example.org/callback. Escribe la misma dirección en «URI de redirección», pulsa Conectar, aprueba en el navegador y copia la dirección completa de la barra del navegador (la página puede mostrar un error) y pégala cuando se te pida. Pega aquí también el Client ID. Solo se guarda el token de actualización.",
+                           "Create an app at developer.spotify.com and register EITHER http://127.0.0.1/callback OR any https address you control, or even a placeholder such as https://example.org/callback. Enter the same address in 'Redirect URI', click Connect, approve in the browser, then copy the full address from the browser's address bar (the page itself may show an error) and paste it when asked. Paste the Client ID here too. Only the refresh token is stored.")))
         self.spotify_opener, self.sp_job = open_external, None
+        self.spotify_prompt = lambda title, label: QInputDialog.getText(self, title, label)
         tabs.addTab(page, "Spotify")
         page = QWidget(); form = QFormLayout(page)
         self.prtg_on = QCheckBox(t("Activar PRTG", "Enable PRTG")); self.prtg_on.setChecked(prtg["enabled"])
@@ -358,18 +363,39 @@ class IntegrationPanel(QWidget):
         if not client_id or self.sp_job is not None:
             self.sp_status.setText(t("Estado: introduce el Client ID", "Status: enter the Client ID") if not client_id else self.sp_status.text())
             return
-        from .spotify import connect_loopback, SpotifyError
+        from .spotify import connect_loopback, begin_manual, finish_manual, SpotifyError
+        redirect = self.sp_redirect.text().strip()
+        kind = spotify_redirect_kind(redirect)
+        if kind is None:
+            self.sp_status.setText(t("Estado: URI de redirección no válida", "Status: invalid redirect URI"))
+            return
+        manual = None
+        if kind == "https":
+            url, verifier, state = begin_manual(client_id, redirect)
+            if not self.spotify_opener(url):
+                QApplication.clipboard().setText(url)
+                self.sp_status.setText(t("Estado: no se pudo abrir el navegador; la dirección de autorización está en el portapapeles, pégala en un navegador",
+                                         "Status: could not open the browser; the authorization address is on the clipboard, paste it into a browser"))
+            text, ok = self.spotify_prompt("Spotify", t(f"Pega la dirección de la página a la que te envió Spotify (empieza por {redirect}?code=…)",
+                                                        f"Paste the address of the page Spotify sent you to (it starts with {redirect}?code=…)"))
+            if not ok:
+                return
+            manual = text
         job = self.sp_job = {"done": False, "token": None, "error": ""}
         def work():
             try:
-                job["token"] = connect_loopback(client_id, self.spotify_opener)
+                if manual is not None:
+                    job["token"] = finish_manual(requests.Session(), client_id, redirect, verifier, state, manual)
+                else:
+                    job["token"] = connect_loopback(client_id, self.spotify_opener)
             except SpotifyError as error:
                 job["error"] = str(error)
             except Exception:
                 job["error"] = "unexpected error"
             job["done"] = True
         threading.Thread(target=work, daemon=True, name="keeper-spotify-connect").start()
-        self.sp_status.setText(t("Estado: esperando la autorización en el navegador…", "Status: waiting for authorization in the browser…"))
+        self.sp_status.setText(t("Estado: comprobando…", "Status: checking…") if manual is not None else
+                               t("Estado: esperando la autorización en el navegador…", "Status: waiting for authorization in the browser…"))
         QTimer.singleShot(500, self.spotify_poll)
 
     def spotify_poll(self):
@@ -388,7 +414,7 @@ class IntegrationPanel(QWidget):
     def spotify_store(self, token):
         self.sp_token, self.sp_dirty = token, True
         try:
-            self.window.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token, client_id=self.sp_client.text().strip()))
+            self.window.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token, client_id=self.sp_client.text().strip(), redirect_uri=self.sp_redirect.text().strip()))
         except Exception as error:
             QMessageBox.warning(self, "Spotify", str(error))
         self.refresh_spotify_status()
@@ -398,7 +424,8 @@ class IntegrationPanel(QWidget):
 
     def save(self):
         names = lambda w: [n.strip() for n in w.text().split(",") if n.strip()]
-        config = {"spotify": {"enabled": self.sp_on.isChecked(), "client_id": self.sp_client.text().strip(), "refresh_token": self.sp_token},
+        config = {"spotify": {"enabled": self.sp_on.isChecked(), "client_id": self.sp_client.text().strip(), "refresh_token": self.sp_token,
+                              "redirect_uri": self.sp_redirect.text().strip()},
                   "prtg": {"enabled": self.prtg_on.isChecked(), "base_url": self.prtg_url.text().strip(), "token": self.prtg_token.text().strip(), "verify_tls": self.prtg_tls.isChecked()},
                   "mail": {"enabled": self.mail_on.isChecked(), "host": self.mail_host.text().strip(), "port": self.mail_port.value(), "user": self.mail_user.text().strip(),
                            "password": self.mail_password.text(), "mailbox": self.mail_box.text().strip() or "INBOX", "show_subject": self.mail_subject.isChecked()},
@@ -434,7 +461,7 @@ class IntegrationPanel(QWidget):
         self.user.setText(mqtt.get("username", "")); self.password.setText(mqtt.get("password", ""))
         self.tls.setChecked(mqtt.get("tls", False)); self.hardware.setChecked(data.get("hardware", False))
         sp, pr, ml, nt = ({**defaults()["integrations"][k], **data.get(k, {})} for k in ("spotify", "prtg", "mail", "notifications"))
-        self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_token, self.sp_dirty = sp["refresh_token"], False; self.refresh_spotify_status()
+        self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_redirect.setText(sp["redirect_uri"]); self.sp_token, self.sp_dirty = sp["refresh_token"], False; self.refresh_spotify_status()
         self.prtg_on.setChecked(pr["enabled"]); self.prtg_url.setText(pr["base_url"]); self.prtg_token.setText(pr["token"]); self.prtg_tls.setChecked(pr["verify_tls"])
         self.mail_on.setChecked(ml["enabled"]); self.mail_host.setText(ml["host"]); self.mail_port.setValue(ml["port"]); self.mail_user.setText(ml["user"])
         self.mail_password.setText(ml["password"]); self.mail_box.setText(ml["mailbox"]); self.mail_subject.setChecked(ml["show_subject"])

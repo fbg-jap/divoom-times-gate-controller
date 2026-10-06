@@ -43,6 +43,29 @@ class IntegrationConfigTests(unittest.TestCase):
         data["integrations"]["prtg"]["base_url"] = "https://prtg.example.test"
         validate(data)
 
+    def test_spotify_redirect_uri_validation(self):
+        good = ["", "https://example.org/callback", "https://keeper.example.com:8443/a?b=1", "http://127.0.0.1/callback",
+                "http://127.0.0.1:8888/callback", "http://[::1]:9/cb"]
+        bad = ["http://localhost/callback", "http://example.org/cb", "https://user:pw@example.org/cb", "https://example.org/cb#frag",
+               "https:///cb", "ftp://example.org", "https://example.org/" + "a" * 300, "example.org/cb", 5]
+        for value in good:
+            data = defaults()
+            data["integrations"]["spotify"]["redirect_uri"] = value
+            validate(data)
+        for value in bad:
+            data = defaults()
+            data["integrations"]["spotify"]["redirect_uri"] = value
+            with self.assertRaises(ValueError, msg=repr(value)):
+                validate(data)
+
+    def test_old_spotify_section_without_redirect_uri_loads(self):
+        raw = copy.deepcopy(self.store.data)
+        raw["integrations"]["spotify"] = {"enabled": True, "client_id": "c", "refresh_token": "T"}
+        self.store.path.write_text(json.dumps(raw))
+        loaded = ConfigStore(self.root / "store", migrate=False)
+        self.assertEqual(loaded.data["integrations"]["spotify"]["redirect_uri"], "")
+        self.assertEqual(loaded.data["integrations"]["spotify"]["client_id"], "c")
+
     def test_export_blanks_new_secrets(self):
         def apply(data):
             i = data["integrations"]
