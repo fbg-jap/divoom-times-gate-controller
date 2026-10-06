@@ -29,3 +29,15 @@ DerivedData/
 xcuserdata/
 .DS_Store
 admin.token
+
+# Empty placeholders created by the sandbox, and OMC operational state
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.profile
+/.ripgreprc
+/.zprofile
+/.zshrc
+/.vscode
+.omc/
+/.idea
