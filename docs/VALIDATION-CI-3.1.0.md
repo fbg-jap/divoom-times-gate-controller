@@ -18,4 +18,4 @@ The APK uses a debug signature; the iOS artifact is a simulator app, not an IPA 
 
 The first run exposed three issues absent from the installed local environment: altered dependency references in `package-lock.json`, a retired Android SDK package and Activity button overflow with Linux fonts. The second run verified those fixes from a clean environment. The original image/GIF transport in `keeper/protocol.py` retained its bytes.
 
-[Historical local/RGB checks](COLORES-3.1.0.md) · [Current installation](MULTIPLATAFORMA.md) · [Screenshots](CAPTURAS.md)
+[Historical local/RGB checks](COLORS-3.1.0.md) · [Current installation](MULTIPLATFORM.md) · [Screenshots](SCREENSHOTS.md)

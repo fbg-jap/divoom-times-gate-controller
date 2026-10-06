@@ -39,4 +39,4 @@ Artifacts follow GitHub Actions retention. If they expire, rerun **Multiplatform
 
 The local 3.1.0 build and previous source backup were preserved in `dist/3.1.0/` and `backups/`; the local 3.1.1 build was generated in `dist/3.1.1/`. These private development paths are not public downloads.
 
-[README](../README.md) · [Desktop guide](ESCRITORIO.md) · [Platform installation](MULTIPLATAFORMA.md)
+[README](../README.md) · [Desktop guide](DESKTOP.md) · [Platform installation](MULTIPLATFORM.md)

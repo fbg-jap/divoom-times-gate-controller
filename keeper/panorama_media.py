@@ -17,9 +17,9 @@ FPS = (1, 2, 4, 5, 10)
 def check_source(path):
     path = Path(path)
     if not path.is_file():
-        raise ValueError("Elige un archivo local")
+        raise ValueError("Choose a local file")
     if path.stat().st_size > 100 * 1024**2:
-        raise ValueError("Máximo 100 MB por archivo. Recorta primero los vídeos grandes.")
+        raise ValueError("Maximum 100 MB per file. Trim large videos first.")
     return path
 
 
@@ -32,24 +32,24 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
     path = check_source(path)
     start, duration = float(start), float(duration)
     if not math.isfinite(start) or not 0 <= start <= 86400 or not math.isfinite(duration) or not .1 <= duration <= 30 or fps not in FPS:
-        raise ValueError("Fragmento o frecuencia de fotogramas inválidos")
+        raise ValueError("Invalid clip or frame rate")
     wanted = math.ceil(duration * fps - 1e-9)
     if wanted > MAX_FRAMES or rotation not in (0, 90, 180, 270):
-        raise ValueError("Máximo 120 fotogramas. Reduce la duración o los FPS.")
+        raise ValueError("Maximum 120 frames. Reduce the duration or FPS.")
     frames, source_preview = [], None
     deadline = time.monotonic() + 60
 
     def check():
         if stop is not None and stop.is_set():
-            raise InterruptedError("Conversión cancelada")
+            raise InterruptedError("Conversion cancelled")
         if time.monotonic() > deadline:
-            raise ValueError("La conversión supera 60 segundos. Prueba un fragmento más corto.")
+            raise ValueError("The conversion exceeds 60 seconds. Try a shorter clip.")
 
     def append(image):
         nonlocal source_preview
         check()
         if image.width * image.height > 20_000_000:
-            raise ValueError("Máximo 20 megapíxeles por fotograma")
+            raise ValueError("Maximum 20 megapixels per frame")
         image = rgb(image)
         if rotation:
             image = image.rotate(-rotation, expand=True)
@@ -63,7 +63,7 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
             for count, frame in enumerate(ImageSequence.Iterator(image)):
                 check()
                 if count > 10000:
-                    raise ValueError("Demasiados fotogramas en el GIF de origen")
+                    raise ValueError("Too many frames in the source GIF")
                 end = timestamp + max(10, int(frame.info.get("duration", 100) or 100)) / 1000
                 while len(frames) < wanted and start + len(frames) / fps < end - 1e-8:
                     append(frame)
@@ -75,14 +75,14 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
         # Only local file I/O is allowed; playlist containers cannot open remote URLs.
         with av.open(str(path), options={"protocol_whitelist": "file,pipe", "threads": "2"}, timeout=10) as container:
             if not container.streams.video:
-                raise ValueError("El archivo no contiene vídeo")
+                raise ValueError("The file contains no video")
             stream = container.streams.video[0]
             if stream.codec_context.width * stream.codec_context.height > 20_000_000:
-                raise ValueError("Máximo 20 megapíxeles por fotograma")
+                raise ValueError("Maximum 20 megapixels per frame")
             origin = float((stream.start_time or 0) * stream.time_base)
             total = float(stream.duration * stream.time_base) if stream.duration is not None else None
             if total is not None and start >= total:
-                raise ValueError("El inicio está después del final del vídeo")
+                raise ValueError("The start is after the end of the video")
             container.seek(int((start + origin) / stream.time_base), stream=stream, backward=True)
             previous = None
             previous_time = 0.
@@ -90,7 +90,7 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
             for frame in container.decode(stream):
                 check()
                 if frame.pts is None:
-                    raise ValueError("El vídeo no tiene marcas de tiempo válidas")
+                    raise ValueError("The video has no valid timestamps")
                 timestamp = float(frame.pts * frame.time_base) - origin
                 if previous is not None:
                     while len(frames) < wanted and start + len(frames) / fps < timestamp - 1e-8:
@@ -104,7 +104,7 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
                 while len(frames) < wanted and start + len(frames) / fps < end - 1e-8:
                     append(previous.to_image())
     if not frames:
-        raise ValueError("No hay fotogramas en ese fragmento. Reduce el inicio.")
+        raise ValueError("No frames in that clip. Reduce the start.")
     check()
     speed = 1000 // fps
     blobs = encode_panels(frames, speed, check)
@@ -122,7 +122,7 @@ def decode_clip(path, start=0., duration=4., fps=5, fit="cover", position=(.5, .
 
 def encode_panels(frames, speed, check=lambda: None):
     if not frames or len(frames) > MAX_FRAMES or any(f.size != (640, 128) for f in frames):
-        raise ValueError("Secuencia panorámica inválida")
+        raise ValueError("Invalid panorama sequence")
     # One palette per entire panoramic frame keeps colours consistent at the seams.
     quantized = []
     for frame in frames:
@@ -143,16 +143,16 @@ def animation_frames(path, speed):
     """Pillow merges identical GIF frames: expand their durations back to the shared cadence."""
     speed = int(speed)
     if speed not in {1000 // fps for fps in FPS}:
-        raise ValueError("Velocidad panorámica inválida")
+        raise ValueError("Invalid panorama speed")
     frames = []
     with Image.open(path) as source:
         if source.size != (128, 128):
-            raise ValueError("Cada parte debe medir 128 × 128")
+            raise ValueError("Each part must measure 128 × 128")
         for frame in ImageSequence.Iterator(source):
             milliseconds = int(frame.info.get("duration", speed))
             count = max(1, round(milliseconds / speed))
             if len(frames) + count > MAX_FRAMES:
-                raise ValueError("Máximo 120 fotogramas por parte")
+                raise ValueError("Maximum 120 frames per part")
             image = rgb(frame)
             frames.extend([image] * count)
     return frames

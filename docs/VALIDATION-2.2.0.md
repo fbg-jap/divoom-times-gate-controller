@@ -1,6 +1,6 @@
 # Validation · 2.2.0
 
-**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Paths below identify private local evidence and backups, not public downloads.
+**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATFORM.md). Paths below identify private local evidence and backups, not public downloads.
 
 Date: September 27, 2026.
 

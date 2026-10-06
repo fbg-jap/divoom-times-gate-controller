@@ -77,14 +77,14 @@ test("native transport uses direct LAN HTTP and treats device rejection as failu
   engine.http = async () => ({ error_code: 1 });
   await assert.rejects(
     engine.command({ ip: "192.168.1.116" }, { Command: "Channel/GetAllConf" }),
-    /rechazó/,
+    /rejected/,
   );
   await assert.rejects(
     engine.command(
       { ip: "192.168.1.116" },
       { Command: "Channel/SetClockSelectId", LcdIndependence: 0 },
     ),
-    /grupo nativo/,
+    /Native group 0/,
   );
 });
 test("invalid targets and corrupted imported lists are rejected", () => {
@@ -99,7 +99,7 @@ test("invalid targets and corrupted imported lists are rejected", () => {
   const cfg = defaults();
   validate(cfg);
   cfg.devices[0].playlists[0].enabled = true;
-  assert.throws(() => validate(cfg), /Lista/);
+  assert.throws(() => validate(cfg), /Playlist/);
 });
 test("serial mobile tasks keep order and failures visible without blocking later work", async () => {
   const engine = new MobileEngine(true),
@@ -159,12 +159,12 @@ test("Pomodoro phases, pause and long break keep selected durations", () => {
   assert.equal(engine.pomo.running, false);
   engine.pomodoro("resume", {});
   engine.pomodoro("skip", {});
-  assert.equal(engine.pomo.phase, "Descanso");
+  assert.equal(engine.pomo.phase, "Break");
   assert.equal(engine.pomo.remaining, 360);
   engine.pomodoro("skip", {});
   assert.equal(engine.pomo.cycle, 2);
   engine.pomodoro("skip", {});
-  assert.equal(engine.pomo.phase, "Descanso largo");
+  assert.equal(engine.pomo.phase, "Long break");
   assert.equal(engine.pomo.remaining, 1080);
 });
 test("background state prevents device writes", async () => {
@@ -174,7 +174,7 @@ test("background state prevents device writes", async () => {
   engine.command = async () => (called = true);
   await assert.rejects(
     engine.sendPanel({ id: "x", screens: [screen("text")] }, 0, true),
-    /abrir la app/,
+    /Reopen the app/,
   );
   assert.equal(called, false);
 });

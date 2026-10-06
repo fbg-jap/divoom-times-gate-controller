@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
-METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disco %"),
+METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disk %"),
            ("cpu_temp", "CPU °C"), ("gpu_temp", "GPU °C"), ("download", "Descarga B/s"), ("upload", "Subida B/s")]
 
 
@@ -27,23 +27,23 @@ def finite(value):
 def validate_content(s):
     from .widgets import http_url
     if s.get("panorama_speed") and int(s["panorama_speed"]) not in {100, 200, 250, 500, 1000}:
-        raise ValueError("Velocidad de panorámica inválida")
+        raise ValueError("Invalid panorama speed")
     if s.get("kind") == "rss" and s.get("url"):
         http_url(s["url"])
     if not 5 <= int(s.get("news_seconds", 15)) <= 3600:
-        raise ValueError("Duración de noticia inválida")
+        raise ValueError("Invalid news duration")
     if s.get("kind") == "custom":
         elements = s.get("elements", [])
         if not isinstance(elements, list) or len(elements) > 20:
-            raise ValueError("Máximo 20 elementos por diseño")
+            raise ValueError("Maximum 20 elements per design")
         for e in elements:
             if e.get("type") not in {"text", "image", "bar"}:
-                raise ValueError("Elemento del diseño desconocido")
+                raise ValueError("Unknown design element")
             for name, low, high in [("x", 0, 127), ("y", 0, 127), ("width", 1, 128), ("height", 1, 128), ("size", 6, 64)]:
                 if not low <= int(e.get(name, {"width": 112, "height": 24, "size": 16}.get(name, 0))) <= high:
-                    raise ValueError("Posición o tamaño del diseño inválido")
+                    raise ValueError("Invalid design position or size")
             if finite(e.get("maximum", 100)) is None or float(e.get("maximum", 100)) <= 0:
-                raise ValueError("El máximo de una barra debe ser positivo")
+                raise ValueError("A bar's maximum must be positive")
             ImageColor.getrgb(e.get("color", "white"))
 
 
@@ -57,43 +57,43 @@ def validate_extensions(data):
     for group in ("alerts", "reminders", "profiles"):
         rules = data.get(group, [])
         if not isinstance(rules, list) or len(rules) > 100:
-            raise ValueError("Máximo 100 reglas por categoría")
+            raise ValueError("Maximum 100 rules per category")
         seen = set()
         for r in rules:
             if not r.get("id") or r["id"] in seen or r.get("device_id") not in ids:
-                raise ValueError("Regla o dispositivo inválido")
+                raise ValueError("Invalid rule or device")
             seen.add(r["id"])
             if group == "profiles":
                 if r.get("scene_id") not in scenes or r.get("trigger") not in {"process", "locked", "desktop"}:
-                    raise ValueError("Escena o condición de perfil inválida")
+                    raise ValueError("Invalid scene or profile condition")
                 if r["trigger"] == "process" and not r.get("process", "").strip():
-                    raise ValueError("Escribe el nombre del ejecutable")
+                    raise ValueError("Enter the executable name")
             else:
                 if not 0 <= int(r.get("panel", 0)) <= 4 or not 5 <= int(r.get("seconds", 15)) <= 300:
-                    raise ValueError("Pantalla o duración de aviso inválida")
+                    raise ValueError("Invalid screen or notice duration")
                 if not str(r.get("text", "")).strip() or len(r["text"]) > 500:
-                    raise ValueError("Escribe un aviso de hasta 500 caracteres")
+                    raise ValueError("Enter a notice of up to 500 characters")
                 if group == "reminders" and not 1 <= int(r.get("minutes", 30)) <= 10080:
-                    raise ValueError("Intervalo de recordatorio inválido")
+                    raise ValueError("Invalid reminder interval")
                 if group == "alerts":
                     if r.get("metric") not in {k for k, _ in METRICS} | {"disk_free", "service", "sensor"}:
-                        raise ValueError("Métrica de alerta desconocida")
+                        raise ValueError("Unknown alert metric")
                     if r.get("operator", "above") not in {"above", "below"} or finite(r.get("threshold", 80)) is None:
-                        raise ValueError("Umbral inválido")
+                        raise ValueError("Invalid threshold")
                     if not 0 <= int(r.get("hold", 10)) <= 3600 or not 30 <= int(r.get("cooldown", 300)) <= 86400:
-                        raise ValueError("Tiempo de alerta inválido")
+                        raise ValueError("Invalid alert time")
                     if r["metric"] == "service":
                         http_url(r.get("source", ""))
     integrations = data.get("integrations", {})
     for name in ("api", "mqtt"):
         conf = integrations.get(name, {})
         if not 1 <= int(conf.get("port", 8787 if name == "api" else 1883)) <= 65535:
-            raise ValueError("Puerto inválido")
+            raise ValueError("Invalid port")
         if conf.get("enabled"):
             if name == "api" and (conf.get("host") not in {"127.0.0.1", "0.0.0.0"} or len(conf.get("token", "")) < 24):
-                raise ValueError("La API necesita una dirección válida y un token de al menos 24 caracteres")
+                raise ValueError("The API needs a valid address and a token of at least 24 characters")
             if name == "mqtt" and (not conf.get("host", "").strip() or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", conf.get("prefix", "keeper"))):
-                raise ValueError("Servidor o prefijo MQTT inválido")
+                raise ValueError("Invalid MQTT server or prefix")
 
 
 class ExtraSources:
@@ -114,7 +114,7 @@ class ExtraSources:
         if self.providers.demo:
             return {"title": "Midnight City", "artist": "Demo player", "status": "Playing", "art": ""}
         value, error = self.media_probe.read()
-        return value or {"title": "", "artist": "", "status": error or "Sin reproducción", "art": ""}
+        return value or {"title": "", "artist": "", "status": error or "Nothing playing", "art": ""}
 
     def hardware(self):
         if self.providers.demo:
@@ -150,9 +150,9 @@ class ExtraSources:
 
     def news(self, url, seconds=15):
         if not url:
-            return "Configura una fuente RSS", "RSS"
+            return "Configure an RSS source", "RSS"
         if self.providers.demo:
-            return "Tus noticias favoritas, en el escritorio", "DEMO · 1/3"
+            return "Your favorite news, on your desktop", "DEMO · 1/3"
         from .widgets import http_url
         def fetch():
             from defusedxml import ElementTree
@@ -163,7 +163,7 @@ class ExtraSources:
                 for chunk in response.iter_content(65536):
                     size += len(chunk)
                     if size > 2 * 1024**2:
-                        raise ValueError("La fuente supera 2 MB")
+                        raise ValueError("The source exceeds 2 MB")
                     chunks.append(chunk)
             root = ElementTree.fromstring(b"".join(chunks))
             titles = []
@@ -181,9 +181,9 @@ class ExtraSources:
         except Exception:
             # Cache failures too so a broken source doesn't get polled every frame.
             self.providers.cache[("rss", url)] = (time.monotonic(), [])
-            return "Fuente no disponible", "RSS · ERROR"
+            return "Source unavailable", "RSS · ERROR"
         if not titles:
-            return "Sin titulares disponibles", "RSS"
+            return "No headlines available", "RSS"
         cursor = self.news_cursor.setdefault(url, [0, time.monotonic()])
         if time.monotonic() - cursor[1] >= seconds:
             cursor[:] = [(cursor[0] + 1) % len(titles), time.monotonic()]
@@ -205,7 +205,7 @@ def custom_image(screen, values):
                 with Image.open(e.get("path", "")) as source:
                     layer = ImageOps.fit(ImageOps.exif_transpose(source).convert("RGBA"), (w, h))
             except (OSError, ValueError):
-                draw.text((0, 0), "Imagen N/D", fill=color, font=font(10))
+                draw.text((0, 0), "Image N/A", fill=color, font=font(10))
         elif e["type"] == "bar":
             value = finite(values.get(e.get("metric", "cpu")))
             draw.rectangle((0, 0, w-1, h-1), fill="#26334b")
@@ -214,11 +214,11 @@ def custom_image(screen, values):
                 if end:
                     draw.rectangle((0, 0, end-1, h-1), fill=color)
             else:
-                draw.text((2, 0), "N/D", fill=color, font=font(10))
+                draw.text((2, 0), "N/A", fill=color, font=font(10))
         else:
-            text = str(e.get("text", "Texto"))
+            text = str(e.get("text", "Text"))
             for key, value in {**values, "time": datetime.now().strftime("%H:%M"), "date": datetime.now().strftime("%d/%m")}.items():
-                text = text.replace("{" + key + "}", "N/D" if value is None else f"{value:.0f}" if isinstance(value, (float, int)) else str(value))
+                text = text.replace("{" + key + "}", "N/A" if value is None else f"{value:.0f}" if isinstance(value, (float, int)) else str(value))
             size = int(e.get("size", 16))
             for n, line in enumerate(wrap_text(draw, text, font(size), w)[:h // max(1, size) + 1]):
                 draw.text((0, n * (size + 2)), line, font=font(size), fill=color)
@@ -268,7 +268,7 @@ def render_extra(s, providers):
             draw.ellipse((9, 7, 57, 55), outline=accent, width=2)
             draw.text((25, 13), "♪", fill=accent, font=font(25))
         draw.text((66, 12), "PLAY" if data.get("status") == "Playing" else "PAUSE", fill=accent, font=font(10))
-        lines(data.get("title") or "Sin reproducción", 61, 13, 2)
+        lines(data.get("title") or "Nothing playing", 61, 13, 2)
         lines(data.get("artist") or data.get("status", ""), 95, 10, 2, accent)
     elif kind == "rss":
         title, state = extra.news(s.get("url", ""), int(s.get("news_seconds", 15)))
@@ -276,10 +276,11 @@ def render_extra(s, providers):
         lines(title, 28, int(s.get("news_size", 13)), 5)
     elif kind == "pomodoro":
         data = extra.pomodoro
-        lines(s.get("title") or data["phase"].upper(), 8, 12, 1, accent)
+        phase = {"Preparado": "Ready", "Trabajo": "Work", "Descanso": "Break", "Descanso largo": "Long break"}.get(data["phase"], data["phase"])
+        lines(s.get("title") or phase.upper(), 8, 12, 1, accent)
         seconds = max(0, math.ceil(data["remaining"]))
         lines(f"{seconds//60:02}:{seconds%60:02}", 40, 32, 1)
-        lines(f"Ciclo {data['cycle']} · {'Activo' if data['running'] else 'Pausa'}", 96, 11, 1, accent)
+        lines(f"Cycle {data['cycle']} · {'Active' if data['running'] else 'Paused'}", 96, 11, 1, accent)
         draw.rectangle((8, 117, 119, 120), fill="#26334b")
         end = 8 + int(111 * (1 - seconds / max(1, data["total"])))
         if end > 8:
@@ -288,7 +289,7 @@ def render_extra(s, providers):
         value = extra.sensor(s.get("sensor_source", "mqtt"), s.get("sensor_key", ""), s.get("sensor_field", ""), int(s.get("sensor_stale", 300)))
         lines(s.get("title") or "SENSOR", 8, 12, 1, accent)
         number = finite(value)
-        text = "N/D" if value is None else f"{number:.1f}" if number is not None else str(value)
+        text = "N/A" if value is None else f"{number:.1f}" if number is not None else str(value)
         lines(text[:60], 42, 25, 2)
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
     return image

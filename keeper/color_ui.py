@@ -23,7 +23,7 @@ class ColorPlane(QWidget):
     changed = Signal(QColor)
     def __init__(self, color):
         super().__init__(); self.setMinimumSize(260, 180); self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName('Saturación y luminosidad: arrastra o usa las flechas')
+        self.setAccessibleName('Saturation and brightness: drag or use the arrow keys')
         self.set_color(color)
 
     def set_color(self, color):
@@ -61,7 +61,7 @@ class ColorPlane(QWidget):
 
 class ColorDialog(QDialog):
     recent = []
-    def __init__(self, color, parent=None, t=lambda es, en: es):
+    def __init__(self, color, parent=None, t=lambda es, en: en):
         super().__init__(parent); self.t = t; self.color = QColor(color)
         self.setWindowTitle(t('Elige un color', 'Choose a color')); self.setMinimumWidth(360)
         layout = QVBoxLayout(self)
@@ -105,7 +105,7 @@ class ColorDialog(QDialog):
 
 class ColorButton(QPushButton):
     textChanged = Signal(str)
-    def __init__(self, value='#64e6ca', parent=None, t=lambda es, en: es):
+    def __init__(self, value='#64e6ca', parent=None, t=lambda es, en: en):
         super().__init__(parent); self.t = t; self._color = None; self.setMinimumWidth(138); self.setIconSize(QSize(24, 24)); self.setText(value)
         self.clicked.connect(self.choose)
 
@@ -125,7 +125,7 @@ class ColorButton(QPushButton):
 
 class LightingPreview(QWidget):
     def __init__(self, read):
-        super().__init__(); self.read = read; self.setMinimumHeight(142); self.setAccessibleName('Vista de color y zonas del Times Gate')
+        super().__init__(); self.read = read; self.setMinimumHeight(142); self.setAccessibleName('Color and zone preview of the Times Gate')
 
     def paintEvent(self, event):
         s = self.read(); p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -146,7 +146,7 @@ class LightingPreview(QWidget):
 
 class LightingPanel(QWidget):
     applyRequested = Signal()
-    def __init__(self, parent=None, t=lambda es, en: es):
+    def __init__(self, parent=None, t=lambda es, en: en):
         super().__init__(parent); self.t = t
         layout = QVBoxLayout(self); layout.addWidget(QLabel(t('Iluminación RGB', 'RGB lighting')))
         self.color = ColorButton(t=t); self.brightness = QSlider(Qt.Orientation.Horizontal); self.brightness.setRange(0, 100); self.brightness.setValue(50); self.brightness.setAccessibleName(t('Brillo RGB', 'RGB brightness'))

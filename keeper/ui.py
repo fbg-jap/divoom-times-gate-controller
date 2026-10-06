@@ -75,7 +75,7 @@ class Window(QMainWindow):
     def __init__(self, store, engine, demo=False, tray=True):
         super().__init__()
         self.store, self.engine, self.demo = store, engine, demo
-        self.lang = store.snapshot().get("language", "es")
+        self.lang = store.snapshot().get("language", "en")
         self.selected = 0
         self.extra_drafts = {}
         self.loading = False
@@ -643,8 +643,8 @@ class Window(QMainWindow):
         card = box()
         f = QFormLayout(card)
         self.language = QComboBox()
-        self.language.addItem("Español", "es")
         self.language.addItem("English", "en")
+        self.language.addItem("Español", "es")
         self.theme = QComboBox()
         self.theme.addItem(self.t("Oscuro", "Dark"), "dark")
         self.theme.addItem(self.t("Claro", "Light"), "light")
@@ -1049,7 +1049,7 @@ class Window(QMainWindow):
             self.load_devices()
             self.toast(self.t("Conexión guardada", "Connection saved"))
         except Exception as error:
-            QMessageBox.warning(self, "Conexión", str(error))
+            QMessageBox.warning(self, "Connection", str(error))
 
     def add_device(self):
         ip, ok = QInputDialog.getText(self, self.t("Añadir dispositivo", "Add device"), "IPv4")
@@ -1169,7 +1169,7 @@ class Window(QMainWindow):
         selected = [self.scene_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.scene_list.count())
                     if self.scene_list.item(i).checkState() == Qt.CheckState.Checked]
         if self.rotation_enabled.isChecked() and not selected:
-            QMessageBox.warning(self, "Escenas", self.t("Marca al menos una escena", "Check at least one scene"))
+            QMessageBox.warning(self, "Scenes", self.t("Marca al menos una escena", "Check at least one scene"))
             return
         d["rotation"] = selected if self.rotation_enabled.isChecked() else []
         d["rotation_seconds"] = self.rotation_seconds.value()
@@ -1209,7 +1209,7 @@ class Window(QMainWindow):
         action = self.schedule_action.currentData()
         value = self.schedule_scene.currentData() if action == "scene" else self.schedule_brightness.value() if action == "brightness" else ""
         if action == "scene" and not value:
-            QMessageBox.warning(self, "Escenas", self.t("Guarda primero una escena", "Save a scene first"))
+            QMessageBox.warning(self, "Scenes", self.t("Guarda primero una escena", "Save a scene first"))
             return
         rule = {"id": uid(), "device_id": self.store.snapshot()["active_device"], "time": self.schedule_time.time().toString("HH:mm"),
                 "days": self.schedule_days.currentData(), "action": action, "value": value, "enabled": True}

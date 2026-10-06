@@ -68,7 +68,7 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(first["status"], "done")
         second = self.job(self.client.put("/api/config", json=state))
         self.assertEqual(second["status"], "error")
-        self.assertIn("cambió", second["error"])
+        self.assertIn("changed", second["error"])
         media = self.client.get("/api/media/" + file["name"])
         self.assertEqual(media.headers["content-type"], "image/png")
 
@@ -106,7 +106,7 @@ class PortalTests(unittest.TestCase):
     def test_failed_device_work_reports_job_error(self):
         result = self.job(self.client.post("/api/action", json={"action": "notification", "args": {"panel": 0, "text": "test", "seconds": 10}}))
         self.assertEqual(result["status"], "error")
-        self.assertIn("restaurable", result["error"])
+        self.assertIn("restorable", result["error"])
         self.assertEqual(self.client.post("/api/action", json={"action": "command", "args": {"payload": {"Command": "Unknown"}}}).status_code, 400)
 
     def test_native_group_zero_and_invalid_parameters_blocked(self):

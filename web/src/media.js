@@ -23,7 +23,7 @@ export function drawFit(
   let sw = source.videoWidth || source.width,
     sh = source.videoHeight || source.height;
   if (!sw || !sh || sw * sh > 20000000)
-    throw Error("Dimensiones inválidas (máximo 20 megapíxeles)");
+    throw Error("Invalid dimensions (maximum 20 megapixels)");
   if (rotation) {
     const rotated = canvas(rotation % 180 ? sh : sw, rotation % 180 ? sw : sh),
       ctx = rotated.getContext("2d");
@@ -76,7 +76,7 @@ export async function image(blob) {
   }
 }
 export async function decode(blob, name, options = {}, signal) {
-  if (blob.size > 100 * 1024 ** 2) throw Error("Máximo 100 MB");
+  if (blob.size > 100 * 1024 ** 2) throw Error("Maximum 100 MB");
   const panoramic = !!options.panorama,
     width = panoramic ? 640 : 128,
     height = 128;
@@ -92,14 +92,14 @@ export async function decode(blob, name, options = {}, signal) {
       duration > 30 ||
       Math.ceil(duration * fps - 1e-9) > 120)
   )
-    throw Error("Máximo 30 segundos / 120 fotogramas; revisa inicio y FPS");
+    throw Error("Maximum 30 seconds / 120 frames; check start and FPS");
   const frames = [],
     max = panoramic ? Math.ceil(duration * fps - 1e-9) : 600,
     deadline = Date.now() + 60000;
   const check = () => {
-    if (signal?.aborted) throw Error("Cancelado");
+    if (signal?.aborted) throw Error("Cancelled");
     if (Date.now() > deadline)
-      throw Error("Conversión demasiado lenta; usa un fragmento más corto");
+      throw Error("Conversion too slow; use a shorter clip");
   };
   const append = (source) => {
     check();
@@ -120,9 +120,9 @@ export async function decode(blob, name, options = {}, signal) {
     const parsed = parseGIF(await blob.arrayBuffer()),
       parts = parsed.frames.filter((f) => f.image);
     if (parsed.lsd.width * parsed.lsd.height > 20000000 || parts.length > 10000)
-      throw Error("GIF demasiado grande");
+      throw Error("GIF too large");
     if (!panoramic && Math.ceil(parts.length / (options.frame_step || 1)) > 600)
-      throw Error("Máximo 600 fotogramas; aumenta el salto");
+      throw Error("Maximum 600 frames; increase the frame step");
     const surface = canvas(parsed.lsd.width, parsed.lsd.height),
       ctx = surface.getContext("2d", { willReadFrequently: true });
     let timestamp = 0,
@@ -141,7 +141,7 @@ export async function decode(blob, name, options = {}, signal) {
         ctx.putImageData(restore, 0, 0);
       const p = parts[i].image.descriptor;
       if (p.width * p.height > 20000000)
-        throw Error("Fotograma demasiado grande");
+        throw Error("Frame too large");
       const frame = decompressFrame(parts[i], parsed.gct, true);
       restore =
         frame.disposalType === 3
@@ -174,7 +174,7 @@ export async function decode(blob, name, options = {}, signal) {
       if (i % 10 === 0) await pause(0);
     }
   } else if (["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(ext)) {
-    if (!panoramic) throw Error("Usa Panorámica para convertir un vídeo");
+    if (!panoramic) throw Error("Use Panorama to convert a video");
     const video = document.createElement("video"),
       url = URL.createObjectURL(blob);
     video.muted = true;
@@ -194,7 +194,7 @@ export async function decode(blob, name, options = {}, signal) {
           bad = () => {
             cleanup();
             reject(
-              Error("Vídeo no compatible con este teléfono; prueba MP4 H.264"),
+              Error("Video not supported on this phone; try MP4 H.264"),
             );
           };
         const timer = setTimeout(bad, 10000);
@@ -222,7 +222,7 @@ export async function decode(blob, name, options = {}, signal) {
       URL.revokeObjectURL(url);
     }
   } else append(await image(blob));
-  if (!frames.length) throw Error("El fragmento no contiene fotogramas");
+  if (!frames.length) throw Error("The clip contains no frames");
   return {
     frames,
     speed: options.panorama_speed || 1000 / fps,

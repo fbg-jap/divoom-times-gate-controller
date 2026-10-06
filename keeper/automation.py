@@ -11,6 +11,8 @@ from .content import composition
 from .extensions import finite
 
 
+PHASE_LABELS = {"Preparado": "Ready", "Trabajo": "Work", "Descanso": "Break", "Descanso largo": "Long break"}
+
 class Pomodoro:
     def __init__(self):
         self.phase, self.remaining, self.total = "Preparado", 1500., 1500.
@@ -25,7 +27,7 @@ class Pomodoro:
         if operation == "start":
             settings = {key: int(args.get(key, value)) for key, value in self.settings.items()}
             if any(not 1 <= value <= (12 if key == "cycles" else 180) for key, value in settings.items()):
-                raise ValueError("Duración de Pomodoro inválida")
+                raise ValueError("Invalid Pomodoro duration")
             self.settings = settings
             self.device_id, self.panel = args["device_id"], int(args.get("panel", 0))
             self.buzzer = bool(args.get("buzzer"))
@@ -42,7 +44,7 @@ class Pomodoro:
         elif operation == "skip":
             self._next()
         else:
-            raise ValueError("Control de Pomodoro desconocido")
+            raise ValueError("Unknown Pomodoro control")
         self.stamp = time.monotonic()
 
     def _next(self):
@@ -94,7 +96,7 @@ class Automations:
         if self.profile_ids.get(d["id"]) != signature:
             self.profile_ids[d["id"]] = signature
             self.engine.invalidate(d["id"])
-            self.engine.log("Perfil automático · " + (scene["name"] if scene else "composición habitual"))
+            self.engine.log("Automatic profile · " + (scene["name"] if scene else "usual layout"))
         if scene:
             return {**d, **composition(scene)}
         return d
@@ -109,7 +111,7 @@ class Automations:
         self.engine.renderer.providers.extra.pomodoro = self.pomodoro.snapshot()
         self.engine.emit("pomodoro", **self.pomodoro.snapshot())
         if phase and self.pomodoro.device_id:
-            self.enqueue(self.pomodoro.device_id, self.pomodoro.panel, phase, "POMODORO", buzzer=self.pomodoro.buzzer)
+            self.enqueue(self.pomodoro.device_id, self.pomodoro.panel, PHASE_LABELS.get(phase, phase), "POMODORO", buzzer=self.pomodoro.buzzer)
         if now - self.last_check < 5:
             return
         self.last_check = now
@@ -143,7 +145,7 @@ class Automations:
                     if fire:
                         state["fired"], state["last"] = True, now
                 if fire:
-                    self.enqueue(r["device_id"], r["panel"], r["text"], r.get("name") or "AVISO", r.get("seconds", 15), r.get("buzzer", False))
+                    self.enqueue(r["device_id"], r["panel"], r["text"], r.get("name") or "NOTICE", r.get("seconds", 15), r.get("buzzer", False))
         self.states = {k: v for k, v in self.states.items() if k in enabled_keys}
 
     def value(self, r):
@@ -169,5 +171,5 @@ class Automations:
             try:
                 self.engine.process("notification", device_id, args)
             except Exception as error:
-                self.engine.log(f"Aviso: {error}", "warning")
+                self.engine.log(f"Notice: {error}", "warning")
             break

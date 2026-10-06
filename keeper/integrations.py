@@ -14,7 +14,7 @@ class Bridge:
         self.engine = engine
         self.server = self.mqtt = None
         self.signature = None
-        self.api_status, self.mqtt_status = "Desactivada", "Desactivado"
+        self.api_status, self.mqtt_status = "Disabled", "Disabled"
         self.connected, self.published = False, set()
         self.last_publish = -1e12
         self.last_topics = set()
@@ -28,40 +28,40 @@ class Bridge:
 
     def dispatch(self, body):
         if not isinstance(body, dict):
-            raise ValueError("Se necesita un objeto JSON")
+            raise ValueError("A JSON object is required")
         data = self.engine.store.snapshot()
         device_id = body.get("device_id", data["active_device"])
         if device_id not in {d["id"] for d in data["devices"]}:
-            raise ValueError("Dispositivo desconocido")
+            raise ValueError("Unknown device")
         action = body.get("action")
         if action == "notice":
             panel = int(body.get("panel", 1)) - 1
             seconds = int(body.get("seconds", 15))
             text = body.get("text", "")
             if not 0 <= panel <= 4 or not 5 <= seconds <= 300 or not isinstance(text, str) or not text.strip() or len(text) > 500:
-                raise ValueError("Aviso inválido: panel 1–5, 5–300 segundos, texto hasta 500 caracteres")
-            args = {"panel": panel, "seconds": seconds, "text": text, "title": str(body.get("title", "AVISO"))[:80], "buzzer": bool(body.get("buzzer", False))}
+                raise ValueError("Invalid notice: panel 1–5, 5–300 seconds, text up to 500 characters")
+            args = {"panel": panel, "seconds": seconds, "text": text, "title": str(body.get("title", "NOTICE"))[:80], "buzzer": bool(body.get("buzzer", False))}
             action = "notification"
         elif action == "scene":
             scene = body.get("scene_id")
             if scene not in {s["id"] for s in data["scenes"]}:
-                raise ValueError("Escena desconocida")
+                raise ValueError("Unknown scene")
             args = {"scene_id": scene}
         elif action == "brightness":
             value = int(body.get("value", -1))
             if not 0 <= value <= 100:
-                raise ValueError("Brillo entre 0 y 100")
+                raise ValueError("Brightness between 0 and 100")
             action, args = "command", {"payload": {"Command": "Channel/SetBrightness", "Brightness": value}}
         elif action == "power":
             if not isinstance(body.get("on"), bool):
-                raise ValueError("on debe ser true o false")
+                raise ValueError("on must be true or false")
             action, args = "command", {"payload": {"Command": "Channel/OnOffScreen", "OnOff": int(body["on"])}}
         elif action == "send":
             args = {}
         else:
-            raise ValueError("Acción admitida: notice, scene, brightness, power, send")
+            raise ValueError("Supported action: notice, scene, brightness, power, send")
         if self.engine.submit(action, device_id, **args) is False:
-            raise RuntimeError("Cola llena")
+            raise RuntimeError("Queue full")
         return {"accepted": True, "device_id": device_id}
 
     def configure(self, data):
@@ -74,21 +74,21 @@ class Bridge:
         self.close()
         self.signature, self.config = signature, config
         if self.engine.demo:
-            self.api_status = self.mqtt_status = "DEMO · conexiones desactivadas"
+            self.api_status = self.mqtt_status = "DEMO · connections disabled"
             return
         api = config.get("api", {})
         if api.get("enabled"):
             try:
                 self.start_api(api)
             except OSError as error:
-                self.api_status = f"No se pudo abrir el puerto: {error}"
+                self.api_status = f"Could not open the port: {error}"
                 self.engine.log("API: " + self.api_status, "error")
         mqtt = config.get("mqtt", {})
         if mqtt.get("enabled"):
             try:
                 self.start_mqtt(mqtt)
             except Exception as error:
-                self.mqtt_status = type(error).__name__ + ": revisa la configuración"
+                self.mqtt_status = type(error).__name__ + ": check the configuration"
                 self.engine.log("MQTT: " + self.mqtt_status, "error")
 
     def start_api(self, config):
@@ -114,7 +114,7 @@ class Bridge:
             def authorized(self):
                 supplied = self.headers.get("Authorization", "")
                 if self.headers.get("Origin") or not hmac.compare_digest(supplied.encode(), ("Bearer " + token).encode()):
-                    self.reply(401, {"error": "Token Bearer requerido"})
+                    self.reply(401, {"error": "Bearer token required"})
                     return False
                 return True
 
@@ -122,7 +122,7 @@ class Bridge:
                 if not self.authorized():
                     return
                 if self.path != "/v1/status":
-                    self.reply(404, {"error": "Ruta desconocida"})
+                    self.reply(404, {"error": "Unknown route"})
                     return
                 self.reply(200, bridge.status())
 
@@ -130,19 +130,19 @@ class Bridge:
                 if not self.authorized():
                     return
                 if self.path != "/v1/action":
-                    self.reply(404, {"error": "Ruta desconocida"})
+                    self.reply(404, {"error": "Unknown route"})
                     return
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
                     if self.headers.get("Transfer-Encoding") or not 1 <= size <= 16384:
-                        self.reply(413, {"error": "Máximo 16 KiB"})
+                        self.reply(413, {"error": "Maximum 16 KiB"})
                         return
                     result = bridge.dispatch(json.loads(self.rfile.read(size)))
                     self.reply(202, result)
                 except (ValueError, TypeError, KeyError, UnicodeError):
-                    self.reply(400, {"error": "Petición inválida"})
+                    self.reply(400, {"error": "Invalid request"})
                 except RuntimeError:
-                    self.reply(503, {"error": "Cola llena"})
+                    self.reply(503, {"error": "Queue full"})
         self.server = ThreadingHTTPServer((config.get("host", "127.0.0.1"), int(config.get("port", 8787))), Handler)
         self.server.daemon_threads = True
         threading.Thread(target=self.server.serve_forever, daemon=True, name="keeper-api").start()
@@ -162,7 +162,7 @@ class Bridge:
         self.mqtt.max_inflight_messages_set(20)
         def on_connect(client, userdata, flags, reason, properties):
             self.connected = not reason.is_failure
-            self.mqtt_status = "Conectado" if self.connected else "Conexión rechazada"
+            self.mqtt_status = "Connected" if self.connected else "Connection refused"
             if self.connected:
                 self.last_topics = set()
                 client.subscribe(prefix + "/command", qos=1)
@@ -172,7 +172,7 @@ class Bridge:
                 self.discovery(self.engine.store.snapshot())
         def on_disconnect(client, userdata, flags, reason, properties):
             self.connected = False
-            self.mqtt_status = "Desconectado · reintentando"
+            self.mqtt_status = "Disconnected · retrying"
         def on_message(client, userdata, message):
             if len(message.payload) > 16384:
                 return
@@ -185,7 +185,7 @@ class Bridge:
                 else:
                     self.engine.renderer.providers.extra.receive(message.topic, text)
             except (ValueError, TypeError, RuntimeError):
-                self.engine.log("MQTT: mensaje inválido descartado", "warning")
+                self.engine.log("MQTT: invalid message discarded", "warning")
         self.mqtt.on_connect, self.mqtt.on_disconnect, self.mqtt.on_message = on_connect, on_disconnect, on_message
         self.mqtt_status = "Conectando…"
         self.mqtt.connect_async(config["host"], int(config.get("port", 1883)), 30)
@@ -210,7 +210,7 @@ class Bridge:
         prefix = self.config.get("mqtt", {}).get("prefix", "keeper")
         topics = set()
         for d in data["devices"]:
-            for scene in [{"id": "restore", "name": "Enviar composición"}, *data["scenes"]]:
+            for scene in [{"id": "restore", "name": "Send layout"}, *data["scenes"]]:
                 uid = "keeper_" + d["id"] + "_" + scene["id"]
                 topic = "homeassistant/button/" + uid + "/config"
                 topics.add(topic)
@@ -243,4 +243,4 @@ class Bridge:
             self.mqtt.loop_stop()
             self.mqtt = None
         self.connected = False
-        self.api_status, self.mqtt_status = "Desactivada", "Desactivado"
+        self.api_status, self.mqtt_status = "Disabled", "Disabled"

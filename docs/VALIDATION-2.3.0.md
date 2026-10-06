@@ -1,6 +1,6 @@
 # Validation · 2.3.0
 
-**Historical report for animated panoramas.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Local paths identify private development evidence and backups, not public downloads.
+**Historical report for animated panoramas.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATFORM.md). Local paths identify private development evidence and backups, not public downloads.
 
 Date: September 27, 2026.
 

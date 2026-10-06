@@ -71,7 +71,7 @@ class PortalEngine(Engine):
                 if self.tasks[key]["status"] in {"done", "error", "cancelled"}:
                     del self.tasks[key]
             if len(self.tasks) >= 100:
-                raise ValueError("Hay demasiadas tareas pendientes")
+                raise ValueError("Too many pending tasks")
             key = uid()
             self.tasks[key] = {"id": key, "operation": operation, "status": "queued"}
             return key
@@ -83,8 +83,8 @@ class PortalEngine(Engine):
     def enqueue(self, operation, callback):
         key = self.new_task(operation)
         if not self.submit("portal", task_id=key, callback=callback):
-            self.task_update(key, status="error", error="Cola llena")
-            raise ValueError("Cola llena")
+            self.task_update(key, status="error", error="Queue full")
+            raise ValueError("Queue full")
         return {"job": key}
 
     def process(self, action, device_id, args):
@@ -103,21 +103,21 @@ class PortalEngine(Engine):
 def validate_portal(data, media_dir):
     validate(data)
     if len(data["devices"]) > 30 or len(data["scenes"]) > 200 or len(data["schedules"]) > 200:
-        raise ValueError("Límite de dispositivos, escenas u horarios superado")
+        raise ValueError("Device, scene or schedule limit exceeded")
     for d in data["devices"]:
         if d.get("ip"):
             valid_ip(d["ip"])
         if not 30 <= int(d.get("quality", 85)) <= 100 or not 1 <= int(d.get("speed", 100)) <= 60000:
-            raise ValueError("Calidad o velocidad inválida")
+            raise ValueError("Invalid quality or speed")
     root = media_dir.resolve()
     for screen in all_screens(data):
         if not 1 <= int(screen.get("frame_step", 1)) <= 100 or not 5 <= int(screen.get("refresh", 30)) <= 86400:
-            raise ValueError("Salto o actualización inválidos")
+            raise ValueError("Invalid step or refresh")
         for asset in assets(screen):
             if asset.get("path"):
                 path = Path(asset["path"]).resolve()
                 if path.parent != root or not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
-                    raise ValueError("Usa un archivo subido a la biblioteca de este servidor")
+                    raise ValueError("Use a file uploaded to this server's library")
 
 
 def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None):
@@ -132,7 +132,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             token_path.chmod(0o600)
         token = token_path.read_text(encoding="utf-8").strip()
     if len(token) < 24:
-        raise ValueError("KEEPER_TOKEN debe tener al menos 24 caracteres")
+        raise ValueError("KEEPER_TOKEN must be at least 24 characters")
     with lock:
         store = ConfigStore(root, migrate=False)
     engine = engine_factory(store, demo=demo)
@@ -162,10 +162,10 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         if request.url.path.startswith("/api/"):
             supplied = request.headers.get("authorization", "")
             if not hmac.compare_digest(supplied.encode(), ("Bearer " + token).encode()):
-                return JSONResponse({"error": "Introduce el token de acceso"}, status_code=401)
+                return JSONResponse({"error": "Enter the access token"}, status_code=401)
             origin = request.headers.get("origin")
             if origin and origin not in {str(request.base_url).rstrip("/"), *os.getenv("KEEPER_ORIGINS", "").split(",")}:
-                return JSONResponse({"error": "Origen no permitido"}, status_code=403)
+                return JSONResponse({"error": "Origin not allowed"}, status_code=403)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -180,29 +180,29 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     @app.exception_handler(KeyError)
     @app.exception_handler(TypeError)
     async def malformed(request, exc):
-        return JSONResponse({"error": "Petición incompleta o con tipos inválidos"}, status_code=400)
+        return JSONResponse({"error": "Incomplete request or invalid types"}, status_code=400)
 
     async def body(request, limit=1024**2):
         chunks, count = [], 0
         async for chunk in request.stream():
             count += len(chunk)
             if count > limit:
-                raise HTTPException(413, "Archivo o petición demasiado grande")
+                raise HTTPException(413, "File or request too large")
             chunks.append(chunk)
         return b"".join(chunks)
 
     async def json_body(request):
         value = json.loads(await body(request))
         if not isinstance(value, dict):
-            raise ValueError("Se necesita un objeto JSON")
+            raise ValueError("A JSON object is required")
         return value
 
     def owned(name):
         if not name or Path(name).name != name:
-            raise ValueError("Archivo inválido")
+            raise ValueError("Invalid file")
         path = (store.media_dir / name).resolve()
         if path.parent != store.media_dir.resolve() or not path.is_file():
-            raise HTTPException(404, "Archivo no encontrado")
+            raise HTTPException(404, "File not found")
         return path
 
     def save_blob(blob, suffix):
@@ -223,7 +223,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                 "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot()},
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
-                    "metrics_label": "Métricas del equipo que ejecuta el servidor; en Docker, del contenedor"}}
+                    "metrics_label": "Metrics of the machine running the server; in Docker, of the container"}}
 
     @app.put("/api/config")
     async def put_config(request: Request):
@@ -233,7 +233,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         def update():
             with store.lock:
                 if values.get("revision") != revision(store.data):
-                    raise ValueError("La configuración cambió. Recarga antes de guardar para no sobrescribir cambios.")
+                    raise ValueError("The configuration changed. Reload before saving to avoid overwriting changes.")
                 store.change(lambda current: (current.clear(), current.update(copy.deepcopy(data))))
             # Preserve live Pomodoro and temporary notices; synchronize the runtime flags.
             engine.paused = {d["id"] for d in data["devices"] if d.get("suspended")}
@@ -241,20 +241,20 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             for d in data["devices"]:
                 engine.invalidate(d["id"])
             return {"revision": revision(store.snapshot())}
-        return engine.enqueue("Guardar configuración", update)
+        return engine.enqueue("Save configuration", update)
 
     @app.post("/api/upload")
     async def upload(request: Request, name: str):
         suffix = Path(name).suffix.lower()
         if suffix not in MEDIA_EXTENSIONS:
-            raise ValueError("Formato no compatible")
+            raise ValueError("Unsupported format")
         blob = await body(request, LIMIT)
         if not blob:
-            raise ValueError("Archivo vacío")
+            raise ValueError("Empty file")
         if suffix not in VIDEO_EXTENSIONS | {".ics"}:
             with Image.open(io.BytesIO(blob)) as image:
                 if image.width * image.height > 20_000_000:
-                    raise ValueError("Máximo 20 megapíxeles")
+                    raise ValueError("Maximum 20 megapixels")
                 image.verify()
         path = save_blob(blob, suffix)
         return {"path": path, "name": Path(path).name, "original": Path(name).name}
@@ -272,7 +272,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     def job(key: str):
         with engine.portal_lock:
             if key not in engine.tasks:
-                raise HTTPException(404, "Tarea caducada")
+                raise HTTPException(404, "Task expired")
             return copy.deepcopy(engine.tasks[key])
 
     @app.post("/api/jobs/{key}/cancel")
@@ -287,8 +287,8 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         values = await json_body(request)
         path = owned(Path(values["path"]).name)
         if not conversion_slots.acquire(blocking=False):
-            raise ValueError("Espera a la conversión anterior")
-        key = engine.new_task("Convertir panorámica")
+            raise ValueError("Wait for the previous conversion")
+        key = engine.new_task("Convert panorama")
         stop = cancelled[key] = threading.Event()
         def convert():
             engine.task_update(key, status="running")
@@ -315,7 +315,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                     preview_path = save_blob(png_bytes(canvas), ".png")
                     count, duration = 1, 0
                 if stop.is_set():
-                    raise InterruptedError("Conversión cancelada")
+                    raise InterruptedError("Conversion cancelled")
                 engine.task_update(key, status="done", result={"screens": screens, "preview": preview_path,
                     "count": count, "duration": duration, "animated": animated})
             except InterruptedError:
@@ -331,9 +331,9 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     @app.get("/api/preview/{device_id}/{panel}")
     def preview(device_id: str, panel: int):
         if panel not in range(5):
-            raise ValueError("Pantalla inválida")
+            raise ValueError("Invalid screen")
         if device_id not in {d['id'] for d in store.snapshot()['devices']}:
-            raise HTTPException(404, "Dispositivo desconocido")
+            raise HTTPException(404, "Unknown device")
         engine.submit("preview", device_id, panel=panel)
         with engine.portal_lock:
             blob = engine.previews.get((device_id, panel))
@@ -345,16 +345,16 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         operation = values["action"]
         device_id = values.get("device_id") or store.snapshot()["active_device"]
         if device_id not in {d["id"] for d in store.snapshot()["devices"]}:
-            raise ValueError("Dispositivo desconocido")
+            raise ValueError("Unknown device")
         args = values.get("args", {})
         if operation not in {"send", "resume", "health", "scene", "notification", "pomodoro", "command", "discover", "catalog"}:
-            raise ValueError("Acción desconocida")
+            raise ValueError("Unknown action")
         if "panel" in args and int(args["panel"]) not in range(5):
-            raise ValueError("Pantalla inválida")
+            raise ValueError("Invalid screen")
         if operation == "command":
             validate_command(args.get("payload", {}))
         if operation == "notification" and (not 5 <= int(args.get("seconds", 15)) <= 300 or len(str(args.get("text", ""))) > 500):
-            raise ValueError("Aviso inválido")
+            raise ValueError("Invalid notice")
         if operation == "discover" and args.get("seed"):
             valid_ip(args["seed"])
         return engine.enqueue(operation, lambda: engine.process(operation, device_id, copy.deepcopy(args)))
@@ -380,7 +380,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                 store.import_bundle(path)
                 engine.process("reset_runtime", None, {})
             return {"imported": True}
-        return engine.enqueue("Importar copia", load)
+        return engine.enqueue("Import backup", load)
 
     directory = Path(web_root or Path(__file__).resolve().parents[1] / "web/dist")
     if directory.exists():
@@ -404,9 +404,9 @@ def validate_command(payload):
     }
     name = payload.get("Command")
     if name not in commands:
-        raise ValueError("Comando no admitido")
+        raise ValueError("Unsupported command")
     for key, (low, high) in commands[name].items():
         if key not in payload or not low <= int(payload[key]) <= high:
-            raise ValueError("Parámetro inválido: " + key)
+            raise ValueError("Invalid parameter: " + key)
     if set(payload) - {"Command", "DeviceId", *commands[name]}:
-        raise ValueError("Parámetro desconocido")
+        raise ValueError("Unknown parameter")

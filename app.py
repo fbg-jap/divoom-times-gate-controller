@@ -45,19 +45,19 @@ def main():
     lock = QLockFile(str(root / "studio.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        QMessageBox.information(None, "Divoom Keeper Studio", "Studio ya está abierto con esta configuración. Comprueba la bandeja del sistema.")
+        QMessageBox.information(None, "Divoom Keeper Studio", "Studio is already open with this configuration. Check the system tray.")
         return 1
     handler = RotatingFileHandler(root / "studio.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
     logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(asctime)s [%(levelname)s] %(message)s")
     try:
         store = ConfigStore(root, migrate=not args.demo)
     except Exception as error:
-        QMessageBox.critical(None, "Configuración", f"No se ha modificado la configuración.\n{error}\n\nCarpeta: {root}")
+        QMessageBox.critical(None, "Settings", f"The settings were not modified.\n{error}\n\nFolder: {root}")
         lock.unlock()
         return 1
     if args.demo:
         d = store.get_device()
-        d.update(name="Times Gate · Escritorio", ip="192.168.1.116", enabled=False)
+        d.update(name="Times Gate · Desktop", ip="192.168.1.116", enabled=False)
         d["screens"] = [slot("clock", title="MADRID"), slot("pc", title="WORKSTATION", pc_view="history", refresh=5),
                         slot("text", title="FOCUS MODE", text="Make\nsomething\ngreat.", color="#a799ff"),
                         slot("weather", title="MADRID", color="#ffc879"),
@@ -67,8 +67,8 @@ def main():
             {"id": uid(), "seconds": 30, "screen": slot("clock", timezone="Asia/Tokyo", title="TOKYO")}]}
         store.update_device(d)
         from keeper.content import composition
-        scenes = [{"id": uid(), "name": name, **composition(d)} for name in ["Escritorio", "Concentración", "Noche"]]
-        store.change(lambda data: data.update(language="es", scenes=scenes, schedules=[
+        scenes = [{"id": uid(), "name": name, **composition(d)} for name in ["Desktop", "Focus", "Night"]]
+        store.change(lambda data: data.update(language="en", scenes=scenes, schedules=[
             {"id": uid(), "device_id": d["id"], "time": "22:30", "days": list(range(7)), "action": "brightness", "value": 15, "enabled": True},
             {"id": uid(), "device_id": d["id"], "time": "08:00", "days": list(range(5)), "action": "scene", "value": scenes[0]["id"], "enabled": True}]))
     elif store.snapshot().get("startup"):
@@ -77,7 +77,7 @@ def main():
         try:
             set_startup(True, store.root)
         except OSError as error:
-            logging.warning("No se pudo actualizar el autoarranque: %s", error)
+            logging.warning("Could not update autostart: %s", error)
     engine = Engine(store, demo=args.demo)
     window = Window(store, engine, demo=args.demo, tray=not (args.no_tray or args.screenshot_dir))
     engine.start()

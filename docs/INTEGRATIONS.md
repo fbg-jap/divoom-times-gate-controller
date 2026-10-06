@@ -2,7 +2,7 @@
 
 The engine must stay running. Integrations are disabled initially and configured in the integrations section. They do not change the Times Gate image/GIF transport.
 
-This guide covers the desktop/Python integration API and MQTT features. The web portal has a separate authenticated API; standalone mobile uses MQTT over WebSocket and has no incoming HTTP server. See [platform differences](MULTIPLATAFORMA.md#feature-comparison).
+This guide covers the desktop/Python integration API and MQTT features. The web portal has a separate authenticated API; standalone mobile uses MQTT over WebSocket and has no incoming HTTP server. See [platform differences](MULTIPLATFORM.md#feature-comparison).
 
 ## Local API
 
@@ -32,7 +32,7 @@ Invoke-RestMethod 'http://127.0.0.1:8787/v1/action' -Method Post -Headers $keepe
 
 All actions accept `device_id`; if omitted, they use the selected device. **202** means the command is queued. Check Activity for the send result; acceptance does not confirm its visual appearance. A full queue returns 503. Explicit API/MQTT commands can run with automatic updates disabled; notices still require a powered-on screen with a restorable image or widget.
 
-The portal's `POST /api/action` uses a different request shape and job endpoint; see [server API details](MULTIPLATAFORMA.md#server-without-docker).
+The portal's `POST /api/action` uses a different request shape and job endpoint; see [server API details](MULTIPLATFORM.md#server-without-docker).
 
 ## MQTT and Home Assistant
 
@@ -81,7 +81,7 @@ For a sensor widget, choose LibreHardwareMonitor and paste the exact identifier.
 
 Windows reads metadata and artwork from the current exposed media session; both were checked on the development PC. Linux uses MPRIS through optional `playerctl`. Some players do not expose a session, artist or artwork, so only available information is shown. Keeper does not control audio or start playback.
 
-Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATAFORMA.md#feature-comparison).
+Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATFORM.md#feature-comparison).
 
 ## Credentials and backups
 
@@ -95,4 +95,4 @@ The API token and MQTT password are stored in local user settings. Portable expo
 - [Paho MQTT for Python](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
 - [Home Assistant MQTT](https://www.home-assistant.io/integrations/mqtt/).
 
-[README](../README.md) · [Desktop guide](ESCRITORIO.md)
+[README](../README.md) · [Desktop guide](DESKTOP.md)

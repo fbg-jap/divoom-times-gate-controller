@@ -27,25 +27,25 @@ def empty_playlists():
 
 def validate_playlists(playlists):
     if not isinstance(playlists, list) or len(playlists) != 5:
-        raise ValueError("Se necesitan cinco listas de reproducción")
+        raise ValueError("Five playlists are required")
     for playlist in playlists:
         if not isinstance(playlist, dict) or not isinstance(playlist.get("enabled", False), bool):
-            raise ValueError("Lista de reproducción inválida")
+            raise ValueError("Invalid playlist")
         items = playlist.get("items", [])
         if not isinstance(items, list) or len(items) > 50:
-            raise ValueError("Máximo 50 elementos por lista")
+            raise ValueError("Maximum 50 items per playlist")
         if playlist.get("enabled") and not items:
-            raise ValueError("Añade contenido antes de activar la lista")
+            raise ValueError("Add content before enabling the playlist")
         ids = set()
         for item in items:
             if not isinstance(item, dict) or not item.get("id") or item["id"] in ids:
-                raise ValueError("Identificador de elemento inválido")
+                raise ValueError("Invalid item identifier")
             ids.add(item["id"])
             if not 5 <= int(item.get("seconds", 0)) <= 86400:
-                raise ValueError("La duración debe estar entre 5 segundos y 24 horas")
+                raise ValueError("Duration must be between 5 seconds and 24 hours")
             screen = item.get("screen", {})
             if not isinstance(screen, dict) or screen.get("kind") not in PLAYABLE:
-                raise ValueError("Las listas admiten imágenes y widgets; no modos nativos ni listas anidadas")
+                raise ValueError("Playlists support images and widgets; no native modes or nested playlists")
 
 
 def all_screens(data):
@@ -86,15 +86,15 @@ def panorama_canvas(image, fit="cover", position=(.5, .5), zoom=1):
         return ImageOps.pad(image, (640, 128), method=Image.Resampling.LANCZOS, color="black", centering=(x, y))
     if fit == "stretch":
         return image.resize((640, 128), Image.Resampling.LANCZOS)
-    raise ValueError("Ajuste de panorámica desconocido")
+    raise ValueError("Unknown panorama fit")
 
 
 def split_panorama(path, fit="cover", position=(.5, .5), zoom=1):
     if Path(path).stat().st_size > 100 * 1024 * 1024:
-        raise ValueError("La imagen supera 100 MB")
+        raise ValueError("The image exceeds 100 MB")
     with Image.open(path) as source:
         if getattr(source, "is_animated", False):
-            raise ValueError("La panorámica admite imágenes fijas. Elige un PNG o JPG.")
+            raise ValueError("Panorama supports still images. Choose a PNG or JPG.")
         image = ImageOps.exif_transpose(source).convert("RGBA")
         background = Image.new("RGBA", image.size, "black")
         image = Image.alpha_composite(background, image).convert("RGB")

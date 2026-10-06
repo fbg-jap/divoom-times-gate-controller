@@ -364,7 +364,7 @@ class WidgetTests(unittest.TestCase):
         renderer = Renderer(demo=True)
         for kind in ["text", "clock", "pc", "weather", "calendar", "service", "countdown"]:
             with self.subTest(kind=kind):
-                s = slot(kind, text="¡Hola!\n世界", target=(datetime.now()+timedelta(hours=1)).isoformat())
+                s = slot(kind, text="Hello!\n世界", target=(datetime.now()+timedelta(hours=1)).isoformat())
                 image = renderer.render(s)
                 self.assertEqual(image.size, (128, 128))
                 self.assertEqual(image.mode, "RGB")
@@ -377,13 +377,13 @@ class WidgetTests(unittest.TestCase):
         event.add("dtstart", now-timedelta(days=1)+timedelta(hours=1))
         event.add("duration", timedelta(minutes=30))
         event.add("rrule", {"freq": "daily", "count": 5})
-        event.add("summary", "Reunión diaria")
+        event.add("summary", "Daily meeting")
         cal.add_component(event)
         with tempfile.TemporaryDirectory() as root:
             p = Path(root) / "calendar.ics"
             p.write_bytes(cal.to_ical())
             title, when = Providers().calendar(str(p))
-            self.assertEqual(title, "Reunión diaria")
+            self.assertEqual(title, "Daily meeting")
             self.assertEqual(when, (now+timedelta(hours=1)).strftime("%H:%M"))
 
     def test_weather_cached_and_validated(self):

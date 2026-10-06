@@ -38,7 +38,7 @@ export async function waitJob(value, progress = () => {}) {
     progress(job);
     if (job.status === "done") return job.result;
     if (["error", "cancelled"].includes(job.status))
-      throw Error(job.error || "Cancelado");
+      throw Error(job.error || "Cancelled");
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }

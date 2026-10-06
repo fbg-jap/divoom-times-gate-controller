@@ -95,13 +95,25 @@ class UiTests(unittest.TestCase):
         self.assertEqual(saved['screens'][0]['text'], 'original')
         self.assertNotIn(saved['id'], self.engine.paused)
 
+    def test_english_is_default_and_spanish_remains_selectable(self):
+        self.assertEqual(self.window.lang, "en")
+        self.assertEqual([self.window.language.itemData(i) for i in range(self.window.language.count())], ["en", "es"])
+        self.assertEqual(self.window.t("Hola", "Hello"), "Hello")
+        self.store.change(lambda data: data.update(language="es"))
+        spanish = Window(self.store, self.engine, demo=True, tray=False)
+        try:
+            self.assertEqual(spanish.t("Hola", "Hello"), "Hola")
+            self.assertEqual(spanish.language.currentData(), "es")
+        finally:
+            spanish.dirty = False; spanish.quitting = True; spanish.close(); spanish.deleteLater()
+
     def test_solid_color_disables_cycle_and_names_follow_the_zone(self):
         self.drain()
         panel = self.window.lighting
-        self.assertEqual(panel.effects.button(4).text(), 'Respiración')
+        self.assertEqual(panel.effects.button(4).text(), 'Breathing')
         panel.zone.setCurrentIndex(2)
-        self.assertEqual(panel.effects.button(4).text(), 'Pulso')
-        self.assertEqual(panel.effects.button(5).text(), 'Color fijo')
+        self.assertEqual(panel.effects.button(4).text(), 'Pulse')
+        self.assertEqual(panel.effects.button(5).text(), 'Solid color')
         panel.cycle.setChecked(True)
         panel.effects.button(5).click()
         self.assertFalse(panel.cycle.isChecked())
@@ -152,7 +164,7 @@ class UiTests(unittest.TestCase):
         self.assertEqual((saved["url"], saved["news_seconds"]), ("https://example.test/feed", 20))
         playlist = PlaylistDialog(self.window, self.store, 0)
         texts = [a.text() for menu in playlist.findChildren(QMenu) for a in menu.actions()]
-        self.assertTrue(any("Música" in text for text in texts))
+        self.assertTrue(any("Now playing" in text for text in texts))
         playlist.reject()
 
     def test_designer_drag_persists_and_cancel_is_independent(self):
@@ -172,7 +184,7 @@ class UiTests(unittest.TestCase):
     def test_rules_and_integrations_save_without_network_in_demo(self):
         from keeper.extra_ui import RuleDialog
         dialog = RuleDialog(self.window, "alerts")
-        dialog.name.setText("CPU alta"); dialog.text.setPlainText("Revisa el PC")
+        dialog.name.setText("High CPU"); dialog.text.setPlainText("Check the PC")
         dialog.accept()
         self.assertEqual(dialog.rule["metric"], "cpu")
         self.window.integration_panel.api_on.setChecked(True)
@@ -184,10 +196,10 @@ class UiTests(unittest.TestCase):
         self.assertTrue(self.engine.automations.pomodoro.running)
 
     def test_edit_widget_save_and_send(self):
-        self.window.text_content.setPlainText("Hola mundo")
+        self.window.text_content.setPlainText("Hello world")
         self.window.save_send()
         self.drain()
-        self.assertEqual(self.store.get_device()["screens"][0]["text"], "Hola mundo")
+        self.assertEqual(self.store.get_device()["screens"][0]["text"], "Hello world")
         self.assertIn((self.store.get_device()["id"], 0), self.engine.hashes)
         self.assertFalse(self.window.panel_images[0].pixmap().isNull())
 

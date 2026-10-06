@@ -358,7 +358,7 @@ class PanoramaDialog(QDialog):
         self.clip_rotation = QComboBox()
         for degrees in (0, 90, 180, 270):
             self.clip_rotation.addItem(f"{degrees}°", degrees)
-        for label, control in [("Inicio (s)", self.clip_start), ("Duración (s)", self.clip_duration), ("FPS", self.clip_fps), ("Giro", self.clip_rotation)]:
+        for label, control in [("Start (s)", self.clip_start), ("Duration (s)", self.clip_duration), ("FPS", self.clip_fps), ("Rotation", self.clip_rotation)]:
             clip_row.addWidget(QLabel(label)); clip_row.addWidget(control)
         self.clip_start.valueChanged.connect(self.refresh_preview)
         self.clip_duration.valueChanged.connect(self.refresh_preview)
@@ -371,7 +371,7 @@ class PanoramaDialog(QDialog):
         layout.addWidget(self.crop_view)
         controls = QFormLayout()
         self.position_x, self.position_y, self.zoom = QSlider(Qt.Orientation.Horizontal), QSlider(Qt.Orientation.Horizontal), QSlider(Qt.Orientation.Horizontal)
-        for slider, low, high, value, label in [(self.position_x, 0, 1000, 500, "Horizontal"), (self.position_y, 0, 1000, 500, "Vertical"), (self.zoom, 100, 800, 100, "Zoom · 1× a 8×")]:
+        for slider, low, high, value, label in [(self.position_x, 0, 1000, 500, "Horizontal"), (self.position_y, 0, 1000, 500, "Vertical"), (self.zoom, 100, 800, 100, "Zoom · 1× to 8×")]:
             slider.setRange(low, high); slider.setValue(value)
             slider.valueChanged.connect(self.refresh_preview)
             controls.addRow(label, slider)

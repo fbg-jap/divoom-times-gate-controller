@@ -1,6 +1,6 @@
 # Divoom Keeper Studio validation · 2.0 / 2.0.1
 
-**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATAFORMA.md). Local paths below identify development evidence and private backups, not public downloads.
+**Historical report.** See [current validation](RGB-3.1.1.md#validation) and [platform status](MULTIPLATFORM.md). Local paths below identify development evidence and private backups, not public downloads.
 
 Date: September 27, 2026.
 
