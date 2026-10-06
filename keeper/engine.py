@@ -79,9 +79,12 @@ class Engine(threading.Thread):
                 return False
 
     def client(self, device):
-        key = (device["id"], device["ip"])
+        options = {k: device[k] for k in ("port", "local_token") if device.get(k)}
+        key = (device["id"], device["ip"], tuple(sorted(options.items())))
         if key not in self.clients:
-            self.clients[key] = self.client_factory(device["ip"])
+            if "local_token" in options:
+                options["token"] = options.pop("local_token")
+            self.clients[key] = self.client_factory(device["ip"], **options)
         return self.clients[key]
 
     def command(self, d, payload):
