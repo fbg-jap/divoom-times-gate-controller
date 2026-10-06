@@ -107,6 +107,33 @@ class UiTests(unittest.TestCase):
         finally:
             spanish.dirty = False; spanish.quitting = True; spanish.close(); spanish.deleteLater()
 
+    def test_language_notice_shown_once_for_configs_predating_the_flag(self):
+        self.assertTrue(self.store.snapshot()["language_notice_shown"])
+        self.assertFalse(self.store.language_notice)
+        self.assertNotIn("language settings", self.window.statusBar().currentMessage().lower())
+        legacy = self.store.snapshot()
+        del legacy["language_notice_shown"]
+        legacy["language"] = "es"
+        with tempfile.TemporaryDirectory() as other:
+            root = Path(other)
+            (root / "config.json").write_text(__import__("json").dumps(legacy), encoding="utf-8")
+            store = ConfigStore(root, migrate=False)
+            self.assertTrue(store.language_notice)
+            first = Window(store, self.engine, demo=True, tray=False)
+            try:
+                self.assertEqual(first.lang, "es")
+                self.assertIn("idioma", first.statusBar().currentMessage())
+                self.assertTrue(store.snapshot()["language_notice_shown"])
+            finally:
+                first.dirty = False; first.quitting = True; first.close(); first.deleteLater()
+            again = ConfigStore(root, migrate=False)
+            self.assertFalse(again.language_notice)
+            second = Window(again, self.engine, demo=True, tray=False)
+            try:
+                self.assertEqual(second.statusBar().currentMessage(), "")
+            finally:
+                second.dirty = False; second.quitting = True; second.close(); second.deleteLater()
+
     def test_solid_color_disables_cycle_and_names_follow_the_zone(self):
         self.drain()
         panel = self.window.lighting
