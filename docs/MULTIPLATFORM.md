@@ -114,6 +114,22 @@ Build on Linux for the target architecture. The package includes Python/Qt but s
 
 The [verified CI run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) provides a **linux-x86_64** binary artifact. An interactive desktop test on physical Linux hardware remains pending. `linux-source.tar.gz` from `packaging/bundle_universal.py` contains source, not a compiled binary.
 
+### AppImage
+
+CI builds `DivoomKeeperStudio-VERSION-x86_64.AppImage` (artifact **linux-appimage-x86_64**), a single file wrapping the PyInstaller build. It targets a glibc 2.35 baseline (Ubuntu 22.04 and newer).
+
+```sh
+chmod +x DivoomKeeperStudio-*-x86_64.AppImage
+./DivoomKeeperStudio-*-x86_64.AppImage
+```
+
+- Running it needs FUSE 2 (`libfuse2` on Debian/Ubuntu, `fuse-libs` on Fedora). Without it, run `./DivoomKeeperStudio-*.AppImage --appimage-extract-and-run`.
+- On X11, Qt needs `libxcb-cursor0` (`xcb-util-cursor` on Fedora).
+- The tray icon needs a StatusNotifier host (KDE, or the AppIndicator extension on GNOME); without one, closing the window exits the program.
+- Data stays in `~/.local/share/divoom-keeper-studio`, shared with the other Linux builds.
+- Autostart writes `~/.config/autostart/divoom-keeper-studio.desktop` pointing at the AppImage file, so keep it at a stable path.
+- To build locally: `bash build_linux.sh`, then `APPIMAGETOOL=/path/to/appimagetool bash packaging/build_appimage.sh`.
+
 ## Standalone Android
 
 The debug APK includes the interface, conversion, storage and native HTTP transport. Minimum Android version: 7.0 / API 24. It has no embedded server URL and does not require Docker.

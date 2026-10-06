@@ -29,6 +29,7 @@ def main():
     from keeper.ui import Window
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Divoom Keeper Studio")
+    app.setDesktopFileName("divoom-keeper-studio")
     app.setOrganizationName("DivoomKeeperStudio")
     app.setStyle("Fusion")
     # Explicit font loading also makes Qt's offscreen renderer work on Windows.

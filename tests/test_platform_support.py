@@ -30,6 +30,14 @@ class LinuxSupportTests(unittest.TestCase):
             platform.linux_startup(False, root)
             self.assertFalse(entry.exists())
 
+    def test_startup_uses_appimage_path_when_set(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'XDG_CONFIG_HOME': folder, 'APPIMAGE': '/opt/My Apps/Divoom$Keeper.AppImage'}):
+            root = Path(folder) / 'data'
+            platform.linux_startup(True, root)
+            text = (Path(folder) / 'autostart/divoom-keeper-studio.desktop').read_text(encoding='utf-8')
+            self.assertIn('Exec="/opt/My Apps/Divoom\\$Keeper.AppImage" "--minimized" "--config-dir"', text)
+            self.assertNotIn('app.py', text)
+
     def test_optional_session_sources_report_absence(self):
         with patch.object(platform.shutil, 'which', return_value=None):
             self.assertIsNone(platform.linux_locked())
