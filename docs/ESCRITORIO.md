@@ -7,7 +7,7 @@ The Windows/Linux desktop interface supports English and Spanish. Select English
 ## Getting started
 
 1. Exit the original app from its tray before enabling Studio transfers. Two controllers can overwrite each other's content.
-2. In **Device**, review the imported IP or use LAN discovery. Divoom discovery is a separate option that contacts its servers and can obtain the MAC address and DeviceId.
+2. In **Device**, review the imported IP or use LAN discovery. If the device shows as offline, enter the **Local token** from the Divoom app (device settings) and leave **Port** empty; Keeper tries port 80, then port 9000, and remembers the one that answers. Divoom discovery is a separate option that contacts its servers and can obtain the MAC address and DeviceId.
 3. In **Screens**, select a card, choose content and click **Save and send**. Switching screens saves valid pending edits.
 4. Enable automatic updates to maintain images and widgets. This is configured per device; several devices can run at the same time.
 5. Save layouts in **Scenes** and add rotation or schedules as needed.
