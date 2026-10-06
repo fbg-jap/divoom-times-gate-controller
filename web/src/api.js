@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { Capacitor } from "@capacitor/core";
 export const native = Capacitor.isNativePlatform();
 let adapter;
@@ -38,7 +39,7 @@ export async function waitJob(value, progress = () => {}) {
     progress(job);
     if (job.status === "done") return job.result;
     if (["error", "cancelled"].includes(job.status))
-      throw Error(job.error || "Cancelled");
+      throw Error(job.error || t("api.cancelled"));
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }

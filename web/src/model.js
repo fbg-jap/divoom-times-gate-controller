@@ -1,4 +1,5 @@
 import {validateLighting} from './colors.js';
+import {t,lazy} from "./i18n.js";
 export const id = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) =>
     b.toString(16).padStart(2, "0"),
@@ -78,24 +79,24 @@ export function defaults() {
     },
   };
 }
-export const kinds = {
-  empty: "Unmanaged",
-  media: "Image / GIF",
-  text: "Text",
-  clock: "Clock",
-  pc: "PC monitor",
-  weather: "Weather",
-  countdown: "Countdown",
-  service: "Service status",
-  calendar: "ICS calendar",
-  music: "Music",
-  rss: "RSS news",
-  custom: "Design",
+export const kinds = lazy({
+  empty: "model.unmanaged",
+  media: "model.image_gif",
+  text: "model.text",
+  clock: "model.clock",
+  pc: "model.pc_monitor",
+  weather: "model.weather",
+  countdown: "model.countdown",
+  service: "model.service_status",
+  calendar: "model.ics_calendar",
+  music: "model.music",
+  rss: "model.rss_news",
+  custom: "model.design",
   pomodoro: "Pomodoro",
   sensor: "Sensor",
-  native: "Native unmanaged",
-  pc_native: "Experimental native PC",
-};
+  native: "model.native_unmanaged",
+  pc_native: "model.experimental_native_pc",
+});
 export function normalize(value) {
   const cfg = { ...defaults(), ...copy(value) };
   cfg.integrations = { ...defaults().integrations, ...cfg.integrations };
@@ -128,16 +129,16 @@ export const allScreens = (cfg) =>
   ]);
 export const assets = (cfg) =>
   allScreens(cfg).flatMap((s) => [s, ...(s.elements || [])]);
-export const metrics = {
+export const metrics = lazy({
   cpu: "CPU %",
   ram: "RAM %",
   gpu: "GPU %",
-  disk: "Disk %",
+  disk: "model.disk",
   cpu_temp: "CPU °C",
   gpu_temp: "GPU °C",
-  download: "Download B/s",
-  upload: "Upload B/s",
-};
+  download: "model.download_b_s",
+  upload: "model.upload_b_s",
+});
 // Hardware 400 serves POST /post on port 80; hardware 402 serves POST /divoom_api on port 9000.
 export const ENDPOINTS = [
   [80, "/post"],
@@ -163,22 +164,22 @@ export function validIp(ip) {
       (parts[0] === "172" && +parts[1] >= 16 && +parts[1] <= 31)
     )
   )
-    throw Error("Enter a private IPv4 address for the Times Gate");
+    throw Error(t("model.enter_a_private_ipv4_address"));
   return parts.map(Number).join(".");
 }
 export function validate(cfg) {
   if (cfg.version !== 2 || !cfg.devices?.length || cfg.devices.length > 30)
-    throw Error("Unsupported configuration");
+    throw Error(t("model.unsupported_configuration"));
   const ids = new Set(cfg.devices.map((d) => d.id)),
     scenes = new Set(cfg.scenes.map((s) => s.id));
   if (ids.size !== cfg.devices.length || !ids.has(cfg.active_device))
-    throw Error("Invalid device");
+    throw Error(t("model.invalid_device"));
   for (const d of cfg.devices) {
     if(d.lighting)validateLighting(d.lighting);
     if (d.ip) validIp(d.ip);
     if (!Number.isInteger(+d.port) || +d.port < 0 || +d.port > 65535)
-      throw Error("Port must be between 0 and 65535");
-    if (d.screens.length !== 5) throw Error("Five screens are required");
+      throw Error(t("model.port_range"));
+    if (d.screens.length !== 5) throw Error(t("model.five_screens"));
     if (
       !Number.isInteger(+d.quality) ||
       +d.quality < 30 ||
@@ -187,30 +188,30 @@ export function validate(cfg) {
       +d.speed < 1 ||
       +d.speed > 60000
     )
-      throw Error("Invalid quality or speed");
+      throw Error(t("model.invalid_quality_or_speed"));
   }
   for (const owner of [...cfg.devices, ...cfg.scenes])
     if (owner.screens.length !== 5 || owner.playlists?.length !== 5)
-      throw Error("Five screens and five playlists are required");
+      throw Error(t("model.five_screens_and_five_playlists"));
   for (const s of allScreens(cfg)) {
-    if (!kinds[s.kind]) throw Error("Unknown content");
+    if (!kinds[s.kind]) throw Error(t("model.unknown_content"));
     if (
       !(+s.refresh >= 5 && +s.refresh <= 86400) ||
       !(+s.frame_step >= 1 && +s.frame_step <= 100)
     )
-      throw Error("Invalid interval");
-    if (s.elements?.length > 20) throw Error("Maximum 20 design elements");
+      throw Error(t("model.invalid_interval"));
+    if (s.elements?.length > 20) throw Error(t("model.maximum_20_design_elements"));
   }
   for (const owner of [...cfg.devices, ...cfg.scenes])
     for (const list of owner.playlists || lists()) {
       if (list.items.length > 50 || (list.enabled && !list.items.length))
-        throw Error("Playlist empty or too long");
+        throw Error(t("model.playlist_empty_or_too_long"));
       for (const item of list.items)
         if (
           !(item.seconds >= 5 && item.seconds <= 86400) ||
           ["empty", "native", "pc_native"].includes(item.screen.kind)
         )
-          throw Error("Invalid playlist item");
+          throw Error(t("model.invalid_playlist_item"));
     }
   for (const rule of cfg.schedules)
     if (
@@ -218,20 +219,20 @@ export function validate(cfg) {
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(rule.time) ||
       (rule.action === "scene" && !scenes.has(rule.value))
     )
-      throw Error("Invalid schedule");
+      throw Error(t("model.invalid_schedule"));
   for (const group of ["alerts", "reminders", "profiles"])
     for (const rule of cfg[group] || []) {
       if (
         !ids.has(rule.device_id) ||
         (group === "profiles" && !scenes.has(rule.scene_id))
       )
-        throw Error("Invalid rule target");
+        throw Error(t("model.invalid_rule_target"));
       if (
         group !== "profiles" &&
         (!rule.text ||
           !(rule.panel >= 0 && rule.panel <= 4) ||
           !(rule.seconds >= 5 && rule.seconds <= 300))
       )
-        throw Error("Invalid alert");
+        throw Error(t("model.invalid_alert"));
     }
 }

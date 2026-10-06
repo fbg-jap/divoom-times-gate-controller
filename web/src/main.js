@@ -1,4 +1,5 @@
 import "./style.css";
+import {t,lazy,setLanguage,languages} from "./i18n.js";
 import {colorControl,lightingDefaults,lightingPayload,moods} from './colors.js';
 import {
   init,
@@ -35,18 +36,18 @@ let state,
   previewTimer,
   editing = null,
   pano = null;
-const names = {
-  screens: "Screens",
-  panorama: "Panorama",
-  scenes: "Scenes",
-  device: "Device",
-  lighting: "RGB lighting",
-  tools: "Tools",
-  automation: "Automations",
-  integrations: "Integrations",
-  backup: "Backups and settings",
-  activity: "Activity",
-};
+const names = lazy({
+  screens: "ui.screens",
+  panorama: "ui.panorama",
+  scenes: "ui.scenes",
+  device: "ui.device",
+  lighting: "ui.rgb_lighting",
+  tools: "ui.tools",
+  automation: "ui.automations",
+  integrations: "ui.integrations",
+  backup: "ui.backups_and_settings",
+  activity: "ui.activity",
+});
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -92,7 +93,7 @@ async function run(fn) {
 function mark() {
   dirty = true;
   const label = $("#save-state");
-  if (label) label.textContent = "Unsaved changes";
+  if (label) label.textContent = t("ui.unsaved_changes");
 }
 function field(obj, key, label, type = "text", options) {
   if(type==='color')return colorControl(obj[key],label,value=>{obj[key]=value;mark();});
@@ -137,6 +138,7 @@ const d = () => cfg.devices.find((d) => d.id === cfg.active_device);
 async function load() {
   state = await request("/state");
   cfg = normalize(state.config);
+  setLanguage(cfg.language);
   revision = state.revision;
   dirty = false;
 }
@@ -145,7 +147,7 @@ async function save() {
   await waitJob(result);
   await load();
   render();
-  toast("Configuration saved");
+  toast(t("ui.configuration_saved"));
 }
 async function action(name, deviceId, args = {}) {
   if (dirty) await save();
@@ -162,7 +164,7 @@ async function saveAndSend(panel) {
   await save();
   await action("send", d().id, panel == null ? {} : { panel });
   render();
-  toast("Send complete");
+  toast(t("ui.send_complete"));
 }
 async function showImage(img, path) {
   const capture = version;
@@ -173,7 +175,7 @@ async function showImage(img, path) {
     urls.push(url);
     img.src = url;
   } catch {
-    img.alt = "File unavailable";
+    img.alt = t("ui.file_unavailable");
   }
 }
 async function preview(img, deviceId, panel) {
@@ -194,7 +196,7 @@ async function preview(img, deviceId, panel) {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (!blob.size) {
-      img.alt = "Preview pending";
+      img.alt = t("ui.preview_pending");
       return;
     }
     const old = img.getAttribute("src");
@@ -207,7 +209,7 @@ async function preview(img, deviceId, panel) {
     urls.push(url);
     img.src = url;
   } catch {
-    img.alt = "Preview unavailable";
+    img.alt = t("ui.preview_unavailable");
   } finally {
     delete img.dataset.loading;
   }
@@ -239,7 +241,7 @@ async function download(blob, name) {
       data,
       directory: Directory.Cache,
     });
-    await Share.share({ title: "Keeper backup", url: result.uri });
+    await Share.share({ title: t("ui.keeper_backup"), url: result.uri });
     return;
   }
   const url = URL.createObjectURL(blob),
@@ -252,7 +254,7 @@ async function download(blob, name) {
 function fileField(
   obj,
   key,
-  label = "File",
+  label = t("ui.file"),
   accept = ".png,.jpg,.jpeg,.gif,.webp,.bmp",
 ) {
   const out = el(
@@ -261,7 +263,7 @@ function fileField(
     hint(
       obj[key]
         ? obj[key].replaceAll("\\", "/").split("/").pop()
-        : "No file",
+        : t("ui.no_file"),
     ),
     button(label, () =>
       chooseFile(accept, async (file) => {
@@ -296,11 +298,11 @@ function render() {
       "div",
       { class: "badge" },
       state.capabilities.mode === "mobile"
-        ? "STANDALONE MOBILE · " + (state.capabilities.demo ? "DEMO" : "LOCAL NETWORK")
-        : "WEB PORTAL · " + (state.capabilities.demo ? "DEMO" : "SERVER"),
+        ? t("ui.standalone_mobile") + (state.capabilities.demo ? "DEMO" : t("ui.local_network"))
+        : t("ui.web_portal") + (state.capabilities.demo ? "DEMO" : t("ui.server")),
     ),
   );
-  const nav = el("nav", { "aria-label": "Sections" });
+  const nav = el("nav", { "aria-label": t("ui.sections") });
   for (const [key, title] of Object.entries(names))
     nav.append(
       button(
@@ -318,7 +320,7 @@ function render() {
     selector = field(
       cfg,
       "active_device",
-      "Device",
+      t("ui.device"),
       "select",
       deviceOptions(),
     );
@@ -337,13 +339,13 @@ function render() {
         el(
           "div",
           { class: "status", id: "save-state" },
-          page==='lighting' ? 'Adjust the preview and apply it to the device' : dirty ? "Unsaved changes" : "Configuration saved",
+          page==='lighting' ? t("ui.adjust_the_preview_and_apply") : dirty ? t("ui.unsaved_changes") : t("ui.configuration_saved"),
         ),
       ),
       row(
         selector,
         page==='lighting' ? null : button(
-          "Save",
+          t("ui.save"),
           async () => {
             await save();
             render();
@@ -356,7 +358,7 @@ function render() {
   if (!state.capabilities.continuous)
     main.append(
       banner(
-        "Direct control of the Times Gate. Keep the app active for playlists, widgets, schedules and alerts. GIFs already sent keep playing on the device.",
+        t("ui.direct_control_of_the_times"),
       ),
     );
   const pages = {
@@ -377,7 +379,7 @@ function render() {
 function screenPage(main) {
   const panels = el("div", { class: "panels" });
   d().screens.forEach((s, i) => {
-    const img = el("img", { alt: `Screen ${i + 1} preview` });
+    const img = el("img", { alt: t("ui.screen_0_preview",[i + 1]) });
     const list = d().playlists?.[i];
     const tile = el(
       "button",
@@ -395,7 +397,7 @@ function screenPage(main) {
         "span",
         {},
         list?.enabled
-          ? "List · " + list.items.length
+          ? t("ui.list") + list.items.length
           : s.title || kinds[s.kind],
       ),
     );
@@ -406,12 +408,12 @@ function screenPage(main) {
   main.append(panels);
   main.append(
     card(
-      "Screen " + (selected + 1),
+      t("ui.screen") + (selected + 1),
       contentForm(d().screens[selected]),
       row(
-        button("Save and send", () => saveAndSend(selected), "primary"),
-        button("Send all five", () => saveAndSend()),
-        button("Panorama", () => {
+        button(t("ui.save_and_send"), () => saveAndSend(selected), "primary"),
+        button(t("ui.send_all_five"), () => saveAndSend()),
+        button(t("ui.panorama"), () => {
           page = "panorama";
           render();
         }),
@@ -420,10 +422,10 @@ function screenPage(main) {
   );
   const list = d().playlists[selected];
   const box = card(
-    "Playlist",
-    field(list, "enabled", "Use this list", "checkbox"),
+    t("ui.playlist"),
+    field(list, "enabled", t("ui.use_this_list"), "checkbox"),
     hint(
-      "From 5 seconds to 24 hours per item. The next change starts counting when its send finishes.",
+      t("ui.from_5_seconds_to_24"),
     ),
   );
   list.items.forEach((item, index) => {
@@ -436,7 +438,7 @@ function screenPage(main) {
           {},
           `${index + 1}. ${item.screen.title || kinds[item.screen.kind]}`,
         ),
-        button("Edit", () => {
+        button(t("ui.edit"), () => {
           editing = editing === item.id ? null : item.id;
           render();
         }),
@@ -461,7 +463,7 @@ function screenPage(main) {
           }
         }),
         button(
-          "Delete",
+          t("ui.delete"),
           () => {
             list.items.splice(index, 1);
             if (!list.items.length) list.enabled = false;
@@ -471,25 +473,25 @@ function screenPage(main) {
           "danger",
         ),
       ),
-      numeric(item, "seconds", "Duration (seconds)", 5, 86400),
+      numeric(item, "seconds", t("ui.duration_seconds"), 5, 86400),
     );
     if (editing === item.id) itemBox.append(contentForm(item.screen, true));
     box.append(itemBox);
   });
   box.append(
     row(
-      button("Add widget", () => {
+      button(t("ui.add_widget"), () => {
         const item = { id: id(), seconds: 15, screen: screen("clock") };
         list.items.push(item);
         editing = item.id;
         mark();
         render();
       }),
-      button("Copy current screen", () => {
+      button(t("ui.copy_current_screen"), () => {
         if (
           ["empty", "native", "pc_native"].includes(d().screens[selected].kind)
         )
-          throw Error("Choose an image or widget");
+          throw Error(t("ui.choose_an_image_or_widget"));
         list.items.push({
           id: id(),
           seconds: 15,
@@ -509,41 +511,41 @@ function contentForm(s, inList = false) {
         ([k]) => !inList || !["empty", "native", "pc_native"].includes(k),
       ),
     );
-  const kind = field(s, "kind", "Content", "select", options);
+  const kind = field(s, "kind", t("ui.content"), "select", options);
   kind.querySelector("select").onchange = () => {
     mark();
     render();
   };
   form.append(kind);
   if (["empty", "native"].includes(s.kind)) {
-    form.append(hint("Keeper will not replace the content of this screen."));
+    form.append(hint(t("ui.keeper_will_not_replace_the")));
     return form;
   }
   const grid = el(
     "div",
     { class: "grid" },
-    field(s, "title", "Title"),
-    numeric(s, "refresh", "Refresh every (seconds)", 5, 86400),
+    field(s, "title", t("ui.title")),
+    numeric(s, "refresh", t("ui.refresh_every_seconds"), 5, 86400),
   );
   form.append(grid);
   if (s.kind === "media") {
     form.append(
-      fileField(s, "path", "Choose image or GIF"),
+      fileField(s, "path", t("ui.choose_image_or_gif")),
       el(
         "div",
         { class: "grid" },
-        field(s, "fit", "Fit", "select", {
-          contain: "Contain",
-          cover: "Crop",
-          stretch: "Stretch",
+        field(s, "fit", t("ui.fit"), "select", {
+          contain: t("ui.contain"),
+          cover: t("ui.crop"),
+          stretch: t("ui.stretch"),
         }),
-        numeric(s, "frame_step", "Frame step", 1, 100),
+        numeric(s, "frame_step", t("ui.frame_step"), 1, 100),
       ),
     );
     if (s.panorama_speed)
       form.append(
         hint(
-          "Panorama part: keeps its own speed (" +
+          t("ui.panorama_part_keeps_its_own") +
             s.panorama_speed +
             " ms).",
         ),
@@ -551,28 +553,28 @@ function contentForm(s, inList = false) {
   }
   if (s.kind === "text")
     form.append(
-      field(s, "text", "Text", "textarea"),
-      numeric(s, "font_size", "Font size", 8, 64),
+      field(s, "text", t("ui.text"), "textarea"),
+      numeric(s, "font_size", t("ui.font_size"), 8, 64),
     );
   if (s.kind === "clock")
-    form.append(field(s, "timezone", "Time zone (e.g. Europe/Madrid)"));
+    form.append(field(s, "timezone", t("ui.time_zone_e_g_europe")));
   if (s.kind === "weather")
     form.append(
       el(
         "div",
         { class: "grid" },
-        numeric(s, "latitude", "Latitude", -90, 90, 0.0001),
-        numeric(s, "longitude", "Longitude", -180, 180, 0.0001),
+        numeric(s, "latitude", t("ui.latitude"), -90, 90, 0.0001),
+        numeric(s, "longitude", t("ui.longitude"), -180, 180, 0.0001),
       ),
     );
   if (s.kind === "countdown")
-    form.append(field(s, "target", "Date and time", "datetime-local"));
+    form.append(field(s, "target", t("ui.date_and_time"), "datetime-local"));
   if (["service", "rss"].includes(s.kind))
     form.append(
       field(
         s,
         "url",
-        s.kind === "rss" ? "RSS / Atom URL" : "Service URL",
+        s.kind === "rss" ? t("ui.rss_atom_url") : t("ui.service_url"),
         "url",
       ),
     );
@@ -583,21 +585,21 @@ function contentForm(s, inList = false) {
       el(
         "div",
         { class: "grid" },
-        numeric(s, "news_seconds", "Seconds per headline", 5, 3600),
-        numeric(s, "news_size", "Font size", 8, 28),
+        numeric(s, "news_seconds", t("ui.seconds_per_headline"), 5, 3600),
+        numeric(s, "news_size", t("ui.font_size"), 8, 28),
       ),
     );
   }
   if (s.kind === "calendar")
     form.append(
-      fileField(s, "path", "Import ICS calendar", ".ics"),
+      fileField(s, "path", t("ui.import_ics_calendar"), ".ics"),
       field(
         s,
         "url",
-        "Or calendar URL (clear the file to use it)",
+        t("ui.or_calendar_url_clear_the"),
         "url",
       ),
-      button("Use URL", () => {
+      button(t("ui.use_url"), () => {
         s.path = "";
         mark();
         render();
@@ -606,21 +608,21 @@ function contentForm(s, inList = false) {
   if (s.kind === "pc")
     form.append(
       banner(state.capabilities.metrics_label, !state.capabilities.pc),
-      field(s, "pc_view", "View", "select", {
+      field(s, "pc_view", t("ui.view"), "select", {
         usage: "CPU / RAM / GPU",
-        history: "Graphs",
-        network: "Network",
-        temperature: "Temperatures",
-        storage: "Disk",
+        history: t("ui.graphs"),
+        network: t("ui.network"),
+        temperature: t("ui.temperatures"),
+        storage: t("ui.disk"),
       }),
-      field(s, "pc_disk", "Disk path (empty = main)"),
+      field(s, "pc_disk", t("ui.disk_path_empty_main")),
     );
   if (s.kind === "music")
     form.append(
       hint(
         state.capabilities.music
-          ? "Reads the media session of the host machine; on Linux it needs playerctl and an MPRIS session."
-          : "Music from other apps on the phone cannot be read here.",
+          ? t("ui.reads_the_media_session_of")
+          : t("ui.music_from_other_apps_on"),
       ),
     );
   if (s.kind === "sensor") {
@@ -630,22 +632,22 @@ function contentForm(s, inList = false) {
       field(
         s,
         "sensor_source",
-        "Source",
+        t("ui.source"),
         "select",
         state.capabilities.mode === "mobile"
           ? { http: "HTTP JSON", mqtt: "MQTT WebSocket" }
           : { mqtt: "MQTT", hardware: "Hardware" },
       ),
-      field(s, "sensor_key", "HTTP URL, MQTT topic or identifier"),
-      field(s, "sensor_field", "JSON path (e.g. cpu.temperature)"),
-      field(s, "sensor_unit", "Unit"),
-      numeric(s, "sensor_stale", "Expiry (seconds)", 10, 86400),
+      field(s, "sensor_key", t("ui.http_url_mqtt_topic_or")),
+      field(s, "sensor_field", t("ui.json_path_e_g_cpu")),
+      field(s, "sensor_unit", t("ui.unit")),
+      numeric(s, "sensor_stale", t("ui.expiry_seconds"), 10, 86400),
     );
   }
   if (s.kind === "pomodoro")
     form.append(
       hint(
-        "Start, pause or reset the shared session in Automations.",
+        t("ui.start_pause_or_reset_the"),
       ),
     );
   if (s.kind === "custom") {
@@ -655,14 +657,14 @@ function contentForm(s, inList = false) {
   if (s.kind === "pc_native") {
     form.append(
       banner(
-        "Experimental: first select PC Monitor in the Divoom app. Group 0 is not allowed. Mobile has no PC metrics.",
+        t("ui.experimental_first_select_pc_monitor"),
         true,
       ),
-      field(s, "native_pc_mode", "Mode", "select", {
-        existing: "Send data to the already selected monitor",
-        activate: "Activate with known group",
+      field(s, "native_pc_mode", t("ui.mode"), "select", {
+        existing: t("ui.send_data_to_the_already"),
+        activate: t("ui.activate_with_known_group"),
       }),
-      numeric(s, "independence", "Valid native group", 1, 100000000),
+      numeric(s, "independence", t("ui.valid_native_group"), 1, 100000000),
     );
   }
   form.append(
@@ -670,7 +672,7 @@ function contentForm(s, inList = false) {
       "div",
       { class: "grid" },
       field(s, "color", "Color", "color"),
-      field(s, "background", "Background", "color"),
+      field(s, "background", t("ui.background"), "color"),
     ),
   );
   return form;
@@ -696,7 +698,7 @@ function designer(s) {
           ? e.text
           : e.type === "bar"
             ? ""
-            : el("span", {}, "Image"),
+            : el("span", {}, t("ui.image")),
       );
       if (e.type === "image" && e.path) {
         const img = el("img", {
@@ -745,9 +747,9 @@ function designer(s) {
     for (const [key, label, min, max] of [
       ["x", "X", 0, 127],
       ["y", "Y", 0, 127],
-      ["width", "Width", 1, 128],
-      ["height", "Height", 1, 128],
-      ["size", "Font", 6, 64],
+      ["width", t("ui.width"), 1, 128],
+      ["height", t("ui.height"), 1, 128],
+      ["size", t("ui.font"), 6, 64],
     ]) {
       const f = numeric(e, key, label, min, max);
       f.addEventListener("input", paint);
@@ -755,22 +757,22 @@ function designer(s) {
     }
     options.append(grid);
     if (e.type === "text") {
-      const f = field(e, "text", "Text · {time}, {date}, {cpu}…", "textarea");
+      const f = field(e, "text", t("ui.text_time_date_cpu"), "textarea");
       f.addEventListener("input", paint);
       options.append(f);
     }
     if (e.type === "image") options.append(fileField(e, "path"));
     if (e.type === "bar")
       options.append(
-        field(e, "metric", "Metric", "select", metrics),
-        numeric(e, "maximum", "Maximum value", 1, 1000000),
+        field(e, "metric", t("ui.metric"), "select", metrics),
+        numeric(e, "maximum", t("ui.maximum_value"), 1, 1000000),
       );
     const color = field(e, "color", "Color", "color");
     color.addEventListener("input", paint);
     options.append(
       color,
       row(
-        button("Raise layer", () => {
+        button(t("ui.raise_layer"), () => {
           if (chosen < s.elements.length - 1) {
             [s.elements[chosen], s.elements[chosen + 1]] = [
               s.elements[chosen + 1],
@@ -783,7 +785,7 @@ function designer(s) {
           }
         }),
         button(
-          "Delete element",
+          t("ui.delete_element"),
           () => {
             s.elements.splice(chosen, 1);
             chosen = Math.max(0, chosen - 1);
@@ -801,9 +803,9 @@ function designer(s) {
     row(
       ...["text", "image", "bar"].map((type) =>
         button(
-          "Add " + { text: "text", image: "image", bar: "bar" }[type],
+          t("ui.add") + { text: t("ui.text_2"), image: t("ui.image_2"), bar: t("ui.bar") }[type],
           () => {
-            if (s.elements.length >= 20) throw Error("Maximum 20 elements");
+            if (s.elements.length >= 20) throw Error(t("ui.maximum_20_elements"));
             s.elements.push({
               type,
               x: 8,
@@ -812,7 +814,7 @@ function designer(s) {
               height: type === "bar" ? 12 : 30,
               size: 16,
               color: "#64e6ca",
-              text: "New text",
+              text: t("ui.new_text"),
               metric: "cpu",
               maximum: 100,
             });
@@ -825,7 +827,7 @@ function designer(s) {
       ),
     ),
     hint(
-      "Drag the elements. The design view uses sample values; the content sent uses the available sources.",
+      t("ui.drag_the_elements_the_design"),
     ),
   );
   paint();
@@ -850,7 +852,7 @@ function panoramaPage(main) {
   const p = pano,
     preview = el("canvas", {
       class: "wide-preview",
-      "aria-label": "Panorama preview",
+      "aria-label": t("ui.panorama_preview"),
       width: 640,
       height: 128,
     }),
@@ -859,7 +861,7 @@ function panoramaPage(main) {
       class: "crosshair",
       style: `left:${p.x * 100}%;top:${p.y * 100}%`,
     }),
-    message = hint("Select a file and prepare the preview.");
+    message = hint(t("ui.select_a_file_and_prepare"));
   let generation = p.generation;
   let previewFrames = [],
     frameIndex = 0;
@@ -868,18 +870,18 @@ function panoramaPage(main) {
     min: 0,
     max: 0,
     value: 0,
-    "aria-label": "Preview frame",
+    "aria-label": t("ui.preview_frame"),
   });
   const paintFrame = () => {
     if (previewFrames.length)
       preview.getContext("2d").drawImage(previewFrames[frameIndex], 0, 0);
     seek.value = frameIndex;
   };
-  const play = button("Pause preview", () => {
+  const play = button(t("ui.pause_preview"), () => {
     if (previewTimer) {
       clearInterval(previewTimer);
       previewTimer = null;
-      play.textContent = "Play preview";
+      play.textContent = t("ui.play_preview");
     } else startPreview();
   });
   function startPreview() {
@@ -893,7 +895,7 @@ function panoramaPage(main) {
       },
       1000 / (+p.fps || 5),
     );
-    play.textContent = "Pause preview";
+    play.textContent = t("ui.pause_preview");
   }
   seek.oninput = () => {
     frameIndex = +seek.value;
@@ -937,8 +939,8 @@ function panoramaPage(main) {
     ["x", "Horizontal", 0, 1, 0.01],
     ["y", "Vertical", 0, 1, 0.01],
     ["zoom", "Zoom", 1, 8, 0.1],
-    ["start", "Start (s)", 0, 86400, 0.1],
-    ["duration", "Duration (s)", 0.1, 30, 0.1],
+    ["start", t("ui.start_s"), 0, 86400, 0.1],
+    ["duration", t("ui.duration_s"), 0.1, 30, 0.1],
   ]) {
     const f = numeric(p, key, label, min, max, step);
     f.addEventListener("input", () => {
@@ -957,12 +959,12 @@ function panoramaPage(main) {
       5: "5",
       10: "10",
     }),
-    fit = field(p, "fit", "Fit", "select", {
-      cover: "Crop",
-      contain: "Contain",
-      stretch: "Stretch",
+    fit = field(p, "fit", t("ui.fit"), "select", {
+      cover: t("ui.crop"),
+      contain: t("ui.contain"),
+      stretch: t("ui.stretch"),
     }),
-    rotation = field(p, "rotation", "Rotation", "select", {
+    rotation = field(p, "rotation", t("ui.rotation"), "select", {
       0: "0°",
       90: "90°",
       180: "180°",
@@ -994,16 +996,16 @@ function panoramaPage(main) {
     source.onpointerup = () => (source.onpointermove = null);
   };
   const apply = button(
-    "Apply and send",
+    t("ui.apply_and_send"),
     async () => {
-      if (!p.result) throw Error("Prepare the preview first");
+      if (!p.result) throw Error(t("ui.prepare_the_preview_first"));
       cfg.scenes.push({
         id: id(),
-        name: "Before panorama · " + new Date().toLocaleString(),
+        name: t("ui.before_panorama") + new Date().toLocaleString(),
         ...composition(d()),
       });
       d().screens = copy(p.result.screens);
-      d().screens.forEach((s, i) => (s.title = "Panorama · " + (i + 1)));
+      d().screens.forEach((s, i) => (s.title = t("ui.panorama_2") + (i + 1)));
       d().playlists.forEach((l) => (l.enabled = false));
       mark();
       await saveAndSend();
@@ -1011,13 +1013,13 @@ function panoramaPage(main) {
     "primary",
   );
   apply.disabled = !p.result;
-  const prepare = button("Prepare preview", async () => {
-    if (!p.path) throw Error("Choose a file");
+  const prepare = button(t("ui.prepare_preview"), async () => {
+    if (!p.path) throw Error(t("ui.choose_a_file"));
     prepare.disabled = true;
     apply.disabled = true;
     generation = ++p.generation;
     try {
-      message.textContent = "Converting…";
+      message.textContent = t("ui.converting");
       const job = await request("/panorama", "POST", {
         path: p.path,
         fit: p.fit,
@@ -1034,16 +1036,16 @@ function panoramaPage(main) {
       p.result = result;
       await loadPreview(result);
       apply.disabled = false;
-      message.textContent = `${result.count} frames · ${result.duration.toFixed(2)} s · minimum upload time ${(result.count * 0.5).toFixed(0)} s, usually longer.`;
+      message.textContent = t("ui.0_frames_1_s_minimum",[result.count,result.duration.toFixed(2),(result.count * 0.5).toFixed(0)]);
     } finally {
       prepare.disabled = false;
     }
   });
   main.append(
     card(
-      "One composition, five screens",
+      t("ui.one_composition_five_screens"),
       row(
-        button("Choose image, GIF or video", () =>
+        button(t("ui.choose_image_gif_or_video"), () =>
           chooseFile(
             ".png,.jpg,.jpeg,.gif,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,.m4v",
             async (file) => {
@@ -1054,7 +1056,7 @@ function panoramaPage(main) {
             },
           ),
         ),
-        button("Center", () => {
+        button(t("ui.center"), () => {
           p.x = p.y = 0.5;
           p.zoom = 1;
           p.result = null;
@@ -1065,20 +1067,20 @@ function panoramaPage(main) {
       hint(
         p.path
           ? p.path.split(/[\\/]/).pop()
-          : "Up to 100 MB. Video without audio. On mobile, codecs supported by the phone.",
+          : t("ui.up_to_100_mb_video"),
       ),
       source,
       hint(
-        "Click or drag to choose the area; fine-tune with Horizontal, Vertical and Zoom.",
+        t("ui.click_or_drag_to_choose"),
       ),
       controls,
       row(
         prepare,
-        button("Cancel conversion", async () => {
+        button(t("ui.cancel_conversion"), async () => {
           p.generation++;
           p.result = null;
           if (p.job) await request("/jobs/" + p.job + "/cancel", "POST");
-          message.textContent = "Conversion cancelled";
+          message.textContent = t("ui.conversion_cancelled");
         }),
         apply,
       ),
@@ -1086,13 +1088,13 @@ function panoramaPage(main) {
       preview,
       row(play, seek),
       banner(
-        "The five parts are sent one after another: they may drift out of sync even if the preview is synchronized. Maximum 30 seconds and 120 frames per screen.",
+        t("ui.the_five_parts_are_sent"),
         true,
       ),
     ),
   );
   if (p.result) {
-    message.textContent = `${p.result.count} frames · ${p.result.duration.toFixed(2)} s`;
+    message.textContent = t("ui.0_frames_1_s",[p.result.count,p.result.duration.toFixed(2)]);
     run(() => loadPreview(p.result));
   }
 }
@@ -1100,12 +1102,12 @@ function panoramaPage(main) {
 function scenePage(main) {
   main.append(
     card(
-      "Compositions",
+      t("ui.compositions"),
       row(
         button(
-          "Save current composition",
+          t("ui.save_current_composition"),
           () => {
-            const name = prompt("Scene name");
+            const name = prompt(t("ui.scene_name"));
             if (name?.trim()) {
               cfg.scenes.push({
                 id: id(),
@@ -1120,7 +1122,7 @@ function scenePage(main) {
         ),
       ),
       hint(
-        "A scene includes the five screens and their playlists. It is saved with the library files.",
+        t("ui.a_scene_includes_the_five"),
       ),
     ),
   );
@@ -1129,14 +1131,14 @@ function scenePage(main) {
       card(
         scene.name,
         row(
-          button("Apply and send", async () => {
+          button(t("ui.apply_and_send"), async () => {
             await save();
             await action("scene", d().id, { scene_id: scene.id });
             await load();
             render();
           }),
-          button("Rename", () => {
-            const name = prompt("Name", scene.name);
+          button(t("ui.rename"), () => {
+            const name = prompt(t("ui.name"), scene.name);
             if (name?.trim()) {
               scene.name = name.trim();
               mark();
@@ -1144,10 +1146,10 @@ function scenePage(main) {
             }
           }),
           button(
-            "Delete",
+            t("ui.delete"),
             () => {
               if (
-                !confirm("This scene and the rules that use it will be deleted.")
+                !confirm(t("ui.this_scene_and_the_rules"))
               )
                 return;
               cfg.scenes = cfg.scenes.filter((s) => s.id !== scene.id);
@@ -1171,8 +1173,8 @@ function scenePage(main) {
     );
   }
   const rotation = card(
-    "Scene rotation",
-    numeric(d(), "rotation_seconds", "Change every (seconds)", 30, 86400),
+    t("ui.scene_rotation"),
+    numeric(d(), "rotation_seconds", t("ui.change_every_seconds"), 30, 86400),
   );
   cfg.scenes.forEach((s) => {
     const obj = { use: d().rotation.includes(s.id) },
@@ -1190,21 +1192,21 @@ function devicePage(main) {
   const value = d();
   main.append(
     card(
-      "Local connection",
+      t("ui.local_connection"),
       el(
         "div",
         { class: "grid" },
-        field(value, "name", "Name"),
-        field(value, "ip", "Times Gate IP (e.g. 192.168.1.116)"),
+        field(value, "name", t("ui.name")),
+        field(value, "ip", t("ui.times_gate_ip_e_g")),
       ),
-      field(value, "enabled", "Automatic update", "checkbox"),
+      field(value, "enabled", t("ui.automatic_update"), "checkbox"),
       row(
-        button("Save and check", async () => {
+        button(t("ui.save_and_check"), async () => {
           await save();
           await action("health", d().id);
-          toast("Check complete; see Activity");
+          toast(t("ui.check_complete_see_activity"));
         }),
-        button("Scan LAN", async () => {
+        button(t("ui.scan_lan"), async () => {
           await save();
           const result = await action("discover", d().id, {
             seed: d().ip,
@@ -1212,42 +1214,42 @@ function devicePage(main) {
           });
           toast(
             result?.devices
-              ? "Devices: " + JSON.stringify(result.devices)
-              : "See the results in Activity",
+              ? t("ui.devices") + JSON.stringify(result.devices)
+              : t("ui.see_the_results_in_activity"),
           );
         }),
-        button("Discover via Divoom", async () => {
+        button(t("ui.discover_via_divoom"), async () => {
           await save();
           await action("discover", d().id, { cloud: true, seed: d().ip });
-          toast("See the results in Activity");
+          toast(t("ui.see_the_results_in_activity"));
         }),
       ),
       hint(
-        "The phone or server and the Times Gate must be able to communicate over the local network. In Docker you may need to enter the IP: discovery uses the subnet visible from the container.",
+        t("ui.the_phone_or_server_and"),
       ),
     ),
   );
   main.append(
     card(
-      "Send and restore",
+      t("ui.send_and_restore"),
       el(
         "div",
         { class: "grid three" },
-        numeric(value, "quality", "JPEG quality", 30, 100),
-        numeric(value, "speed", "Milliseconds per frame", 1, 60000),
+        numeric(value, "quality", t("ui.jpeg_quality"), 30, 100),
+        numeric(value, "speed", t("ui.milliseconds_per_frame"), 1, 60000),
         numeric(
           value,
           "interval_minutes",
-          "Resend media every (minutes)",
+          t("ui.resend_media_every_minutes"),
           1,
           10080,
         ),
       ),
-      field(value, "suspended", "Pause sending", "checkbox"),
-      field(cfg, "resend_on_startup", "Resend on startup", "checkbox"),
+      field(value, "suspended", t("ui.pause_sending"), "checkbox"),
+      field(cfg, "resend_on_startup", t("ui.resend_on_startup"), "checkbox"),
       row(
         button(
-          "Resume and resend",
+          t("ui.resume_and_resend"),
           async () => {
             await save();
             await action("resume", d().id);
@@ -1256,18 +1258,18 @@ function devicePage(main) {
           },
           "primary",
         ),
-        button("Send all", () => saveAndSend()),
+        button(t("ui.send_all"), () => saveAndSend()),
       ),
       hint(
-        "Panoramic GIFs keep their own speed. Pausing leaves the content already sent on the device.",
+        t("ui.panoramic_gifs_keep_their_own"),
       ),
     ),
   );
   main.append(
     card(
-      "Multiple devices",
+      t("ui.multiple_devices"),
       row(
-        button("Add device", () => {
+        button(t("ui.add_device"), () => {
           const value = device();
           cfg.devices.push(value);
           cfg.active_device = value.id;
@@ -1275,11 +1277,11 @@ function devicePage(main) {
           render();
         }),
         button(
-          "Delete selected",
+          t("ui.delete_selected"),
           () => {
             if (cfg.devices.length === 1)
-              throw Error("Keep at least one device");
-            if (!confirm("Delete this device and its schedules and rules?"))
+              throw Error(t("ui.keep_at_least_one_device"));
+            if (!confirm(t("ui.delete_this_device_and_its")))
               return;
             const did = d().id;
             cfg.devices = cfg.devices.filter((d) => d.id !== did);
@@ -1295,10 +1297,10 @@ function devicePage(main) {
       el(
         "div",
         { class: "grid" },
-        field(value, "mac", "MAC (optional)"),
-        numeric(value, "device_id", "Divoom DeviceId (optional)", 0, 999999999),
-        numeric(value, "port", "Port (0 = auto: 80 or 9000)", 0, 65535),
-        field(value, "local_token", "Local token (from the Divoom app)"),
+        field(value, "mac", t("ui.mac_optional")),
+        numeric(value, "device_id", t("ui.divoom_deviceid_optional"), 0, 999999999),
+        numeric(value, "port", t("ui.port_0_auto"), 0, 65535),
+        field(value, "local_token", t("ui.local_token")),
       ),
     ),
   );
@@ -1308,39 +1310,39 @@ function lightingPage(main) {
   const deviceId=d().id;
   if(!lightingDrafts.has(deviceId))lightingDrafts.set(deviceId,{...lightingDefaults(),...d().lighting});
   const settings=lightingDrafts.get(deviceId);
-  const preview=el('div',{class:'light-device','aria-label':'Color and zone preview of the Times Gate',role:'img'});
+  const preview=el('div',{class:'light-device','aria-label':t("ui.color_and_zone_preview_of"),role:'img'});
   const glow=el('div',{class:'light-back'}),panels=el('div',{class:'light-panels'},...[1,2,3,4,5].map(n=>el('div',{class:'light-screen'},el('span',{},String(n))))),keys=el('div',{class:'light-keys'});
   preview.append(glow,panels,keys);
-  const status=el('p',{class:'hint'},'Approximate view of color, brightness and zones. Animated effects are checked on the Times Gate.');
+  const status=el('p',{class:'hint'},t("ui.approximate_view_of_color_brightness"));
   const draw=()=>{
     preview.style.setProperty('--light',settings.color);preview.style.setProperty('--brightness',settings.on?settings.brightness/100:0);
     preview.classList.toggle('cycling',settings.cycle);preview.classList.toggle('edges',settings.zone!==2);preview.classList.toggle('backlight',settings.zone!==1);preview.classList.toggle('keys-on',settings.keys);
   };
-  const color=colorControl(settings.color,'Lighting color',value=>{settings.color=value;draw();});
-  const brightness=el('input',{type:'range',min:0,max:100,step:1,value:settings.brightness,'aria-label':'RGB brightness'}),percentage=el('output',{},settings.brightness+'%');
+  const color=colorControl(settings.color,t("ui.lighting_color"),value=>{settings.color=value;draw();});
+  const brightness=el('input',{type:'range',min:0,max:100,step:1,value:settings.brightness,'aria-label':t("ui.rgb_brightness")}),percentage=el('output',{},settings.brightness+'%');
   brightness.oninput=()=>{settings.brightness=+brightness.value;percentage.textContent=settings.brightness+'%';draw();};
-  const zones=el('div',{class:'segmented','aria-label':'Lit zone',role:'group'});
-  ['All zones','Edges','Backlight'].forEach((name,index)=>{
+  const zones=el('div',{class:'segmented','aria-label':t("ui.lit_zone"),role:'group'});
+  [t("ui.all_zones"),t("ui.edges"),t("ui.backlight")].forEach((name,index)=>{
     const b=button(name,()=>{settings.zone=index;for(const [i,item] of [...zones.children].entries())item.setAttribute('aria-pressed',String(i===index));draw();});b.setAttribute('aria-pressed',String(index===settings.zone));zones.append(b);
   });
   const switches=el('div',{class:'lighting-switches'});
-  for(const [key,name] of [['on','Lighting on'],['cycle','Multicolor cycle'],['keys','Key light']]){
+  for(const [key,name] of [['on',t("ui.lighting_on")],['cycle',t("ui.multicolor_cycle")],['keys',t("ui.key_light")]]){
     const input=el('input',{type:'checkbox',checked:settings[key]});input.onchange=()=>{settings[key]=input.checked;draw();};switches.append(el('label',{class:'light-toggle'},input,el('span',{},name)));
   }
   const presets=el('div',{class:'mood-grid'});
   moods.forEach(([name,value,level,cycle])=>{
-    const b=button(name,()=>{Object.assign(settings,{color:value,brightness:level,cycle,on:true});render();});b.prepend(el('span',{class:'mood-dot',style:`--swatch:${value}`}));presets.append(b);
+    const b=button(t(name),()=>{Object.assign(settings,{color:value,brightness:level,cycle,on:true});render();});b.prepend(el('span',{class:'mood-dot',style:`--swatch:${value}`}));presets.append(b);
   });
-  const effects=el('div',{class:'effect-grid',role:'group','aria-label':'RGB effects'});
+  const effects=el('div',{class:'effect-grid',role:'group','aria-label':t("ui.rgb_effects")});
   for(let i=0;i<12;i++){
     const b=button('',()=>{settings.effect=i;for(const [n,item] of [...effects.children].entries())item.setAttribute('aria-pressed',String(n===i));});
-    b.setAttribute('aria-pressed',String(settings.effect===i));b.setAttribute('aria-label','Effect '+(i+1));
-    b.append(el('span',{class:'effect-symbol','aria-hidden':'true'},'▱ ▱ ▱ ▱ ▱'),el('span',{},'Effect '+(i+1)));effects.append(b);
+    b.setAttribute('aria-pressed',String(settings.effect===i));b.setAttribute('aria-label',t("ui.effect")+(i+1));
+    b.append(el('span',{class:'effect-symbol','aria-hidden':'true'},'▱ ▱ ▱ ▱ ▱'),el('span',{},t("ui.effect")+(i+1)));effects.append(b);
   }
-  main.append(card('Your mood at a glance',preview,status,el('div',{class:'lighting-layout'},el('div',{},color),el('div',{},el('p',{class:'color-label'},'Lit zone'),zones,el('div',{class:'brightness-row'},el('span',{},'Brightness'),brightness,percentage),switches))),
-    card('Quick moods',hint('Choose a combination of color and brightness. Keeps the effect and zone you selected.'),presets),
-    card('Device effects',hint('Select a card. Modes keep the device order; their animations vary by firmware.'),effects,
-      el('div',{class:'lighting-apply'},button('Apply lighting',async()=>{await action('command',deviceId,{payload:lightingPayload(settings)});toast('Lighting sent to the Times Gate');},'primary'),hint('The preview does not send changes until you press Apply lighting.'))));
+  main.append(card(t("ui.your_mood_at_a_glance"),preview,status,el('div',{class:'lighting-layout'},el('div',{},color),el('div',{},el('p',{class:'color-label'},t("ui.lit_zone")),zones,el('div',{class:'brightness-row'},el('span',{},t("ui.brightness")),brightness,percentage),switches))),
+    card(t("ui.quick_moods"),hint(t("ui.choose_a_combination_of_color")),presets),
+    card(t("ui.device_effects"),hint(t("ui.select_a_card_modes_keep")),effects,
+      el('div',{class:'lighting-apply'},button(t("ui.apply_lighting"),async()=>{await action('command',deviceId,{payload:lightingPayload(settings)});toast(t("ui.lighting_sent_to_the_times"));},'primary'),hint(t("ui.the_preview_does_not_send")))));
   draw();
 }
 function toolPage(main) {
@@ -1361,30 +1363,30 @@ function toolPage(main) {
     action("command", d().id, { payload, pause });
   main.append(
     card(
-      "Screens and brightness",
-      numeric(values, "brightness", "Brightness", 0, 100),
+      t("ui.screens_and_brightness"),
+      numeric(values, "brightness", t("ui.brightness"), 0, 100),
       row(
-        button("Apply brightness", () =>
+        button(t("ui.apply_brightness"), () =>
           command({
             Command: "Channel/SetBrightness",
             Brightness: values.brightness,
           }),
         ),
-        button("Turn on", async () => {
+        button(t("ui.turn_on"), async () => {
           await command({ Command: "Channel/OnOffScreen", OnOff: 1 });
           await load();
           render();
         }),
-        button("Turn off", async () => {
+        button(t("ui.turn_off"), async () => {
           await command({ Command: "Channel/OnOffScreen", OnOff: 0 });
           await load();
           render();
         }),
-        button("Read settings", () => action("health", d().id)),
+        button(t("ui.read_settings"), () => action("health", d().id)),
         button(
-          "Restart device",
+          t("ui.restart_device"),
           async () => {
-            if (confirm("Restart the Times Gate?"))
+            if (confirm(t("ui.restart_the_times_gate")))
               await command({ Command: "Device/SysReboot" });
           },
           "danger",
@@ -1394,23 +1396,23 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Temporary alert",
-      field(values, "text", "Message", "textarea"),
+      t("ui.temporary_alert"),
+      field(values, "text", t("ui.message"), "textarea"),
       el(
         "div",
         { class: "grid three" },
-        field(values, "panel", "Screen", "select", {
+        field(values, "panel", t("ui.screen_2"), "select", {
           0: "1",
           1: "2",
           2: "3",
           3: "4",
           4: "5",
         }),
-        numeric(values, "duration", "Duration (s)", 5, 300),
-        field(values, "buzzer", "Buzzer", "checkbox"),
+        numeric(values, "duration", t("ui.duration_s"), 5, 300),
+        field(values, "buzzer", t("ui.buzzer"), "checkbox"),
       ),
       button(
-        "Send alert",
+        t("ui.send_alert"),
         () =>
           action("notification", d().id, {
             panel: +values.panel,
@@ -1424,19 +1426,19 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Native tools",
+      t("ui.native_tools"),
       banner(
-        "These tools can change the device mode. Using them pauses resending; press Restore composition to go back.",
+        t("ui.these_tools_can_change_the"),
         true,
       ),
       el(
         "div",
         { class: "grid" },
-        numeric(values, "minutes", "Timer: minutes", 0, 999),
-        numeric(values, "seconds", "Seconds", 0, 59),
+        numeric(values, "minutes", t("ui.timer_minutes"), 0, 999),
+        numeric(values, "seconds", t("ui.seconds"), 0, 59),
       ),
       row(
-        button("Start timer", () =>
+        button(t("ui.start_timer"), () =>
           command(
             {
               Command: "Tools/SetTimer",
@@ -1447,7 +1449,7 @@ function toolPage(main) {
             true,
           ),
         ),
-        button("Stop", () =>
+        button(t("ui.stop"), () =>
           command(
             { Command: "Tools/SetTimer", Minute: 0, Second: 0, Status: 0 },
             true,
@@ -1456,24 +1458,24 @@ function toolPage(main) {
       ),
       el("hr", { class: "divider" }),
       row(
-        button("Stopwatch: start", () =>
+        button(t("ui.stopwatch_start"), () =>
           command({ Command: "Tools/SetStopWatch", Status: 1 }, true),
         ),
-        button("Pause", () =>
+        button(t("ui.pause"), () =>
           command({ Command: "Tools/SetStopWatch", Status: 2 }, true),
         ),
-        button("Reset stopwatch", () =>
+        button(t("ui.reset_stopwatch"), () =>
           command({ Command: "Tools/SetStopWatch", Status: 0 }, true),
         ),
       ),
       el(
         "div",
         { class: "grid" },
-        numeric(values, "red", "Red score", 0, 999),
-        numeric(values, "blue", "Blue score", 0, 999),
+        numeric(values, "red", t("ui.red_score"), 0, 999),
+        numeric(values, "blue", t("ui.blue_score"), 0, 999),
       ),
       row(
-        button("Show scoreboard", () =>
+        button(t("ui.show_scoreboard"), () =>
           command(
             {
               Command: "Tools/SetScoreBoard",
@@ -1483,13 +1485,13 @@ function toolPage(main) {
             true,
           ),
         ),
-        button("Sound meter", () =>
+        button(t("ui.sound_meter"), () =>
           command({ Command: "Tools/SetNoiseStatus", NoiseStatus: 1 }, true),
         ),
-        button("Stop meter", () =>
+        button(t("ui.stop_meter"), () =>
           command({ Command: "Tools/SetNoiseStatus", NoiseStatus: 0 }, true),
         ),
-        button("Test buzzer", () =>
+        button(t("ui.test_buzzer"), () =>
           command({
             Command: "Device/PlayBuzzer",
             ActiveTimeInCycle: 150,
@@ -1499,7 +1501,7 @@ function toolPage(main) {
         ),
       ),
       button(
-        "Restore composition",
+        t("ui.restore_composition"),
         async () => {
           await action("resume", d().id);
           await load();
@@ -1511,16 +1513,16 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Experimental native catalog and clock",
+      t("ui.experimental_native_catalog_and_clock"),
       hint(
-        "Use only a valid native group. Group 0 is blocked because it alters other screens.",
+        t("ui.use_only_a_valid_native"),
       ),
       el(
         "div",
         { class: "grid three" },
         numeric(values, "clock", "ClockId", 1, 10000000),
-        numeric(values, "group", "LcdIndependence group", 1, 100000000),
-        field(values, "panel", "Screen", "select", {
+        numeric(values, "group", t("ui.lcdindependence_group"), 1, 100000000),
+        field(values, "panel", t("ui.screen_2"), "select", {
           0: "1",
           1: "2",
           2: "3",
@@ -1529,12 +1531,12 @@ function toolPage(main) {
         }),
       ),
       row(
-        button("Query catalog", async () => {
+        button(t("ui.query_catalog"), async () => {
           const r = await action("catalog", d().id);
           if (r) toast(JSON.stringify(r).slice(0, 500));
-          else toast("See Activity");
+          else toast(t("ui.see_activity"));
         }),
-        button("Activate clock", () =>
+        button(t("ui.activate_clock"), () =>
           command(
             {
               Command: "Channel/SetClockSelectId",
@@ -1565,26 +1567,26 @@ function automationPage(main) {
     el(
       "div",
       { class: "grid three" },
-      numeric(p, "work", "Work (min)", 1, 180),
-      numeric(p, "rest", "Break (min)", 1, 180),
-      numeric(p, "long_rest", "Long break (min)", 1, 180),
-      numeric(p, "cycles", "Cycles", 1, 12),
-      field(p, "panel", "Alert screen", "select", {
+      numeric(p, "work", t("ui.work_min"), 1, 180),
+      numeric(p, "rest", t("ui.break_min"), 1, 180),
+      numeric(p, "long_rest", t("ui.long_break_min"), 1, 180),
+      numeric(p, "cycles", t("ui.cycles"), 1, 12),
+      field(p, "panel", t("ui.alert_screen"), "select", {
         0: "1",
         1: "2",
         2: "3",
         3: "4",
         4: "5",
       }),
-      field(p, "buzzer", "Buzzer", "checkbox"),
+      field(p, "buzzer", t("ui.buzzer"), "checkbox"),
     ),
     row(
       ...Object.entries({
-        start: "Start",
-        pause: "Pause",
-        resume: "Continue",
-        skip: "Skip phase",
-        reset: "Reset",
+        start: t("ui.start"),
+        pause: t("ui.pause"),
+        resume: t("ui.continue"),
+        skip: t("ui.skip_phase"),
+        reset: t("ui.reset"),
       }).map(([operation, title]) =>
         button(title, () =>
           action("pomodoro", d().id, { operation, ...p, panel: +p.panel }),
@@ -1594,17 +1596,17 @@ function automationPage(main) {
   );
   main.append(pc);
   for (const [group, title] of [
-    ["schedules", "Schedules"],
-    ["reminders", "Reminders"],
-    ["alerts", "Alerts"],
-    ["profiles", "Automatic profiles"],
+    ["schedules", t("ui.schedules")],
+    ["reminders", t("ui.reminders")],
+    ["alerts", t("ui.alerts")],
+    ["profiles", t("ui.automatic_profiles")],
   ]) {
     if (group === "profiles" && !state.capabilities.profiles) {
       main.append(
         card(
           title,
           hint(
-            "Phones cannot query the processes or session lock of a PC. Imported profiles are kept, but they do not run on mobile.",
+            t("ui.phones_cannot_query_the_processes"),
           ),
         ),
       );
@@ -1612,10 +1614,10 @@ function automationPage(main) {
     }
     const section = card(
       title,
-      button("Add", () => {
+      button(t("ui.add_2"), () => {
         let rule = {
           id: id(),
-          name: "New rule",
+          name: t("ui.new_rule"),
           device_id: d().id,
           enabled: true,
         };
@@ -1636,7 +1638,7 @@ function automationPage(main) {
           Object.assign(rule, {
             panel: 0,
             seconds: 15,
-            text: "Reminder",
+            text: t("ui.reminder"),
             buzzer: false,
             ...(group === "reminders"
               ? { minutes: 30 }
@@ -1664,13 +1666,13 @@ function automationPage(main) {
         "div",
         { class: "list-item" },
         row(
-          field(r, "enabled", r.name || r.time || "Rule", "checkbox"),
-          button("Edit", () => {
+          field(r, "enabled", r.name || r.time || t("ui.rule"), "checkbox"),
+          button(t("ui.edit"), () => {
             editing = editing === r.id ? null : r.id;
             render();
           }),
           button(
-            "Delete",
+            t("ui.delete"),
             () => {
               cfg[group] = cfg[group].filter((x) => x.id !== r.id);
               mark();
@@ -1685,27 +1687,27 @@ function automationPage(main) {
           el(
             "div",
             { class: "grid" },
-            field(r, "name", "Name"),
-            field(r, "device_id", "Device", "select", deviceOptions()),
+            field(r, "name", t("ui.name")),
+            field(r, "device_id", t("ui.device"), "select", deviceOptions()),
           ),
         );
         if (group === "schedules") {
           box.append(
-            field(r, "time", "Local time", "time"),
-            field(r, "action", "Action", "select", {
-              on: "Turn on",
-              off: "Turn off",
-              brightness: "Brightness",
-              scene: "Scene",
+            field(r, "time", t("ui.local_time"), "time"),
+            field(r, "action", t("ui.action"), "select", {
+              on: t("ui.turn_on"),
+              off: t("ui.turn_off"),
+              brightness: t("ui.brightness"),
+              scene: t("ui.scene"),
             }),
           );
           box.lastChild.addEventListener("change", () => render());
           if (r.action === "scene")
-            box.append(field(r, "value", "Scene", "select", sceneOptions()));
+            box.append(field(r, "value", t("ui.scene"), "select", sceneOptions()));
           if (r.action === "brightness")
-            box.append(numeric(r, "value", "Brightness", 0, 100));
+            box.append(numeric(r, "value", t("ui.brightness"), 0, 100));
           const days = row();
-          ["M", "T", "W", "T", "F", "S", "S"].forEach((label, i) => {
+          [t("ui.day_mon"), t("ui.day_tue"), t("ui.day_wed"), t("ui.day_thu"), t("ui.day_fri"), t("ui.day_sat"), t("ui.day_sun")].forEach((label, i) => {
             const v = { use: r.days.includes(i) },
               f = field(v, "use", label, "checkbox");
             f.addEventListener("change", () => {
@@ -1718,84 +1720,84 @@ function automationPage(main) {
           box.append(days);
         } else if (group === "profiles") {
           box.append(
-            field(r, "trigger", "Condition", "select", {
-              process: "Open process",
-              locked: "Locked session",
-              desktop: "Desktop",
+            field(r, "trigger", t("ui.condition"), "select", {
+              process: t("ui.open_process"),
+              locked: t("ui.locked_session"),
+              desktop: t("ui.desktop"),
             }),
-            field(r, "process", "Process name"),
-            field(r, "scene_id", "Scene", "select", sceneOptions()),
+            field(r, "process", t("ui.process_name")),
+            field(r, "scene_id", t("ui.scene"), "select", sceneOptions()),
             hint(
-              "In Docker only its own processes are visible. Session lock is received from the Windows desktop app; it is not detected from the container.",
+              t("ui.in_docker_only_its_own"),
             ),
           );
         } else {
           box.append(
-            field(r, "text", "Message", "textarea"),
+            field(r, "text", t("ui.message"), "textarea"),
             el(
               "div",
               { class: "grid three" },
-              field(r, "panel", "Screen", "select", {
+              field(r, "panel", t("ui.screen_2"), "select", {
                 0: "1",
                 1: "2",
                 2: "3",
                 3: "4",
                 4: "5",
               }),
-              numeric(r, "seconds", "Duration (s)", 5, 300),
-              field(r, "buzzer", "Buzzer", "checkbox"),
+              numeric(r, "seconds", t("ui.duration_s"), 5, 300),
+              field(r, "buzzer", t("ui.buzzer"), "checkbox"),
             ),
           );
           const panel = box.querySelector("select:last-of-type");
           if (panel)
             panel.addEventListener("change", () => (r.panel = +r.panel));
           if (group === "reminders")
-            box.append(numeric(r, "minutes", "Repeat every (min)", 1, 10080));
+            box.append(numeric(r, "minutes", t("ui.repeat_every_min"), 1, 10080));
           else {
             box.append(
               field(
                 r,
                 "metric",
-                "Metric",
+                t("ui.metric"),
                 "select",
                 state.capabilities.mode === "mobile"
-                  ? { service: "Service down (1=failure)", sensor: "Sensor" }
+                  ? { service: t("ui.service_down_1_failure"), sensor: "Sensor" }
                   : {
                       ...metrics,
-                      disk_free: "Free disk",
-                      service: "Service down (1=failure)",
+                      disk_free: t("ui.free_disk"),
+                      service: t("ui.service_down_1_failure"),
                       sensor: "Sensor",
                     },
               ),
               el(
                 "div",
                 { class: "grid" },
-                field(r, "operator", "Condition", "select", {
-                  above: "Greater than",
-                  below: "Less than",
+                field(r, "operator", t("ui.condition"), "select", {
+                  above: t("ui.greater_than"),
+                  below: t("ui.less_than"),
                 }),
-                numeric(r, "threshold", "Threshold", -1000000000, 1000000000, 0.1),
+                numeric(r, "threshold", t("ui.threshold"), -1000000000, 1000000000, 0.1),
               ),
               field(
                 r,
                 "source",
-                "Service / sensor URL, MQTT topic or disk path",
+                t("ui.service_sensor_url_mqtt_topic"),
               ),
               field(
                 r,
                 "sensor_source",
-                "Sensor source",
+                t("ui.sensor_source"),
                 "select",
                 state.capabilities.mode === "mobile"
                   ? { http: "HTTP JSON", mqtt: "MQTT" }
                   : { mqtt: "MQTT", hardware: "Hardware" },
               ),
-              field(r, "field", "JSON path"),
+              field(r, "field", t("ui.json_path")),
               el(
                 "div",
                 { class: "grid" },
-                numeric(r, "hold", "Condition held (s)", 0, 3600),
-                numeric(r, "cooldown", "Minimum interval (s)", 30, 86400),
+                numeric(r, "hold", t("ui.condition_held_s"), 0, 3600),
+                numeric(r, "cooldown", t("ui.minimum_interval_s"), 30, 86400),
               ),
             );
           }
@@ -1807,7 +1809,7 @@ function automationPage(main) {
   }
   main.append(
     hint(
-      "Turn on Automatic update in Device. Schedules follow the time zone of the phone or server; missed schedules are not recovered. Alerts need restorable content.",
+      t("ui.turn_on_automatic_update_in"),
     ),
   );
 }
@@ -1826,33 +1828,33 @@ function integrationPage(main) {
   main.append(
     card(
       "MQTT / Home Assistant",
-      field(mqtt, "enabled", "Enable MQTT", "checkbox"),
+      field(mqtt, "enabled", t("ui.enable_mqtt"), "checkbox"),
       state.capabilities.mode === "mobile"
         ? field(
             mqtt,
             "websocket_url",
-            "Broker WebSocket URL (ws:// or wss://)",
+            t("ui.broker_websocket_url_ws_or"),
           )
         : el(
             "div",
             { class: "grid" },
-            field(mqtt, "host", "Server"),
-            numeric(mqtt, "port", "Port", 1, 65535),
+            field(mqtt, "host", t("ui.server_2")),
+            numeric(mqtt, "port", t("ui.port"), 1, 65535),
           ),
       el(
         "div",
         { class: "grid" },
-        field(mqtt, "username", "Username"),
-        field(mqtt, "password", "Password", "password"),
+        field(mqtt, "username", t("ui.username")),
+        field(mqtt, "password", t("ui.password"), "password"),
       ),
-      field(mqtt, "prefix", "Topic prefix"),
+      field(mqtt, "prefix", t("ui.topic_prefix")),
       state.capabilities.mode === "mobile"
         ? hint(
-            "The broker must offer WebSockets. Sensors and commands are received while the app is active. It does not use the Keeper server.",
+            t("ui.the_broker_must_offer_websockets"),
           )
         : field(mqtt, "tls", "TLS", "checkbox"),
       hint(
-        "Credentials are excluded from exported backups. Configure each Sensor widget with its MQTT topic.",
+        t("ui.credentials_are_excluded_from_exported"),
       ),
     ),
   );
@@ -1860,61 +1862,74 @@ function integrationPage(main) {
     const api = cfg.integrations.api;
     main.append(
       card(
-        "Automation API",
-        field(api, "enabled", "Enable additional API", "checkbox"),
+        t("ui.automation_api"),
+        field(api, "enabled", t("ui.enable_additional_api"), "checkbox"),
         el(
           "div",
           { class: "grid" },
-          field(api, "host", "Listen on", "select", {
-            "127.0.0.1": "Localhost only",
-            "0.0.0.0": "Local network",
+          field(api, "host", t("ui.listen_on"), "select", {
+            "127.0.0.1": t("ui.localhost_only"),
+            "0.0.0.0": t("ui.local_network_2"),
           }),
-          numeric(api, "port", "Port (different from the portal)", 1, 65535),
+          numeric(api, "port", t("ui.port_different_from_the_portal"), 1, 65535),
         ),
         field(api, "token", "Token Bearer", "password"),
-        button("Generate token", () => {
+        button(t("ui.generate_token"), () => {
           api.token = id() + id() + id();
           mark();
           render();
         }),
         hint(
-          "This additional API keeps /v1/status and /v1/action. The portal uses its own token, defined in KEEPER_TOKEN or data/admin.token.",
+          t("ui.this_additional_api_keeps_v1"),
         ),
       ),
       card(
-        "Host sources",
+        t("ui.host_sources"),
         field(
           cfg.integrations,
           "hardware",
-          "Read available sensors",
+          t("ui.read_available_sensors"),
           "checkbox",
         ),
         banner(state.capabilities.metrics_label),
         hint(
-          "Linux: psutil sensors and MPRIS music via playerctl. Windows: LibreHardwareMonitor and media session. The container does not automatically receive the desktop sources.",
+          t("ui.linux_psutil_sensors_and_mpris"),
         ),
       ),
     );
   } else
     main.append(
       card(
-        "Mobile sources",
+        t("ui.mobile_sources"),
         hint(
-          "You can show values from Home Assistant or other machines through an HTTP JSON sensor or an MQTT topic. The phone does not get your PC CPU, GPU or temperatures automatically. The listening HTTP API and PC process profiles are not available here.",
+          t("ui.you_can_show_values_from"),
         ),
       ),
     );
 }
+function languageField() {
+  const select = el("select");
+  for (const [value, name] of Object.entries(languages))
+    select.append(el("option", { value }, name));
+  select.value = cfg.language;
+  select.addEventListener("change", () => {
+    cfg.language = select.value;
+    setLanguage(cfg.language);
+    mark();
+    render();
+  });
+  return el("label", { class: "field" }, el("span", {}, t("ui.language")), select);
+}
 function backupPage(main) {
   main.append(
     card(
-      "Portable backup",
+      t("ui.portable_backup"),
       hint(
-        "Includes media, screens, playlists, scenes and rules. Importing disables automatic sending and integrations so you can review the configuration.",
+        t("ui.includes_media_screens_playlists_scenes"),
       ),
       row(
         button(
-          "Export ZIP",
+          t("ui.export_zip"),
           async () => {
             await save();
             await download(
@@ -1924,11 +1939,11 @@ function backupPage(main) {
           },
           "primary",
         ),
-        button("Import ZIP", () =>
+        button(t("ui.import_zip"), () =>
           chooseFile(".zip", async (file) => {
             if (
               !confirm(
-                "Replace the configuration with this backup? A copy of the current one will be kept.",
+                t("ui.replace_the_configuration_with_this"),
               )
             )
               return;
@@ -1936,7 +1951,7 @@ function backupPage(main) {
             await load();
             render();
             toast(
-              "Backup imported; check the IP and enable sending when you are ready.",
+              t("ui.backup_imported_check_the_ip"),
             );
           }),
         ),
@@ -1945,8 +1960,8 @@ function backupPage(main) {
   );
   main.append(
     card(
-      "Library",
-      button("View files", async () => {
+      t("ui.library"),
+      button(t("ui.view_files"), async () => {
         const files = await request("/library");
         const list = $("#library-list");
         list.replaceChildren(
@@ -1957,7 +1972,7 @@ function backupPage(main) {
               row(
                 el("span", {}, f.original || f.name),
                 el("small", {}, (f.size / 1024).toFixed(0) + " KB"),
-                button("Use on screen " + (selected + 1), () => {
+                button(t("ui.use_on_screen") + (selected + 1), () => {
                   d().screens[selected] = screen("media", { path: f.path });
                   mark();
                   page = "screens";
@@ -1973,23 +1988,24 @@ function backupPage(main) {
   );
   main.append(
     card(
-      "Settings and session",
-      field(cfg, "resend_on_startup", "Resend on startup", "checkbox"),
-      button("Reload configuration", async () => {
-        if (dirty && !confirm("Discard unsaved changes?")) return;
+      t("ui.settings_and_session"),
+      languageField(),
+      field(cfg, "resend_on_startup", t("ui.resend_on_startup"), "checkbox"),
+      button(t("ui.reload_configuration"), async () => {
+        if (dirty && !confirm(t("ui.discard_unsaved_changes"))) return;
         await load();
         render();
       }),
       state.capabilities.mode === "server"
-        ? button("Sign out", () => {
+        ? button(t("ui.sign_out"), () => {
             sessionStorage.removeItem("keeper-token");
             login();
           })
         : hint(
-            "Data is stored on the phone. Export a backup before uninstalling the app or clearing its data.",
+            t("ui.data_is_stored_on_the"),
           ),
       hint(
-        "Windows 2.3 keeps its own application and data. This version uses the same send protocol and keeps the restrictions of the native modes.",
+        t("ui.windows_2_3_keeps_its"),
       ),
     ),
   );
@@ -1997,9 +2013,9 @@ function backupPage(main) {
 function activityPage(main) {
   main.append(
     card(
-      "Activity",
+      t("ui.activity"),
       el("pre", { id: "activity" }, eventText()),
-      button("Refresh", async () => {
+      button(t("ui.refresh"), async () => {
         const fresh = await request("/state");
         state.events = fresh.events;
         $("#activity").textContent = eventText();
@@ -2024,8 +2040,8 @@ function login() {
       "div",
       { class: "login card" },
       el("div", { class: "brand" }, "Divoom ", el("span", {}, "Keeper")),
-      el("h1", {}, "Your Times Gate, at hand"),
-      hint("Enter the server token to access your screens."),
+      el("h1", {}, t("ui.your_times_gate_at_hand")),
+      hint(t("ui.enter_the_server_token_to")),
       el(
         "form",
         {
@@ -2041,7 +2057,7 @@ function login() {
         el(
           "label",
           { class: "field" },
-          "Access token",
+          t("ui.access_token"),
           el("input", {
             id: "token",
             type: "password",
@@ -2049,10 +2065,10 @@ function login() {
             autocomplete: "current-password",
           }),
         ),
-        el("button", { class: "primary", type: "submit" }, "Sign in"),
+        el("button", { class: "primary", type: "submit" }, t("ui.sign_in")),
       ),
       hint(
-        "The token is in data/admin.token or in the server's KEEPER_TOKEN variable.",
+        t("ui.the_token_is_in_data"),
       ),
     ),
   );
