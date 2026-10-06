@@ -11,6 +11,8 @@ import {
   composition,
   validate,
   validIp,
+  endpointCandidates,
+  replyOk,
   normalize,
 } from "../src/model.js";
 
@@ -177,4 +179,32 @@ test("background state prevents device writes", async () => {
     /abrir la app/,
   );
   assert.equal(called, false);
+});
+test("mobile engine falls back to port 9000, remembers it and sends the token", async () => {
+  const engine = new MobileEngine(false);
+  engine.active = true;
+  const urls = [], bodies = [];
+  engine.http = async (url, options) => {
+    urls.push(url);
+    bodies.push(options.data);
+    if (!url.includes(":9000/")) throw Error("refused");
+    return { ReturnCode: 0 };
+  };
+  const d = { id: "d1", ip: "10.0.0.5", port: 0, local_token: "207245" };
+  await engine.command(d, { Command: "Channel/GetAllConf" });
+  await engine.command(d, { Command: "Channel/GetAllConf" });
+  assert.deepEqual(urls, [
+    "http://10.0.0.5/post",
+    "http://10.0.0.5:9000/divoom_api",
+    "http://10.0.0.5:9000/divoom_api",
+  ]);
+  assert.ok(bodies.every((b) => b.LocalToken === "207245"));
+});
+test("endpoint helpers and reply formats", () => {
+  assert.deepEqual(endpointCandidates(0), [[80, "/post"], [9000, "/divoom_api"]]);
+  assert.deepEqual(endpointCandidates(8080), [[8080, "/post"]]);
+  assert.equal(replyOk({ error_code: 0 }), true);
+  assert.equal(replyOk({ ReturnCode: 0 }), true);
+  assert.equal(replyOk({ error_code: 1, ReturnCode: 0 }), false);
+  assert.equal(replyOk(null), false);
 });

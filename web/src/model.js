@@ -35,6 +35,8 @@ export const device = () => ({
   ip: "",
   mac: "",
   device_id: 0,
+  port: 0,
+  local_token: "",
   enabled: false,
   suspended: false,
   screens_off: false,
@@ -136,6 +138,20 @@ export const metrics = {
   download: "Descarga B/s",
   upload: "Subida B/s",
 };
+// Hardware 400 serves POST /post on port 80; hardware 402 serves POST /divoom_api on port 9000.
+export const ENDPOINTS = [
+  [80, "/post"],
+  [9000, "/divoom_api"],
+];
+export function endpointCandidates(port = 0) {
+  port = +port || 0;
+  if (!port) return ENDPOINTS.map((e) => [...e]);
+  return [[port, port === 9000 ? "/divoom_api" : "/post"]];
+}
+export const replyOk = (body) =>
+  !!body &&
+  typeof body === "object" &&
+  [0, "0"].includes("error_code" in body ? body.error_code : body.ReturnCode);
 export function validIp(ip) {
   const parts = String(ip).split(".");
   if (
@@ -160,6 +176,8 @@ export function validate(cfg) {
   for (const d of cfg.devices) {
     if(d.lighting)validateLighting(d.lighting);
     if (d.ip) validIp(d.ip);
+    if (!Number.isInteger(+d.port) || +d.port < 0 || +d.port > 65535)
+      throw Error("El puerto debe estar entre 0 y 65535");
     if (d.screens.length !== 5) throw Error("Se necesitan cinco pantallas");
     if (
       !Number.isInteger(+d.quality) ||

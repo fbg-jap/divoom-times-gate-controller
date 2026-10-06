@@ -1297,6 +1297,8 @@ function devicePage(main) {
         { class: "grid" },
         field(value, "mac", "MAC (opcional)"),
         numeric(value, "device_id", "DeviceId Divoom (opcional)", 0, 999999999),
+        numeric(value, "port", "Puerto (0 = auto: 80 o 9000)", 0, 65535),
+        field(value, "local_token", "Token local (de la app Divoom)"),
       ),
     ),
   );
