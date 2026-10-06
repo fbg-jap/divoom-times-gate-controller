@@ -379,6 +379,9 @@ export class MobileEngine {
       case "music":
         text(t("mob.use_an_external_source_for"), 32, 15);
         break;
+      case "prtg":
+        text(t("mob.prtg_desktop_only"), 32, 15);
+        break;
       case "weather": {
         let v = { temperature_2m: 23, relative_humidity_2m: 48 };
         if (!this.demo)

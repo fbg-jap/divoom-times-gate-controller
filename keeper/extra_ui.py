@@ -68,6 +68,8 @@ class ContentFields:
             form.addRow(hint("Combine text, images and bars. PC data updates together with the widget."))
         elif kind == "music":
             form.addRow(hint("Reads the current Windows media session: cover art, song and artist. The player must publish its session to Windows. No password required."))
+        elif kind == "prtg":
+            form.addRow(hint("Shows PRTG sensor counts (up, warning, down, paused) and the worst sensor. The URL and token are set under Integrations. Refreshes every 30 s."))
         elif kind == "pomodoro":
             form.addRow(hint("Shows the Studio work/break session. Start, pause and configure the session under Automations → Pomodoro. Refreshes every 5 seconds."))
 
@@ -120,7 +122,8 @@ class RuleDialog(QDialog):
                 self.minutes = number(1, 10080, r.get("minutes", 30)); form.addRow("Repeat every (min)", self.minutes)
                 form.addRow(hint("The interval starts when the rule is enabled or Studio is opened. Requires automatic updates; missed reminders are not recovered."))
             else:
-                self.metric_combo = combo([*METRICS, ("disk_free", "Free disk (GiB)"), ("service", "Service down (0 = OK, 1 = failed)"), ("sensor", "Numeric sensor")], r.get("metric", "cpu"))
+                self.metric_combo = combo([*METRICS, ("disk_free", "Free disk (GiB)"), ("service", "Service down (0 = OK, 1 = failed)"), ("sensor", "Numeric sensor"),
+                                           ("prtg_down", window.t("Sensores PRTG en Down", "PRTG sensors Down")), ("prtg_warning", window.t("Sensores PRTG en Warning", "PRTG sensors Warning"))], r.get("metric", "cpu"))
                 self.operator = combo([("above", "Greater than"), ("below", "Less than")], r.get("operator", "above"))
                 self.threshold = QDoubleSpinBox(); self.threshold.setRange(-1e12, 1e12); self.threshold.setValue(r.get("threshold", 80))
                 self.source = QLineEdit(r.get("source", "")); self.source.setPlaceholderText("Service URL, disk path or sensor ID/topic")

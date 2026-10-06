@@ -217,6 +217,8 @@ export function automationPage(main) {
                       disk_free: t("ui.free_disk"),
                       service: t("ui.service_down_1_failure"),
                       sensor: "Sensor",
+                      prtg_down: t("ui.prtg_down_sensors"),
+                      prtg_warning: t("ui.prtg_warning_sensors"),
                     },
               ),
               el(

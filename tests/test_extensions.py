@@ -111,11 +111,65 @@ class NewContentTests(FixtureCase):
 
     def test_all_extra_widgets_render_without_external_sources(self):
         r = Renderer(demo=True)
-        for kind in ("music", "rss", "custom", "pomodoro", "sensor"):
+        for kind in ("music", "rss", "custom", "pomodoro", "sensor", "prtg"):
             image = r.render(slot(kind, url="https://example.test"))
             self.assertEqual(image.size, (128, 128))
         with self.assertRaises(ValueError):
             validate_content(slot("custom", elements=[{"type": "bar", "maximum": 0}]))
+
+
+class PrtgTests(unittest.TestCase):
+    def reply(self, payload, status=200):
+        raw = json.dumps(payload).encode()
+        response = Mock(); response.status_code = status
+        response.iter_content = lambda size: iter([raw])
+        response.raise_for_status = Mock(side_effect=None if status < 400 else requests.HTTPError("boom"))
+        response.__enter__ = lambda self: self; response.__exit__ = lambda *a: False
+        return response
+
+    SENSORS = {"sensors": [{"device": "a", "sensor": "ping", "status_raw": 3}, {"device": "b", "sensor": "cpu", "status_raw": 4},
+                           {"device": "c", "sensor": "disk", "status_raw": 10}, {"device": "d", "sensor": "http", "status_raw": 13},
+                           {"device": "e", "sensor": "x", "status_raw": 7}, {"device": "f", "sensor": "y", "status_raw": 2}]}
+
+    def test_counts_worst_sensor_and_request_shape(self):
+        p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
+        data = p.prtg("https://prtg.test/", "TOKEN", False)
+        self.assertEqual({k: data[k] for k in ("up", "warning", "down", "paused", "unusual")}, dict(up=1, warning=1, down=1, paused=1, unusual=1))
+        self.assertEqual(data["worst"], "d · http")
+        args, kwargs = p.session.get.call_args
+        self.assertEqual(args[0], "https://prtg.test/api/table.json")
+        self.assertIs(kwargs["verify"], False); self.assertEqual(kwargs["timeout"], 8)
+        self.assertEqual(kwargs["params"]["apitoken"], "TOKEN")
+
+    def test_worst_ordering_warning_over_unusual(self):
+        p = Providers(); sensors = [{"device": "u", "sensor": "1", "status_raw": 10}, {"device": "w", "sensor": "2", "status_raw": 4}]
+        p.session.get = Mock(return_value=self.reply({"sensors": sensors}))
+        self.assertEqual(p.prtg("http://x.test", "t")["worst"], "w · 2")
+
+    def test_failure_is_negative_cached_and_default_verifies_tls(self):
+        p = Providers(); p.session.get = Mock(return_value=self.reply({}, 500))
+        self.assertIsNone(p.prtg("http://x.test", "t")); self.assertIsNone(p.prtg("http://x.test", "t"))
+        self.assertEqual(p.session.get.call_count, 1); self.assertIs(p.session.get.call_args.kwargs["verify"], True)
+        p.session.get = Mock(return_value=self.reply({"unexpected": 1}))
+        self.assertIsNone(p.prtg("http://y.test", "t"))
+
+    def test_oversized_and_unconfigured(self):
+        p = Providers(); response = self.reply({}); response.iter_content = lambda size: iter([b"x" * (2 * 1024**2 + 1)])
+        p.session.get = Mock(return_value=response)
+        self.assertIsNone(p.prtg("http://x.test", "t"))
+        p.session.get.reset_mock(); self.assertIsNone(p.prtg("", "t")); self.assertIsNone(p.prtg("http://x.test", ""))
+        p.session.get.assert_not_called()
+
+    def test_render_states_and_validation(self):
+        p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
+        from keeper.extensions import render_extra
+        self.assertIsNone(p.extra.prtg())  # disabled
+        p.extra.prtg_conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
+        self.assertEqual(p.extra.prtg()["down"], 1)
+        self.assertEqual(render_extra(slot("prtg"), p).size, (128, 128))
+        p.extra.prtg_conf = {}
+        self.assertEqual(render_extra(slot("prtg"), p).size, (128, 128))
+        validate_content(slot("prtg"))
 
 
 class AutomationTests(FixtureCase):
@@ -146,6 +200,14 @@ class AutomationTests(FixtureCase):
         with patch.object(self.auto, "value", return_value=95):
             self.update(162); self.update(173)
         self.assertEqual(len(self.auto.notice_queue), 2)
+
+    def test_prtg_alert_metrics(self):
+        for metric, expected in (("prtg_down", 2), ("prtg_warning", 5)):
+            with patch.object(self.engine.renderer.providers.extra, "prtg", return_value={"down": 2, "warning": 5}):
+                self.assertEqual(self.auto.value(self.rule(metric=metric)), expected)
+        with patch.object(self.engine.renderer.providers.extra, "prtg", return_value=None):
+            self.assertIsNone(self.auto.value(self.rule(metric="prtg_down")))
+        self.store.change(lambda data: data.update(alerts=[self.rule(metric="prtg_down")]))
 
     def test_reminders_do_not_catch_up_after_pause(self):
         rule = self.rule(minutes=1); self.store.change(lambda data: data.update(reminders=[rule]))

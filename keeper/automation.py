@@ -156,6 +156,9 @@ class Automations:
             return None if value is None else value / 1024**3
         if r["metric"] == "sensor":
             return finite(provider.extra.sensor(r.get("sensor_source", "mqtt"), r.get("source", ""), r.get("sensor_field", "")))
+        if r["metric"] in {"prtg_down", "prtg_warning"}:
+            data = provider.extra.prtg()
+            return None if data is None else data[r["metric"][5:]]
         return finite(provider.pc().get(r["metric"]))
 
     def deliver(self, d, now):

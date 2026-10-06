@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from collections import deque
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -69,6 +70,57 @@ class Providers:
             data = loader()
             self.cache[key] = (time.monotonic(), data)
         return data
+
+    # PRTG HTTP API (Paessler manual "API: JSON Table Requests", api_definitions, sensor_states):
+    #   GET {base_url}/api/table.json?content=sensors&columns=objid,device,sensor,status_raw
+    #       &count=5000&apitoken=<API token>
+    #   Response JSON: {"prtg-version": "...", "treesize": N,
+    #                   "sensors": [{"objid": 1, "device": "...", "sensor": "...", "status_raw": 3}, ...]}
+    #   status_raw: 1 Unknown, 2 Collecting, 3 Up, 4 Warning, 5 Down, 6 No Probe, 7 Paused by user,
+    #   8 Paused by dependency, 9 Paused by schedule, 10 Unusual, 11 Paused by license,
+    #   12 Paused until, 13 Down (acknowledged), 14 Down (partial).
+    # The token travels only in the query string of this request; it is never logged or returned.
+    PRTG_DOWN, PRTG_PAUSED = {5, 13, 14}, {7, 8, 9, 11, 12}
+
+    def prtg(self, base_url, token, verify=True):
+        """Return {"up","warning","down","paused","unusual","worst"} or None when unavailable."""
+        if self.demo:
+            return {"up": 118, "warning": 3, "down": 1, "paused": 4, "unusual": 0, "worst": "web-01 · HTTP"}
+        if not base_url or not token:
+            return None
+
+        def fetch():
+            with self.session.get(http_url(base_url).rstrip("/") + "/api/table.json", timeout=8, verify=verify,
+                                  stream=True, params={"content": "sensors", "count": 5000, "apitoken": token,
+                                                       "columns": "objid,device,sensor,status_raw"}) as response:
+                response.raise_for_status()
+                chunks, size = [], 0
+                for chunk in response.iter_content(65536):
+                    size += len(chunk)
+                    if size > 2 * 1024**2:
+                        raise ValueError("The response exceeds 2 MB")
+                    chunks.append(chunk)
+            sensors = json.loads(b"".join(chunks))["sensors"]
+            counts = {"up": 0, "warning": 0, "down": 0, "paused": 0, "unusual": 0}
+            worst = (0, "")
+            for item in sensors:
+                status = int(item["status_raw"])
+                key = ("up" if status == 3 else "warning" if status == 4 else "down" if status in self.PRTG_DOWN
+                       else "unusual" if status == 10 else "paused" if status in self.PRTG_PAUSED else None)
+                if key is None:
+                    continue
+                counts[key] += 1
+                rank = {"down": 3, "warning": 2, "unusual": 1}.get(key, 0)
+                if rank > worst[0]:
+                    worst = (rank, f"{item.get('device', '')} · {item.get('sensor', '')}".strip(" ·")[:80])
+            return {**counts, "worst": worst[1]}
+        key = ("prtg", base_url, token, verify)
+        try:
+            return self.cached(key, 30, fetch)
+        except Exception:
+            # Negative cache so a dead server is not polled every frame.
+            self.cache[key] = (time.monotonic(), None)
+            return None
 
     def pc(self):
         if self.demo:

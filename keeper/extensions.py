@@ -14,6 +14,7 @@ from PIL import Image, ImageColor, ImageDraw, ImageOps
 
 METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disk %"),
            ("cpu_temp", "CPU °C"), ("gpu_temp", "GPU °C"), ("download", "Descarga B/s"), ("upload", "Subida B/s")]
+PRTG_METRICS = {"prtg_down", "prtg_warning"}
 
 
 def finite(value):
@@ -76,7 +77,7 @@ def validate_extensions(data):
                 if group == "reminders" and not 1 <= int(r.get("minutes", 30)) <= 10080:
                     raise ValueError("Invalid reminder interval")
                 if group == "alerts":
-                    if r.get("metric") not in {k for k, _ in METRICS} | {"disk_free", "service", "sensor"}:
+                    if r.get("metric") not in {k for k, _ in METRICS} | {"disk_free", "service", "sensor"} | PRTG_METRICS:
                         raise ValueError("Unknown alert metric")
                     if r.get("operator", "above") not in {"above", "below"} or finite(r.get("threshold", 80)) is None:
                         raise ValueError("Invalid threshold")
@@ -165,6 +166,7 @@ class ExtraSources:
         self.mqtt_values = {}
         self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
+        self.prtg_conf = {}
 
     def music(self):
         if self.providers.demo:
@@ -203,6 +205,13 @@ class ExtraSources:
             except (KeyError, ValueError, TypeError, IndexError):
                 return None
         return value if isinstance(value, (str, int, float)) else None
+
+    def prtg(self):
+        """Status counts from integrations.prtg, or None (not configured/unreachable)."""
+        conf = self.prtg_conf or {}
+        if not self.providers.demo and not conf.get("enabled"):
+            return None
+        return self.providers.prtg(conf.get("base_url", ""), conf.get("token", ""), conf.get("verify_tls", True))
 
     def news(self, url, seconds=15):
         if not url:
@@ -348,4 +357,16 @@ def render_extra(s, providers):
         text = "N/A" if value is None else f"{number:.1f}" if number is not None else str(value)
         lines(text[:60], 42, 25, 2)
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
+    elif kind == "prtg":
+        data = extra.prtg()
+        lines(s.get("title") or "PRTG", 7, 11, 1, accent)
+        if data is None:
+            lines("Source unavailable", 40, 13, 3, "#ff6b6b")
+        else:
+            face = font(22, True)
+            for n, (key, color) in enumerate((("up", "#4ade80"), ("warning", "#facc15"), ("down", "#ff4d4d"), ("paused", "#9aa4b5"))):
+                x, y = 8 + (n % 2) * 56, 26 + (n // 2) * 30
+                draw.text((x, y), str(data[key]), fill=color, font=face)
+                draw.text((x, y + 24), key.upper(), fill=color, font=font(8))
+            lines(data["worst"] or "All sensors OK", 92, 10, 3, "white" if data["worst"] else "#4ade80")
     return image

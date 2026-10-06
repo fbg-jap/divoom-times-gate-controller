@@ -67,6 +67,7 @@ class Bridge:
     def configure(self, data):
         config = data.get("integrations", {})
         self.engine.renderer.providers.extra.hardware_enabled = bool(config.get("hardware", False))
+        self.engine.renderer.providers.extra.prtg_conf = config.get("prtg", {})
         signature = json.dumps(config, sort_keys=True)
         if signature == self.signature:
             self.sync_topics(data)

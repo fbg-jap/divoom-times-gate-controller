@@ -271,6 +271,7 @@ export function contentForm(s, inList = false) {
       numeric(s, "sensor_stale", t("ui.expiry_seconds"), 10, 86400),
     );
   }
+  if (s.kind === "prtg") form.append(hint(t("ui.prtg_widget_hint")));
   if (s.kind === "pomodoro")
     form.append(
       hint(
