@@ -5,7 +5,14 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QListWidget, QPlainTextEdit, QTableWidget, QTimeEdit, QVBoxLayout
 
 from ..config import device
+from ..platform_support import open_external
 from .common import KINDS, box, button, integer
+
+
+def open_folder(path):
+    # xdg-open from a clean environment; Qt's launcher inherits the AppImage's library path and can fail silently.
+    if not open_external(path, wait=1.5):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 
 class PanelPages:
@@ -87,7 +94,7 @@ class PanelPages:
         row = QGridLayout()
         row.addWidget(button(self.t("Consultar ajustes", "Read settings"), lambda: self.command("Channel/GetAllConf")), 0, 0)
         row.addWidget(button(self.t("Consultar canales", "Read channels"), lambda: self.command("Channel/GetIndex")), 0, 1)
-        row.addWidget(button(self.t("Abrir carpeta de datos", "Open data folder"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.root)))), 0, 2)
+        row.addWidget(button(self.t("Abrir carpeta de datos", "Open data folder"), lambda: open_folder(self.store.root)), 0, 2)
         row.addWidget(button(self.t("Limpiar vista", "Clear view"), self.activity.clear), 1, 0)
         row.addWidget(button(self.t("Reiniciar dispositivo…", "Reboot device…"), self.reboot), 1, 1)
         layout.addLayout(row)
@@ -133,7 +140,7 @@ class PanelPages:
         row = QHBoxLayout()
         row.addWidget(button(self.t("Exportar copia portátil…", "Export portable backup…"), self.export_bundle))
         row.addWidget(button(self.t("Importar copia…", "Import backup…"), self.import_bundle))
-        row.addWidget(button(self.t("Abrir biblioteca", "Open library"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.media_dir)))))
+        row.addWidget(button(self.t("Abrir biblioteca", "Open library"), lambda: open_folder(self.store.media_dir)))
         v.addLayout(row)
         v.addWidget(self.hint(self.t("La copia incluye perfiles, escenas, horarios y archivos locales. Puede contener direcciones de calendarios privados.",
                                     "Backups include profiles, scenes, schedules and local files. They may contain private calendar URLs.")))

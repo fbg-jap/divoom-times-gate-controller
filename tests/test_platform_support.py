@@ -64,3 +64,63 @@ class LinuxSupportTests(unittest.TestCase):
         sensor = SimpleNamespace(label='Package', current=45.5)
         with patch('psutil.sensors_temperatures', return_value={'coretemp': [sensor]}, create=True):
             self.assertEqual(platform.linux_hardware(), [{'Identifier': '/coretemp/temperature/0', 'Name': 'Package', 'SensorType': 'Temperature', 'Value': 45.5}])
+
+
+class ExternalLaunchTests(unittest.TestCase):
+    BUNDLE = "/tmp/.mount_x/usr/lib/divoom/_internal"
+
+    def frozen(self):
+        return patch.multiple(platform.sys, frozen=True, _MEIPASS=self.BUNDLE, platform="linux", create=True)
+
+    def test_frozen_environment_drops_bundled_library_paths(self):
+        env = {"LD_LIBRARY_PATH": self.BUNDLE, "QT_PLUGIN_PATH": self.BUNDLE + "/plugins", "QT_SCALE_FACTOR": "2",
+               "PYTHONHOME": self.BUNDLE, "PATH": "/usr/bin", "DISPLAY": ":0"}
+        with self.frozen():
+            cleaned = platform.external_environment(env)
+        self.assertNotIn("LD_LIBRARY_PATH", cleaned)
+        self.assertNotIn("QT_PLUGIN_PATH", cleaned)
+        self.assertNotIn("PYTHONHOME", cleaned)
+        self.assertEqual((cleaned["QT_SCALE_FACTOR"], cleaned["PATH"], cleaned["DISPLAY"]), ("2", "/usr/bin", ":0"))
+
+    def test_frozen_environment_restores_the_original_library_path(self):
+        env = {"LD_LIBRARY_PATH": self.BUNDLE + ":/opt/lib", "LD_LIBRARY_PATH_ORIG": "/opt/lib"}
+        with self.frozen():
+            cleaned = platform.external_environment(env)
+        self.assertEqual(cleaned, {"LD_LIBRARY_PATH": "/opt/lib"})
+
+    def test_unfrozen_environment_is_left_alone(self):
+        env = {"LD_LIBRARY_PATH": "/opt/lib", "QT_PLUGIN_PATH": "/x"}
+        self.assertEqual(platform.external_environment(env), env)
+
+    def test_open_external_reports_launcher_failure_and_uses_a_clean_environment(self):
+        calls = []
+
+        class Process:
+            def __init__(self, code=None):
+                self.code = code
+
+            def wait(self, timeout=None):
+                if self.code is None:
+                    raise platform.subprocess.TimeoutExpired("xdg-open", timeout)
+                return self.code
+
+        def launch(code):
+            def popen(command, **kwargs):
+                calls.append((command, kwargs))
+                return Process(code)
+            return popen
+
+        with self.frozen(), patch.object(platform.shutil, "which", return_value="/usr/bin/xdg-open"), \
+                patch.dict(platform.os.environ, {"LD_LIBRARY_PATH": self.BUNDLE}):
+            with patch.object(platform.subprocess, "Popen", launch(0)):
+                self.assertTrue(platform.open_external("https://example.org"))
+            self.assertEqual(calls[-1][0], ["/usr/bin/xdg-open", "https://example.org"])
+            self.assertNotIn("LD_LIBRARY_PATH", calls[-1][1]["env"])
+            with patch.object(platform.subprocess, "Popen", launch(4)):
+                self.assertFalse(platform.open_external("https://example.org"))
+            with patch.object(platform.subprocess, "Popen", launch(None)):
+                self.assertTrue(platform.open_external("https://example.org", wait=0.01))
+            with patch.object(platform.subprocess, "Popen", side_effect=OSError):
+                self.assertFalse(platform.open_external("https://example.org"))
+        with patch.object(platform.sys, "platform", "linux"), patch.object(platform.shutil, "which", return_value=None):
+            self.assertFalse(platform.open_external("https://example.org"))

@@ -4,7 +4,6 @@ import copy
 import json
 import secrets
 import threading
-import webbrowser
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
@@ -14,6 +13,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QDialog, QVBoxLayout, QHBo
 from .config import uid
 from .extensions import METRICS, normalize_phase, validate_content
 from .content import assets
+from .platform_support import open_external
 from .widgets import http_url
 
 
@@ -313,7 +313,7 @@ class IntegrationPanel(QWidget):
         form.addRow(self.sp_connect); form.addRow(btn(t("Desconectar", "Disconnect"), self.spotify_disconnect))
         form.addRow(hint(t("Crea una app en developer.spotify.com, registra la URI de redirección http://127.0.0.1/callback y pega aquí su Client ID. Solo se guarda el token de actualización.",
                            "Create an app at developer.spotify.com, register the redirect URI http://127.0.0.1/callback and paste its Client ID here. Only the refresh token is stored.")))
-        self.spotify_opener, self.sp_job = webbrowser.open, None
+        self.spotify_opener, self.sp_job = open_external, None
         tabs.addTab(page, "Spotify")
         page = QWidget(); form = QFormLayout(page)
         self.prtg_on = QCheckBox(t("Activar PRTG", "Enable PRTG")); self.prtg_on.setChecked(prtg["enabled"])

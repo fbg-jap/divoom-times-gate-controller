@@ -8,6 +8,61 @@ import base64
 from urllib.parse import urlparse, unquote
 
 
+def external_environment(env=None):
+    """Environment for programs started from a frozen Linux build (PyInstaller/AppImage).
+
+    The bundle exports LD_LIBRARY_PATH (and some QT_*/PYTHON* paths) pointing at its own libraries; a child such
+    as xdg-open/kde-open or the browser then loads the bundled Qt against the system's and fails to start.
+    """
+    env = dict(os.environ if env is None else env)
+    if not (sys.platform.startswith("linux") and getattr(sys, "frozen", False)):
+        return env
+    original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original is None:
+        env.pop("LD_LIBRARY_PATH", None)
+    else:
+        env["LD_LIBRARY_PATH"] = original
+    bundle = getattr(sys, "_MEIPASS", "") or env.get("APPDIR", "")
+    if bundle:
+        for key in [k for k, v in env.items() if (k.startswith("QT_") or k in ("PYTHONHOME", "PYTHONPATH")) and bundle in v]:
+            env.pop(key)
+    return env
+
+
+def open_external(target, wait=3.0):
+    """Open a URL or file path with the desktop's default handler.
+
+    Returns False when no handler could be started or the Linux launcher exits with an error within `wait`
+    seconds; a launcher still running after that is assumed to be starting the application.
+    """
+    target = str(target)
+    is_url = target.startswith(("http://", "https://"))
+    if sys.platform.startswith("linux"):
+        opener = shutil.which("xdg-open")
+        if not opener:
+            return False
+        try:
+            process = subprocess.Popen([opener, target], env=external_environment(), stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            return False
+        try:
+            return process.wait(timeout=wait) == 0
+        except subprocess.TimeoutExpired:
+            return True
+    if is_url:
+        import webbrowser
+        return bool(webbrowser.open(target))
+    try:
+        if os.name == "nt":
+            os.startfile(target)
+        else:
+            subprocess.Popen(["open", target])
+        return True
+    except OSError:
+        return False
+
+
 def data_directory():
     if os.name == "nt":
         return Path(os.getenv("APPDATA", str(Path.home()))) / "DivoomKeeperStudio"
