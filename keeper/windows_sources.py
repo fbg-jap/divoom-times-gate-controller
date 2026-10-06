@@ -19,7 +19,7 @@ def read_media():
         manager = await GlobalSystemMediaTransportControlsSessionManager.request_async()
         session = manager.get_current_session()
         if session is None:
-            return {"title": "", "artist": "", "status": "Sin reproducción", "art": ""}
+            return {"title": "", "artist": "", "status": "Nothing playing", "art": ""}
         properties = await session.try_get_media_properties_async()
         result = {"title": properties.title, "artist": properties.artist,
                   "status": session.get_playback_info().playback_status.name.title(), "art": ""}
@@ -62,13 +62,13 @@ ConvertTo-Json -InputObject $sensors -Compress
 
 def powershell_json(script):
     if os.name != "nt":
-        raise RuntimeError("Esta fuente requiere Windows")
+        raise RuntimeError("This source requires Windows")
     executable = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "System32/WindowsPowerShell/v1.0/powershell.exe")
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     result = subprocess.run([executable, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
         capture_output=True, timeout=12, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
-        raise RuntimeError("Fuente de Windows no disponible")
+        raise RuntimeError("Windows source unavailable")
     return json.loads(result.stdout.decode("utf-8-sig"))
 
 
@@ -77,7 +77,7 @@ class AsyncProbe:
     def __init__(self, script, interval=5):
         self.script, self.interval = script, interval
         self.lock = threading.Lock()
-        self.value, self.error = None, "Esperando primera lectura"
+        self.value, self.error = None, "Waiting for first reading"
         self.started, self.updated, self.running = -1e12, -1e12, False
 
     def read(self):

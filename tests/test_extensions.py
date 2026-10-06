@@ -129,7 +129,7 @@ class AutomationTests(FixtureCase):
         self.auto = self.engine.automations
 
     def rule(self, **kwargs):
-        return {"id": uid(), "device_id": self.d["id"], "enabled": True, "panel": 0, "text": "Aviso",
+        return {"id": uid(), "device_id": self.d["id"], "enabled": True, "panel": 0, "text": "Notice",
                 "metric": "cpu", "threshold": 80, "operator": "above", "hold": 10, "cooldown": 30, **kwargs}
 
     def update(self, now):
@@ -166,8 +166,8 @@ class AutomationTests(FixtureCase):
         self.assertEqual(self.store.get_device()["screens"][0]["text"], "BASE")
 
     def test_profiles_are_ephemeral_and_prioritized(self):
-        scene = {"id": uid(), "name": "Juego", "screens": [slot("text", text="GAME") for _ in range(5)]}
-        lock_scene = {"id": uid(), "name": "Bloqueado", "screens": [slot("text", text="LOCKED") for _ in range(5)]}
+        scene = {"id": uid(), "name": "Game", "screens": [slot("text", text="GAME") for _ in range(5)]}
+        lock_scene = {"id": uid(), "name": "Locked", "screens": [slot("text", text="LOCKED") for _ in range(5)]}
         profile = self.rule(trigger="process", process="game.exe", scene_id=scene["id"])
         locked = self.rule(trigger="locked", scene_id=lock_scene["id"])
         self.store.change(lambda data: data.update(scenes=[scene, lock_scene], profiles=[profile, locked]))

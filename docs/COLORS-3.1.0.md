@@ -1,6 +1,6 @@
 # Keeper 3.1.0 · Visual colors and RGB
 
-**Historical report for 3.1.0.** For current effect names, solid backlight color, corrected sending and platform scope, use the [3.1.1 RGB guide](RGB-3.1.1.md). Build status below describes the local checks performed at that time; subsequent [CI checks](VALIDACION-CI-3.1.0.md) and [3.1.1 validation](RGB-3.1.1.md#validation) supersede the earlier build limitations.
+**Historical report for 3.1.0.** For current effect names, solid backlight color, corrected sending and platform scope, use the [3.1.1 RGB guide](RGB-3.1.1.md). Build status below describes the local checks performed at that time; subsequent [CI checks](VALIDATION-CI-3.1.0.md) and [3.1.1 validation](RGB-3.1.1.md#validation) supersede the earlier build limitations.
 
 ## Usage in 3.1.0
 
@@ -20,7 +20,7 @@ The local Windows 3.1.0 executable was generated at `dist/3.1.0/DivoomKeeperStud
 
 Version 2.3 remained in `dist/2.3.0/`, and 3.0 packages in `dist/`. The previous source backup was stored in `backups/working-v3.0.0-20260927-214107/` with a SHA-256 manifest. These tests did not change active settings, media or the user's startup entry.
 
-The local APK was `dist/DivoomKeeper-3.1.0-android-debug.apk`. Linux, Docker and iOS source projects were included. At this local validation stage, the Linux package contained source rather than a compiled binary. iOS required Mac, Xcode and signing. See [current platform instructions](MULTIPLATAFORMA.md).
+The local APK was `dist/DivoomKeeper-3.1.0-android-debug.apk`. Linux, Docker and iOS source projects were included. At this local validation stage, the Linux package contained source rather than a compiled binary. iOS required Mac, Xcode and signing. See [current platform instructions](MULTIPLATFORM.md).
 
 ## Local validation
 

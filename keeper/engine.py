@@ -75,7 +75,7 @@ class Engine(threading.Thread):
                 self.pending.add(key)
                 return True
             except queue.Full:
-                self.emit("log", message="Cola de tareas llena. Espera a que finalice el envío.", level="warning")
+                self.emit("log", message="Task queue full. Wait for the send to finish.", level="warning")
                 return False
 
     def client(self, device):
@@ -146,26 +146,26 @@ class Engine(threading.Thread):
                 activate = s.get("native_pc_mode", "activate") == "activate"
                 if activate and (force or key not in self.hashes):
                     if int(s.get("independence", 0)) <= 0:
-                        raise ValueError("Selecciona PC Monitor en la app Divoom y usa 'Enviar datos al monitor ya elegido'. "
-                                         "La activación directa necesita un grupo nativo válido; 0 altera otras pantallas.")
+                        raise ValueError("Select PC Monitor in the Divoom app and use 'Send data to the already chosen monitor'. "
+                                         "Direct activation needs a valid native group; 0 alters other screens.")
                     payload = {"Command": "Channel/SetClockSelectId", "ClockId": 625,
                                "LcdIndependence": int(s.get("independence", 0)), "LcdIndex": panel}
                     if int(d.get("device_id", 0)):
                         payload["DeviceId"] = int(d["device_id"])
                     self.command(d, payload)
                     if self.stop_event.wait(.3):
-                        raise InterruptedError("Envío cancelado")
+                        raise InterruptedError("Send cancelled")
                 values = self.renderer.providers.pc()
                 def fmt(name, suffix):
                     value = values.get(name)
-                    return "N/D" if value is None else f"{value:.0f}{suffix}"
+                    return "N/A" if value is None else f"{value:.0f}{suffix}"
                 self.command(d, {"Command": "Device/UpdatePCParaInfo", "ScreenList": [{
                     "LcdId": panel, "DispData": [fmt("cpu", "%"), fmt("gpu", "%"), fmt("cpu_temp", " C"),
                                                   fmt("gpu_temp", " C"), fmt("ram", "%"), fmt("disk", "%")]}]})
                 self.hashes[key] = "native-pc"
                 self.last_sent[key] = time.monotonic()
-                self.emit("status", device_id=d["id"], text="Datos PC enviados · reloj 625 necesario")
-                self.log(f"{d['name']} · pantalla {panel + 1} · PC nativo: CPU {fmt('cpu', '%')}, "
+                self.emit("status", device_id=d["id"], text="PC data sent · clock 625 required")
+                self.log(f"{d['name']} · screen {panel + 1} · native PC: CPU {fmt('cpu', '%')}, "
                          f"RAM {fmt('ram', '%')}, GPU {fmt('gpu', '%')} · datos aceptados")
                 return
             if kind == "media":
@@ -184,7 +184,7 @@ class Engine(threading.Thread):
             digest = signature.hexdigest()
             if not force and not switched and self.hashes.get(key) == digest and now - self.last_sent.get(key, 0) < interval:
                 return
-            self.emit("status", device_id=d["id"], text=f"Enviando pantalla {panel + 1}…")
+            self.emit("status", device_id=d["id"], text=f"Sending screen {panel + 1}…")
             if not self.demo:
                 self.client(d).send_frames(frames, panel, d.get("quality", 85), s.get("panorama_speed") or d.get("speed", 100), self.stop_event)
             self.hashes[key] = digest
@@ -196,11 +196,11 @@ class Engine(threading.Thread):
                 self.emit("playing", device_id=d["id"], panel=panel, index=playlist_index,
                           count=len(d["playlists"][panel]["items"]))
             self.emit("preview", device_id=d["id"], panel=panel, png=png_bytes(frames[0]))
-            self.emit("status", device_id=d["id"], text="Envío aceptado · " + datetime.now().strftime("%H:%M:%S"))
-            self.log(f"{d['name']} · pantalla {panel + 1} · {kind} enviado")
+            self.emit("status", device_id=d["id"], text="Send accepted · " + datetime.now().strftime("%H:%M:%S"))
+            self.log(f"{d['name']} · screen {panel + 1} · {kind} sent")
         except Exception as error:
-            self.log(f"{d['name']} · pantalla {panel + 1}: {type(error).__name__}: {error}", "error")
-            self.emit("status", device_id=d["id"], text="Error de envío · ver Actividad")
+            self.log(f"{d['name']} · screen {panel + 1}: {type(error).__name__}: {error}", "error")
+            self.emit("status", device_id=d["id"], text="Send error · see Activity")
             if force:
                 raise
 
@@ -215,7 +215,7 @@ class Engine(threading.Thread):
                 except Exception as error:
                     failures.append(f"{i+1}: {error}")
         if failures:
-            raise RuntimeError("Pantallas con error: " + "; ".join(failures))
+            raise RuntimeError("Screens with errors: " + "; ".join(failures))
 
     def set_state(self, device_id, **values):
         self.store.change(lambda data: next(d for d in data["devices"] if d["id"] == device_id).update(values))
@@ -269,7 +269,7 @@ class Engine(threading.Thread):
             self.paused.discard(d["id"])
             self.set_state(d["id"], suspended=False)
             if d["id"] in self.power_off:
-                self.log("Pantallas apagadas. Enciéndelas antes de enviar.", "warning")
+                self.log("Screens are off. Turn them on before sending.", "warning")
                 return
             self.send(d, args.get("panel"))
         elif action == "command":
@@ -286,7 +286,7 @@ class Engine(threading.Thread):
                 self.overrides = {key: value for key, value in self.overrides.items() if key[0] != d["id"]}
                 self.paused.add(d["id"])
                 self.set_state(d["id"], suspended=True)
-                self.emit("status", device_id=d["id"], text="Herramienta nativa · reenvío en pausa")
+                self.emit("status", device_id=d["id"], text="Native tool · resending paused")
             if payload["Command"] == "Channel/OnOffScreen":
                 self.set_state(d["id"], screens_off=payload["OnOff"] == 0)
                 if payload["OnOff"] == 0:
@@ -312,12 +312,12 @@ class Engine(threading.Thread):
             self.apply_scene(d, args["scene_id"])
         elif action == "notification":
             if d["id"] in self.power_off:
-                raise ValueError("Enciende las pantallas antes de enviar un aviso")
+                raise ValueError("Turn the screens on before sending a notice")
             panel = args["panel"]
             current, _, _, _ = self.playlist_content(d, panel)
             if current["kind"] in {"empty", "native", "pc_native"}:
-                raise ValueError("El aviso necesita una pantalla con contenido restaurable (imagen o widget)")
-            self.send_panel(d, panel, True, slot("text", title=args.get("title", "AVISO"), text=args["text"]))
+                raise ValueError("The notice needs a screen with restorable content (image or widget)")
+            self.send_panel(d, panel, True, slot("text", title=args.get("title", "NOTICE"), text=args["text"]))
             self.overrides[(d["id"], panel)] = time.monotonic() + args.get("seconds", 15)
             if args.get("buzzer"):
                 self.command(d, {"Command": "Device/PlayBuzzer", "ActiveTimeInCycle": 150,
@@ -342,7 +342,7 @@ class Engine(threading.Thread):
             if self.online.get(d["id"]) is False:
                 self.lighting_restored.discard((d['id'], d['ip']))
                 self.invalidate(d["id"])
-                self.log(f"{d['name']} · conexión recuperada; se restaurará su contenido")
+                self.log(f"{d['name']} · connection recovered; its content will be restored")
             self.online[d["id"]] = True
             self.emit("health", device_id=d["id"], online=True, body=body)
         except Exception as error:
@@ -356,10 +356,10 @@ class Engine(threading.Thread):
             try:
                 self.command(d, payload(d['lighting']))
                 self.lighting_restored.add(key)
-                self.log(f"{d['name']} · iluminación recuperada")
+                self.log(f"{d['name']} · lighting recovered")
             except Exception as error:
                 # An RGB failure must not suspend image/GIF uploads.
-                self.log(f"{d['name']} · no se pudo recuperar la iluminación: {error}", 'warning')
+                self.log(f"{d['name']} · could not recover lighting: {error}", 'warning')
 
     def tick(self):
         data = self.store.snapshot()
@@ -425,7 +425,7 @@ class Engine(threading.Thread):
             self.send(d, force=False)
 
     def run(self):
-        self.log("Motor preparado" + (" · DEMO: sin conexión al dispositivo" if self.demo else ""))
+        self.log("Engine ready" + (" · DEMO: no device connection" if self.demo else ""))
         tick_at = 0.
         while not self.stop_event.is_set():
             if time.monotonic() >= tick_at:

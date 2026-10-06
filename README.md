@@ -6,7 +6,7 @@ Turn the five screens of your **Divoom Times Gate** into a display for images, a
 
 **Desktop and Python server: 3.1.1. Shared web interface and standalone mobile apps: 3.1.0.** The latest desktop update adds named RGB effects for each lighting zone and a solid backlight color shortcut. The Python engine also fixes effect addressing and restores accepted lighting settings after reconnecting. [RGB guide and validation](docs/RGB-3.1.1.md).
 
-[Getting started](#getting-started) · [Platform installation](docs/MULTIPLATAFORMA.md) · [Screenshots](docs/CAPTURAS.md) · [Changelog](CHANGELOG.md) · [Original v0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3)
+[Getting started](#getting-started) · [Platform installation](docs/MULTIPLATFORM.md) · [Screenshots](docs/SCREENSHOTS.md) · [Changelog](CHANGELOG.md) · [Original v0.1.3](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3)
 
 ![Keeper Studio: five screens with a clock, PC monitor, text, weather and network data](docs/screenshots/screens.png)
 
@@ -45,7 +45,7 @@ Continuous tasks require the engine to stay running. The desktop app can stay in
 
 ![Desktop 3.1.1 RGB panel with named effects and a solid backlight color shortcut](docs/screenshots/rgb-desktop.png)
 
-The web portal and mobile apps still label their cards **Effect 1–12**. The portal uses the corrected Python 3.1.1 engine; standalone mobile apps retain their 3.1.0 RGB implementation. The preview does not simulate firmware animations. Brightness and power are global, and selecting one zone can also affect the other. A custom solid color is supported by the documented rear-light mode; the steady edge color may be fixed by firmware. [Current RGB guide](docs/RGB-3.1.1.md) · [Web and mobile screenshots](docs/CAPTURAS.md).
+The web portal and mobile apps still label their cards **Effect 1–12**. The portal uses the corrected Python 3.1.1 engine; standalone mobile apps retain their 3.1.0 RGB implementation. The preview does not simulate firmware animations. Brightness and power are global, and selecting one zone can also affect the other. A custom solid color is supported by the documented rear-light mode; the steady edge color may be fixed by firmware. [Current RGB guide](docs/RGB-3.1.1.md) · [Web and mobile screenshots](docs/SCREENSHOTS.md).
 
 ## Adjustable and animated panoramas
 
@@ -61,7 +61,7 @@ Limits: 100 MB per file, up to 30 seconds and 120 frames per screen. At 10 FPS, 
 
 ![Visual designer with dynamic text and a CPU bar](docs/screenshots/designer.png)
 
-Combine text, images and bars with fields such as `{cpu}`, `{ram}`, `{time}` or `{date}`. The PC monitor includes graphs, networking, storage and temperatures; unavailable sensors display **N/D**. [More widget, playlist and automation examples](docs/CAPTURAS.md).
+Combine text, images and bars with fields such as `{cpu}`, `{ram}`, `{time}` or `{date}`. The PC monitor includes graphs, networking, storage and temperatures; unavailable sensors display **N/D**. [More widget, playlist and automation examples](docs/SCREENSHOTS.md).
 
 ## Platforms and status
 
@@ -75,7 +75,7 @@ Combine text, images and bars with fields such as `{cpu}`, `{ram}`, `{time}` or 
 
 Standalone mobile apps **do not need a Keeper server**. Continuous tasks depend on foreground execution and Android/iOS restrictions. Uploaded GIFs continue playing on the device. The web portal is a separate mode: the browser controls the server.
 
-PC metrics, music, hardware and profiles vary by platform. Docker reports the environment visible to the container; mobile can display external sensors. See the [full comparison and requirements](docs/MULTIPLATAFORMA.md).
+PC metrics, music, hardware and profiles vary by platform. Docker reports the environment visible to the container; mobile can display external sensors. See the [full comparison and requirements](docs/MULTIPLATFORM.md).
 
 ## Getting started
 
@@ -121,7 +121,7 @@ bash run_linux.sh
 bash run_linux.sh --demo
 ```
 
-Install the [Qt libraries and Linux prerequisites](docs/MULTIPLATAFORMA.md#linux-desktop) first (Debian/Ubuntu and Fedora commands are listed there). The script picks Python 3.13, 3.12 or 3.11 if available; set `PYTHON=python3.12` to choose one. Very new Python releases may not have PySide6 or PyAV wheels yet.
+Install the [Qt libraries and Linux prerequisites](docs/MULTIPLATFORM.md#linux-desktop) first (Debian/Ubuntu and Fedora commands are listed there). The script picks Python 3.13, 3.12 or 3.11 if available; set `PYTHON=python3.12` to choose one. Very new Python releases may not have PySide6 or PyAV wheels yet.
 
 ### Docker and web portal
 
@@ -130,7 +130,7 @@ docker compose up -d --build
 docker compose exec keeper cat /data/admin.token
 ```
 
-Open `http://SERVER_IP:8080` and enter the generated token. The volume preserves your data. You can also set `KEEPER_TOKEN` using `.env.example`. [Networking, authentication, backups and running without Docker](docs/MULTIPLATAFORMA.md#docker-and-web-portal).
+Open `http://SERVER_IP:8080` and enter the generated token. The volume preserves your data. You can also set `KEEPER_TOKEN` using `.env.example`. [Networking, authentication, backups and running without Docker](docs/MULTIPLATFORM.md#docker-and-web-portal).
 
 ### Android and iOS
 
@@ -145,7 +145,7 @@ npx cap open android
 npx cap open ios
 ```
 
-Android requires JDK 21 and SDK 36. iOS requires Xcode 26 and signing to install on an iPhone. [Mobile instructions and limitations](docs/MULTIPLATAFORMA.md#standalone-android).
+Android requires JDK 21 and SDK 36. iOS requires Xcode 26 and signing to install on an iPhone. [Mobile instructions and limitations](docs/MULTIPLATFORM.md#standalone-android).
 
 ### Downloads and builds
 
@@ -172,7 +172,7 @@ Git history and the v0.1.3 release are preserved. To return to the original app,
 
 The latest RGB appearance and transfers from physical phones still require visual validation. Native clocks and tools depend on firmware. **Native PC Monitor remains experimental:** native group 0 is blocked because it changed other screens. Use Keeper's rendered PC widget for the previously confirmed PC display.
 
-[Current RGB validation](docs/RGB-3.1.1.md#validation) · [Historical 3.1.0 CI report](docs/VALIDACION-CI-3.1.0.md) · [Physical panorama test](docs/VALIDACION-2.3.0.md).
+[Current RGB validation](docs/RGB-3.1.1.md#validation) · [Historical 3.1.0 CI report](docs/VALIDATION-CI-3.1.0.md) · [Physical panorama test](docs/VALIDATION-2.3.0.md).
 
 ## Development
 
@@ -200,13 +200,13 @@ Generate desktop demo screenshots with `python app.py --screenshot-dir artifacts
 
 ## Documentation and references
 
-- [Screenshot gallery](docs/CAPTURAS.md)
-- [Desktop guide](docs/ESCRITORIO.md)
-- [Installation and platform differences](docs/MULTIPLATAFORMA.md)
+- [Screenshot gallery](docs/SCREENSHOTS.md)
+- [Desktop guide](docs/DESKTOP.md)
+- [Installation and platform differences](docs/MULTIPLATFORM.md)
 - [RGB lighting and solid colors in 3.1.1](docs/RGB-3.1.1.md)
-- [API, MQTT and Home Assistant](docs/INTEGRACIONES.md)
+- [API, MQTT and Home Assistant](docs/INTEGRATIONS.md)
 - [Changelog](CHANGELOG.md)
-- [Historical visual color update in 3.1.0](docs/COLORES-3.1.0.md)
+- [Historical visual color update in 3.1.0](docs/COLORS-3.1.0.md)
 
 The sender retains the original strategy: `Draw/SendHttpGif`, base64 JPEG frames and individual screen selection. Community references: [adiastra/divoom-gaming-gate](https://github.com/adiastra/divoom-gaming-gate), [usausa/divoom-tool](https://github.com/usausa/divoom-tool), [Divoom-PC-Monitor-PowerShell](https://github.com/KallanX/Divoom-PC-Monitor-PowerShell), [divoom-monitor](https://github.com/Pisyukaev/divoom-monitor), [polynomial/divoom-times-gate](https://github.com/polynomial/divoom-times-gate) and [divoom-timesgate-customplugins](https://github.com/f0x1777/divoom-timesgate-customplugins).
 

@@ -50,7 +50,7 @@ class PanoramaMediaTests(FixtureCase):
         result = decode_clip(self.gif(), start=.8, duration=4, fps=5)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["frames"][0].getpixel((200, 64)), (0, 0, 255))
-        with self.assertRaisesRegex(ValueError, "No hay fotogramas"):
+        with self.assertRaisesRegex(ValueError, "No frames"):
             decode_clip(self.gif(), start=2)
 
     def test_mp4_decode_seek_and_end_of_clip(self):
@@ -62,7 +62,7 @@ class PanoramaMediaTests(FixtureCase):
         self.assertGreater(colors[0][0], 230)
         self.assertTrue(all(color[2] > 230 for color in colors[1:]))
         self.assertEqual(decode_clip(path, start=1.8, duration=4, fps=5)["count"], 1)
-        with self.assertRaisesRegex(ValueError, "final"):
+        with self.assertRaisesRegex(ValueError, "end of the video"):
             decode_clip(path, start=3)
 
     def test_rotation_and_crop_are_applied_to_every_frame(self):
@@ -109,7 +109,7 @@ class PanoramaMediaTests(FixtureCase):
         result = decode_clip(self.gif(), duration=1)
         result["blobs"][0] = encode_panels([Image.new("RGB", (640, 128))], 200)[0]
         before = self.store.snapshot()
-        with self.assertRaisesRegex(ValueError, "misma duración"):
+        with self.assertRaisesRegex(ValueError, "same duration"):
             self.store.apply_panorama_animation(result["blobs"], 200)
         self.assertEqual(self.store.snapshot(), before)
 

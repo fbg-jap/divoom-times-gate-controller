@@ -50,7 +50,7 @@ export function defaults() {
   const d = device();
   return {
     version: 2,
-    language: "es",
+    language: "en",
     theme: "dark",
     startup: false,
     resend_on_startup: true,
@@ -77,22 +77,22 @@ export function defaults() {
   };
 }
 export const kinds = {
-  empty: "Sin gestionar",
-  media: "Imagen / GIF",
-  text: "Texto",
-  clock: "Reloj",
-  pc: "Monitor PC",
-  weather: "Tiempo",
-  countdown: "Cuenta atrás",
-  service: "Estado de servicio",
-  calendar: "Calendario ICS",
-  music: "Música",
-  rss: "Noticias RSS",
-  custom: "Diseño",
+  empty: "Unmanaged",
+  media: "Image / GIF",
+  text: "Text",
+  clock: "Clock",
+  pc: "PC monitor",
+  weather: "Weather",
+  countdown: "Countdown",
+  service: "Service status",
+  calendar: "ICS calendar",
+  music: "Music",
+  rss: "RSS news",
+  custom: "Design",
   pomodoro: "Pomodoro",
   sensor: "Sensor",
-  native: "Nativo sin gestionar",
-  pc_native: "PC nativo experimental",
+  native: "Native unmanaged",
+  pc_native: "Experimental native PC",
 };
 export function normalize(value) {
   const cfg = { ...defaults(), ...copy(value) };
@@ -130,11 +130,11 @@ export const metrics = {
   cpu: "CPU %",
   ram: "RAM %",
   gpu: "GPU %",
-  disk: "Disco %",
+  disk: "Disk %",
   cpu_temp: "CPU °C",
   gpu_temp: "GPU °C",
-  download: "Descarga B/s",
-  upload: "Subida B/s",
+  download: "Download B/s",
+  upload: "Upload B/s",
 };
 export function validIp(ip) {
   const parts = String(ip).split(".");
@@ -147,20 +147,20 @@ export function validIp(ip) {
       (parts[0] === "172" && +parts[1] >= 16 && +parts[1] <= 31)
     )
   )
-    throw Error("Introduce una IPv4 privada del Times Gate");
+    throw Error("Enter a private IPv4 address for the Times Gate");
   return parts.map(Number).join(".");
 }
 export function validate(cfg) {
   if (cfg.version !== 2 || !cfg.devices?.length || cfg.devices.length > 30)
-    throw Error("Configuración no compatible");
+    throw Error("Unsupported configuration");
   const ids = new Set(cfg.devices.map((d) => d.id)),
     scenes = new Set(cfg.scenes.map((s) => s.id));
   if (ids.size !== cfg.devices.length || !ids.has(cfg.active_device))
-    throw Error("Dispositivo inválido");
+    throw Error("Invalid device");
   for (const d of cfg.devices) {
     if(d.lighting)validateLighting(d.lighting);
     if (d.ip) validIp(d.ip);
-    if (d.screens.length !== 5) throw Error("Se necesitan cinco pantallas");
+    if (d.screens.length !== 5) throw Error("Five screens are required");
     if (
       !Number.isInteger(+d.quality) ||
       +d.quality < 30 ||
@@ -169,30 +169,30 @@ export function validate(cfg) {
       +d.speed < 1 ||
       +d.speed > 60000
     )
-      throw Error("Calidad o velocidad inválida");
+      throw Error("Invalid quality or speed");
   }
   for (const owner of [...cfg.devices, ...cfg.scenes])
     if (owner.screens.length !== 5 || owner.playlists?.length !== 5)
-      throw Error("Se necesitan cinco pantallas y cinco listas");
+      throw Error("Five screens and five playlists are required");
   for (const s of allScreens(cfg)) {
-    if (!kinds[s.kind]) throw Error("Contenido desconocido");
+    if (!kinds[s.kind]) throw Error("Unknown content");
     if (
       !(+s.refresh >= 5 && +s.refresh <= 86400) ||
       !(+s.frame_step >= 1 && +s.frame_step <= 100)
     )
-      throw Error("Intervalo inválido");
-    if (s.elements?.length > 20) throw Error("Máximo 20 elementos de diseño");
+      throw Error("Invalid interval");
+    if (s.elements?.length > 20) throw Error("Maximum 20 design elements");
   }
   for (const owner of [...cfg.devices, ...cfg.scenes])
     for (const list of owner.playlists || lists()) {
       if (list.items.length > 50 || (list.enabled && !list.items.length))
-        throw Error("Lista vacía o demasiado larga");
+        throw Error("Playlist empty or too long");
       for (const item of list.items)
         if (
           !(item.seconds >= 5 && item.seconds <= 86400) ||
           ["empty", "native", "pc_native"].includes(item.screen.kind)
         )
-          throw Error("Elemento de lista inválido");
+          throw Error("Invalid playlist item");
     }
   for (const rule of cfg.schedules)
     if (
@@ -200,20 +200,20 @@ export function validate(cfg) {
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(rule.time) ||
       (rule.action === "scene" && !scenes.has(rule.value))
     )
-      throw Error("Horario inválido");
+      throw Error("Invalid schedule");
   for (const group of ["alerts", "reminders", "profiles"])
     for (const rule of cfg[group] || []) {
       if (
         !ids.has(rule.device_id) ||
         (group === "profiles" && !scenes.has(rule.scene_id))
       )
-        throw Error("Destino de regla inválido");
+        throw Error("Invalid rule target");
       if (
         group !== "profiles" &&
         (!rule.text ||
           !(rule.panel >= 0 && rule.panel <= 4) ||
           !(rule.seconds >= 5 && rule.seconds <= 300))
       )
-        throw Error("Aviso inválido");
+        throw Error("Invalid alert");
     }
 }

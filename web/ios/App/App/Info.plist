@@ -67,7 +67,7 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Keeper envía imágenes y controles directamente a tu Divoom Times Gate por la red local.</string>
+	<string>Keeper sends images and controls directly to your Divoom Times Gate over the local network.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

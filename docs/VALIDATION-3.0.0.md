@@ -1,6 +1,6 @@
 # Keeper 3.0 validation
 
-**Historical report for 3.0.0.** Later builds and current limitations are documented in [3.1.1 validation](RGB-3.1.1.md#validation) and the [platform guide](MULTIPLATAFORMA.md). Pending items below describe the state at this earlier checkpoint.
+**Historical report for 3.0.0.** Later builds and current limitations are documented in [3.1.1 validation](RGB-3.1.1.md#validation) and the [platform guide](MULTIPLATFORM.md). Pending items below describe the state at this earlier checkpoint.
 
 Date: September 27, 2026. Development environment: Windows. This report distinguishes implementation, builds and physical hardware checks.
 

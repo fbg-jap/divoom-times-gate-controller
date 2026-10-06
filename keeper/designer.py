@@ -86,14 +86,14 @@ class DesignerDialog(QDialog):
         self.list.currentRowChanged.connect(self.select)
         column.addWidget(self.list)
         buttons = QHBoxLayout()
-        for text, kind in [("Texto", "text"), ("Barra", "bar"), ("Imagen", "image")]:
+        for text, kind in [("Text", "text"), ("Bar", "bar"), ("Image", "image")]:
             b = QPushButton(text)
             b.clicked.connect(lambda checked=False, k=kind: self.add(k))
             buttons.addWidget(b)
         column.addLayout(buttons)
         form = QFormLayout()
         self.fields = {}
-        for key, label, low, high in [("x", "X", 0, 127), ("y", "Y", 0, 127), ("width", "Ancho", 1, 128), ("height", "Alto", 1, 128), ("size", "Letra", 6, 64)]:
+        for key, label, low, high in [("x", "X", 0, 127), ("y", "Y", 0, 127), ("width", "Width", 1, 128), ("height", "Height", 1, 128), ("size", "Font size", 6, 64)]:
             w = QSpinBox(); w.setRange(low, high); w.valueChanged.connect(self.change)
             form.addRow(label, w); self.fields[key] = w
         self.text = QLineEdit(); self.text.textChanged.connect(self.change)
@@ -103,12 +103,12 @@ class DesignerDialog(QDialog):
             self.metric_combo.addItem(label, key)
         self.metric_combo.currentIndexChanged.connect(self.change)
         self.maximum = QDoubleSpinBox(); self.maximum.setRange(.1, 1e12); self.maximum.valueChanged.connect(self.change)
-        form.addRow("Texto", self.text); form.addRow("Color", self.color); form.addRow("Métrica de barra", self.metric_combo); form.addRow("Máximo de barra", self.maximum)
+        form.addRow("Text", self.text); form.addRow("Color", self.color); form.addRow("Bar metric", self.metric_combo); form.addRow("Bar maximum", self.maximum)
         column.addLayout(form)
-        hint = QLabel("Texto dinámico: {cpu}, {ram}, {gpu}, {disk}, {cpu_temp}, {gpu_temp}, {time}, {date}")
+        hint = QLabel("Dynamic text: {cpu}, {ram}, {gpu}, {disk}, {cpu_temp}, {gpu_temp}, {time}, {date}")
         hint.setWordWrap(True); hint.setMaximumWidth(310); column.addWidget(hint)
         row2 = QHBoxLayout()
-        for text, callback in [("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1)), ("Eliminar", self.remove), ("Elegir imagen…", self.choose_image)]:
+        for text, callback in [("↑", lambda: self.move(-1)), ("↓", lambda: self.move(1)), ("Delete", self.remove), ("Choose image…", self.choose_image)]:
             b = QPushButton(text); b.clicked.connect(callback); row2.addWidget(b)
         column.addLayout(row2)
         row.addLayout(column)
@@ -122,7 +122,7 @@ class DesignerDialog(QDialog):
     def refresh(self, index=0):
         self.list.blockSignals(True); self.list.clear()
         for i, e in enumerate(self.screen["elements"]):
-            self.list.addItem(f"{i+1} · {e['type']} · {e.get('text') or e.get('metric') or 'Imagen'}")
+            self.list.addItem(f"{i+1} · {e['type']} · {e.get('text') or e.get('metric') or 'Image'}")
         self.list.blockSignals(False)
         self.list.setCurrentRow(min(index, len(self.screen["elements"])-1))
         self.canvas.update()
@@ -175,7 +175,7 @@ class DesignerDialog(QDialog):
         i = self.canvas.index
         if i < 0 or self.screen["elements"][i]["type"] != "image":
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Imagen", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
+        path, _ = QFileDialog.getOpenFileName(self, "Image", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
         if path:
             try:
                 with Image.open(path) as image:
@@ -183,7 +183,7 @@ class DesignerDialog(QDialog):
                 self.screen["elements"][i]["path"] = path
                 self.canvas.update()
             except Exception as error:
-                QMessageBox.warning(self, "Imagen", str(error))
+                QMessageBox.warning(self, "Image", str(error))
 
     def remove(self):
         i = self.canvas.index

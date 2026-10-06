@@ -1,6 +1,6 @@
 # Desktop guide · Keeper 3.1.1
 
-[README](../README.md) · [Platform installation](MULTIPLATAFORMA.md)
+[README](../README.md) · [Platform installation](MULTIPLATFORM.md)
 
 The Windows/Linux desktop interface supports English and Spanish. Select English in **Settings** to use the labels shown in this guide.
 
@@ -46,7 +46,7 @@ Closing the window hides it in the tray when a tray is available. Choose **Exit*
 
 Widgets are generated on the computer: Studio must remain running to update them. Their minimum update interval is five seconds, although individual sources can cache data longer. They are not firmware applications installed on Times Gate.
 
-Unavailable sensors display N/D. CPU temperature through psutil depends on the operating system and is normally unavailable on Windows. NVIDIA GPU metrics/temperature require `nvidia-smi`. Studio does not install hardware drivers. See the [integration guide](INTEGRACIONES.md) for additional sensor providers and music.
+Unavailable sensors display N/D. CPU temperature through psutil depends on the operating system and is normally unavailable on Windows. NVIDIA GPU metrics/temperature require `nvidia-smi`. Studio does not install hardware drivers. See the [integration guide](INTEGRATIONS.md) for additional sensor providers and music.
 
 To try **Native PC Monitor**, first select PC Monitor on the intended screen in the Divoom app, then choose the option to send data to the already selected monitor and click **Save and send**. Enable automatic updates to keep sending the six metrics over local HTTP without cloud IDs. Direct activation of clock 625 requires a valid LcdIndependence group from the catalog. Group 0 is blocked because a physical test changed several screens without updating data. DeviceId is sent only when configured. Direct activation is not validated on this device; Keeper's rendered PC widget has been visually confirmed.
 
@@ -91,4 +91,4 @@ Native tools that replace content **pause resending for that device**. Applying 
 
 Use **Settings → Export portable backup…** to save settings and media, or **Import backup…** to restore a ZIP. Import first preserves the current configuration and disables automatic sending and integrations. In 3.1.1 it also pauses RGB restoration. Review the device IP and platform-dependent sources, then re-enable the features you want and apply lighting explicitly.
 
-[Platform differences and migration](MULTIPLATAFORMA.md#migrating-your-layouts) · [Screenshot gallery](CAPTURAS.md)
+[Platform differences and migration](MULTIPLATFORM.md#migrating-your-layouts) · [Screenshot gallery](SCREENSHOTS.md)

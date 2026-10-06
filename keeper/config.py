@@ -32,7 +32,7 @@ def device(ip="", name="Times Gate", **kwargs):
 
 def defaults():
     d = device()
-    return {"version": 2, "language": "es", "theme": "dark", "startup": False,
+    return {"version": 2, "language": "en", "theme": "dark", "startup": False,
             "resend_on_startup": True, "active_device": d["id"], "devices": [d],
             "scenes": [], "schedules": [], "alerts": [], "reminders": [], "profiles": [],
             "integrations": {"api": {"enabled": False, "host": "127.0.0.1", "port": 8787, "token": ""},
@@ -42,52 +42,52 @@ def defaults():
 
 def validate(data):
     if not isinstance(data, dict) or data.get("version") != 2:
-        raise ValueError("Formato de configuración no compatible (se necesita versión 2)")
+        raise ValueError("Unsupported configuration format (version 2 required)")
     if not isinstance(data.get("devices"), list) or not data["devices"]:
-        raise ValueError("La configuración necesita al menos un dispositivo")
+        raise ValueError("The configuration needs at least one device")
     ids = set()
     for d in data["devices"]:
         if not isinstance(d, dict) or not d.get("id") or d["id"] in ids:
-            raise ValueError("Identificador de dispositivo duplicado o inválido")
+            raise ValueError("Duplicate or invalid device identifier")
         ids.add(d["id"])
         if 'lighting' in d:
             from .lighting import validate_lighting
             validate_lighting(d['lighting'])
         if 'lighting_restore' in d and type(d['lighting_restore']) is not bool:
-            raise ValueError('Estado de recuperación RGB inválido')
+            raise ValueError('Invalid RGB recovery state')
         validate_playlists(d.get("playlists", empty_playlists()))
         if len(d.get("screens", [])) != 5:
-            raise ValueError("Cada dispositivo necesita cinco pantallas")
+            raise ValueError("Each device needs five screens")
         if not 1 <= int(d.get("interval_minutes", 60)) <= 10080:
-            raise ValueError("Intervalo inválido")
+            raise ValueError("Invalid interval")
         for s in d["screens"]:
             if not isinstance(s, dict) or s.get("kind") not in {
                 "empty", "media", "text", "clock", "pc", "weather", "countdown",
                 "service", "calendar", "native", "pc_native"} | PLAYABLE:
-                raise ValueError("Tipo de pantalla desconocido")
+                raise ValueError("Unknown screen type")
     if data.get("active_device") not in ids:
-        raise ValueError("El dispositivo activo no existe")
+        raise ValueError("The active device does not exist")
     allowed_kinds = {"empty", "media", "text", "clock", "pc", "weather", "countdown", "service", "calendar", "native", "pc_native"} | PLAYABLE
     scene_ids = set()
     for scene in data.get("scenes", []):
         if not isinstance(scene, dict) or not scene.get("id") or scene["id"] in scene_ids:
-            raise ValueError("Identificador de escena inválido")
+            raise ValueError("Invalid scene identifier")
         scene_ids.add(scene["id"])
         validate_playlists(scene.get("playlists", empty_playlists()))
         screens = scene.get("screens", [])
         if len(screens) != 5 or any(not isinstance(s, dict) or s.get("kind") not in allowed_kinds for s in screens):
-            raise ValueError("Escena inválida")
+            raise ValueError("Invalid scene")
     for rule in data.get("schedules", []):
         from datetime import time
         time.fromisoformat(rule["time"])
         if rule.get("action") not in {"scene", "brightness", "on", "off"}:
-            raise ValueError("Acción programada desconocida")
+            raise ValueError("Unknown scheduled action")
         if rule.get("device_id") not in ids or any(n not in range(7) for n in rule.get("days", [])):
-            raise ValueError("Destino o días del horario inválidos")
+            raise ValueError("Invalid schedule target or days")
         if rule["action"] == "scene" and rule.get("value") not in scene_ids:
-            raise ValueError("El horario apunta a una escena inexistente")
+            raise ValueError("The schedule points to a nonexistent scene")
         if rule["action"] == "brightness" and not 0 <= int(rule["value"]) <= 100:
-            raise ValueError("Brillo del horario inválido")
+            raise ValueError("Invalid schedule brightness")
 
     from .extensions import validate_extensions
     validate_extensions(data)
@@ -137,9 +137,9 @@ class ConfigStore:
         if migrated:
             self.data["devices"] = migrated
         self.data["theme"] = raw.get("ui_theme", "dark")
-        self.data["language"] = raw.get("ui_lang", "es")
+        self.data["language"] = raw.get("ui_lang", "en")
         self.data["resend_on_startup"] = raw.get("resend_on_startup", True)
-        self.migration_note = "Perfiles importados. Activa Automático cuando quieras empezar."
+        self.migration_note = "Profiles imported. Enable Automatic when you want to start."
 
     def snapshot(self):
         with self.lock:
@@ -188,20 +188,20 @@ class ConfigStore:
     def import_media(self, path):
         source = Path(path)
         if not source.is_file():
-            raise ValueError("Archivo no encontrado")
+            raise ValueError("File not found")
         if source.stat().st_size > 100 * 1024 * 1024:
-            raise ValueError("El archivo supera 100 MB")
+            raise ValueError("The file exceeds 100 MB")
         digest = hashlib.sha256(source.read_bytes()).hexdigest()[:20]
         target = self.media_dir / (digest + source.suffix.lower())
         if not target.exists():
             shutil.copy2(source, target)
         return str(target)
 
-    def apply_panorama(self, images, title="Panorámica"):
+    def apply_panorama(self, images, title="Panorama"):
         from datetime import datetime
         from .widgets import png_bytes
         if len(images) != 5 or any(image.size != (128, 128) for image in images):
-            raise ValueError("La panorámica necesita cinco imágenes de 128 × 128")
+            raise ValueError("Panorama needs five 128 × 128 images")
         screens = []
         for i, image in enumerate(images):
             blob = png_bytes(image)
@@ -210,22 +210,22 @@ class ConfigStore:
             screens.append(slot("media", path=str(path), fit="stretch", title=f"{title} · {i + 1}"))
         def update(data):
             d = next(d for d in data["devices"] if d["id"] == data["active_device"])
-            data["scenes"].append({"id": uid(), "name": "Antes de panorámica · " + datetime.now().strftime("%d/%m %H:%M:%S"), **composition(d)})
+            data["scenes"].append({"id": uid(), "name": "Before panorama · " + datetime.now().strftime("%d/%m %H:%M:%S"), **composition(d)})
             d["screens"] = screens
             # Retain the lists for later use, but don't let them replace the panorama.
             for playlist in d.get("playlists", []):
                 playlist["enabled"] = False
         self.change(update)
 
-    def apply_panorama_animation(self, blobs, speed, title="Panorámica animada"):
+    def apply_panorama_animation(self, blobs, speed, title="Animated panorama"):
         import io
         from datetime import datetime
         from .panorama_media import animation_frames
         if len(blobs) != 5:
-            raise ValueError("Se necesitan cinco partes")
+            raise ValueError("Five parts are required")
         counts = [len(animation_frames(io.BytesIO(blob), speed)) for blob in blobs]
         if not counts[0] or len(set(counts)) != 1:
-            raise ValueError("Las cinco partes deben tener la misma duración")
+            raise ValueError("All five parts must have the same duration")
         screens = []
         for i, blob in enumerate(blobs):
             path = self.media_dir / (hashlib.sha256(blob).hexdigest()[:20] + ".gif")
@@ -233,7 +233,7 @@ class ConfigStore:
             screens.append(slot("media", path=str(path), fit="stretch", title=f"{title} · {i+1}", panorama_speed=int(speed)))
         def update(data):
             d = next(d for d in data["devices"] if d["id"] == data["active_device"])
-            data["scenes"].append({"id": uid(), "name": "Antes de panorámica · " + datetime.now().strftime("%d/%m %H:%M:%S"), **composition(d)})
+            data["scenes"].append({"id": uid(), "name": "Before panorama · " + datetime.now().strftime("%d/%m %H:%M:%S"), **composition(d)})
             d["screens"] = screens
             for playlist in d.get("playlists", []):
                 playlist["enabled"] = False
@@ -265,7 +265,7 @@ class ConfigStore:
         import zipfile
         with zipfile.ZipFile(path) as archive:
             if sum(i.file_size for i in archive.infolist()) > 250 * 1024 * 1024:
-                raise ValueError("La copia supera 250 MB")
+                raise ValueError("The backup exceeds 250 MB")
             data = json.loads(archive.read("config.json"))
             validate(data)
             for s in (asset for screen in all_screens(data) for asset in assets(screen)):
@@ -273,7 +273,7 @@ class ConfigStore:
                 if name.startswith("media/"):
                     p = Path(name)
                     if ".." in p.parts or len(p.parts) != 2:
-                        raise ValueError("Ruta inválida en la copia")
+                        raise ValueError("Invalid path in the backup")
                     blob = archive.read(name)
                     target = self.media_dir / (hashlib.sha256(blob).hexdigest()[:20] + p.suffix.lower())
                     target.write_bytes(blob)

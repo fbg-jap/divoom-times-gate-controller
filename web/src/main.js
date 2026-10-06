@@ -36,16 +36,16 @@ let state,
   editing = null,
   pano = null;
 const names = {
-  screens: "Pantallas",
-  panorama: "Panorámica",
-  scenes: "Escenas",
-  device: "Dispositivo",
-  lighting: "Iluminación RGB",
-  tools: "Herramientas",
-  automation: "Automatizaciones",
-  integrations: "Integraciones",
-  backup: "Copias y ajustes",
-  activity: "Actividad",
+  screens: "Screens",
+  panorama: "Panorama",
+  scenes: "Scenes",
+  device: "Device",
+  lighting: "RGB lighting",
+  tools: "Tools",
+  automation: "Automations",
+  integrations: "Integrations",
+  backup: "Backups and settings",
+  activity: "Activity",
 };
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
@@ -92,7 +92,7 @@ async function run(fn) {
 function mark() {
   dirty = true;
   const label = $("#save-state");
-  if (label) label.textContent = "Cambios pendientes";
+  if (label) label.textContent = "Unsaved changes";
 }
 function field(obj, key, label, type = "text", options) {
   if(type==='color')return colorControl(obj[key],label,value=>{obj[key]=value;mark();});
@@ -145,7 +145,7 @@ async function save() {
   await waitJob(result);
   await load();
   render();
-  toast("Configuración guardada");
+  toast("Configuration saved");
 }
 async function action(name, deviceId, args = {}) {
   if (dirty) await save();
@@ -162,7 +162,7 @@ async function saveAndSend(panel) {
   await save();
   await action("send", d().id, panel == null ? {} : { panel });
   render();
-  toast("Envío terminado");
+  toast("Send complete");
 }
 async function showImage(img, path) {
   const capture = version;
@@ -173,7 +173,7 @@ async function showImage(img, path) {
     urls.push(url);
     img.src = url;
   } catch {
-    img.alt = "Archivo no disponible";
+    img.alt = "File unavailable";
   }
 }
 async function preview(img, deviceId, panel) {
@@ -194,7 +194,7 @@ async function preview(img, deviceId, panel) {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (!blob.size) {
-      img.alt = "Vista previa pendiente";
+      img.alt = "Preview pending";
       return;
     }
     const old = img.getAttribute("src");
@@ -207,7 +207,7 @@ async function preview(img, deviceId, panel) {
     urls.push(url);
     img.src = url;
   } catch {
-    img.alt = "Vista previa no disponible";
+    img.alt = "Preview unavailable";
   } finally {
     delete img.dataset.loading;
   }
@@ -239,7 +239,7 @@ async function download(blob, name) {
       data,
       directory: Directory.Cache,
     });
-    await Share.share({ title: "Copia de Keeper", url: result.uri });
+    await Share.share({ title: "Keeper backup", url: result.uri });
     return;
   }
   const url = URL.createObjectURL(blob),
@@ -252,7 +252,7 @@ async function download(blob, name) {
 function fileField(
   obj,
   key,
-  label = "Archivo",
+  label = "File",
   accept = ".png,.jpg,.jpeg,.gif,.webp,.bmp",
 ) {
   const out = el(
@@ -261,7 +261,7 @@ function fileField(
     hint(
       obj[key]
         ? obj[key].replaceAll("\\", "/").split("/").pop()
-        : "Sin archivo",
+        : "No file",
     ),
     button(label, () =>
       chooseFile(accept, async (file) => {
@@ -296,11 +296,11 @@ function render() {
       "div",
       { class: "badge" },
       state.capabilities.mode === "mobile"
-        ? "MÓVIL AUTÓNOMO · " + (state.capabilities.demo ? "DEMO" : "RED LOCAL")
-        : "PORTAL WEB · " + (state.capabilities.demo ? "DEMO" : "SERVIDOR"),
+        ? "STANDALONE MOBILE · " + (state.capabilities.demo ? "DEMO" : "LOCAL NETWORK")
+        : "WEB PORTAL · " + (state.capabilities.demo ? "DEMO" : "SERVER"),
     ),
   );
-  const nav = el("nav", { "aria-label": "Secciones" });
+  const nav = el("nav", { "aria-label": "Sections" });
   for (const [key, title] of Object.entries(names))
     nav.append(
       button(
@@ -318,7 +318,7 @@ function render() {
     selector = field(
       cfg,
       "active_device",
-      "Dispositivo",
+      "Device",
       "select",
       deviceOptions(),
     );
@@ -337,13 +337,13 @@ function render() {
         el(
           "div",
           { class: "status", id: "save-state" },
-          page==='lighting' ? 'Ajusta la vista previa y aplica al dispositivo' : dirty ? "Cambios pendientes" : "Configuración guardada",
+          page==='lighting' ? 'Adjust the preview and apply it to the device' : dirty ? "Unsaved changes" : "Configuration saved",
         ),
       ),
       row(
         selector,
         page==='lighting' ? null : button(
-          "Guardar",
+          "Save",
           async () => {
             await save();
             render();
@@ -356,7 +356,7 @@ function render() {
   if (!state.capabilities.continuous)
     main.append(
       banner(
-        "Control directo al Times Gate. Mantén la app activa para listas, widgets, horarios y avisos. Los GIF ya enviados siguen reproduciéndose en el dispositivo.",
+        "Direct control of the Times Gate. Keep the app active for playlists, widgets, schedules and alerts. GIFs already sent keep playing on the device.",
       ),
     );
   const pages = {
@@ -377,7 +377,7 @@ function render() {
 function screenPage(main) {
   const panels = el("div", { class: "panels" });
   d().screens.forEach((s, i) => {
-    const img = el("img", { alt: `Vista previa pantalla ${i + 1}` });
+    const img = el("img", { alt: `Screen ${i + 1} preview` });
     const list = d().playlists?.[i];
     const tile = el(
       "button",
@@ -395,7 +395,7 @@ function screenPage(main) {
         "span",
         {},
         list?.enabled
-          ? "Lista · " + list.items.length
+          ? "List · " + list.items.length
           : s.title || kinds[s.kind],
       ),
     );
@@ -406,12 +406,12 @@ function screenPage(main) {
   main.append(panels);
   main.append(
     card(
-      "Pantalla " + (selected + 1),
+      "Screen " + (selected + 1),
       contentForm(d().screens[selected]),
       row(
-        button("Guardar y enviar", () => saveAndSend(selected), "primary"),
-        button("Enviar las cinco", () => saveAndSend()),
-        button("Panorámica", () => {
+        button("Save and send", () => saveAndSend(selected), "primary"),
+        button("Send all five", () => saveAndSend()),
+        button("Panorama", () => {
           page = "panorama";
           render();
         }),
@@ -420,10 +420,10 @@ function screenPage(main) {
   );
   const list = d().playlists[selected];
   const box = card(
-    "Lista de reproducción",
-    field(list, "enabled", "Usar esta lista", "checkbox"),
+    "Playlist",
+    field(list, "enabled", "Use this list", "checkbox"),
     hint(
-      "De 5 segundos a 24 horas por elemento. El siguiente cambio empieza a contar al terminar su envío.",
+      "From 5 seconds to 24 hours per item. The next change starts counting when its send finishes.",
     ),
   );
   list.items.forEach((item, index) => {
@@ -436,7 +436,7 @@ function screenPage(main) {
           {},
           `${index + 1}. ${item.screen.title || kinds[item.screen.kind]}`,
         ),
-        button("Editar", () => {
+        button("Edit", () => {
           editing = editing === item.id ? null : item.id;
           render();
         }),
@@ -461,7 +461,7 @@ function screenPage(main) {
           }
         }),
         button(
-          "Eliminar",
+          "Delete",
           () => {
             list.items.splice(index, 1);
             if (!list.items.length) list.enabled = false;
@@ -471,25 +471,25 @@ function screenPage(main) {
           "danger",
         ),
       ),
-      numeric(item, "seconds", "Duración (segundos)", 5, 86400),
+      numeric(item, "seconds", "Duration (seconds)", 5, 86400),
     );
     if (editing === item.id) itemBox.append(contentForm(item.screen, true));
     box.append(itemBox);
   });
   box.append(
     row(
-      button("Añadir widget", () => {
+      button("Add widget", () => {
         const item = { id: id(), seconds: 15, screen: screen("clock") };
         list.items.push(item);
         editing = item.id;
         mark();
         render();
       }),
-      button("Copiar pantalla actual", () => {
+      button("Copy current screen", () => {
         if (
           ["empty", "native", "pc_native"].includes(d().screens[selected].kind)
         )
-          throw Error("Elige una imagen o widget");
+          throw Error("Choose an image or widget");
         list.items.push({
           id: id(),
           seconds: 15,
@@ -509,41 +509,41 @@ function contentForm(s, inList = false) {
         ([k]) => !inList || !["empty", "native", "pc_native"].includes(k),
       ),
     );
-  const kind = field(s, "kind", "Contenido", "select", options);
+  const kind = field(s, "kind", "Content", "select", options);
   kind.querySelector("select").onchange = () => {
     mark();
     render();
   };
   form.append(kind);
   if (["empty", "native"].includes(s.kind)) {
-    form.append(hint("Keeper no reemplazará el contenido de esta pantalla."));
+    form.append(hint("Keeper will not replace the content of this screen."));
     return form;
   }
   const grid = el(
     "div",
     { class: "grid" },
-    field(s, "title", "Título"),
-    numeric(s, "refresh", "Actualizar cada (segundos)", 5, 86400),
+    field(s, "title", "Title"),
+    numeric(s, "refresh", "Refresh every (seconds)", 5, 86400),
   );
   form.append(grid);
   if (s.kind === "media") {
     form.append(
-      fileField(s, "path", "Elegir imagen o GIF"),
+      fileField(s, "path", "Choose image or GIF"),
       el(
         "div",
         { class: "grid" },
-        field(s, "fit", "Ajuste", "select", {
-          contain: "Encajar",
-          cover: "Recortar",
-          stretch: "Estirar",
+        field(s, "fit", "Fit", "select", {
+          contain: "Contain",
+          cover: "Crop",
+          stretch: "Stretch",
         }),
-        numeric(s, "frame_step", "Salto de fotogramas", 1, 100),
+        numeric(s, "frame_step", "Frame step", 1, 100),
       ),
     );
     if (s.panorama_speed)
       form.append(
         hint(
-          "Parte de panorámica: conserva su velocidad propia (" +
+          "Panorama part: keeps its own speed (" +
             s.panorama_speed +
             " ms).",
         ),
@@ -551,28 +551,28 @@ function contentForm(s, inList = false) {
   }
   if (s.kind === "text")
     form.append(
-      field(s, "text", "Texto", "textarea"),
-      numeric(s, "font_size", "Tamaño de letra", 8, 64),
+      field(s, "text", "Text", "textarea"),
+      numeric(s, "font_size", "Font size", 8, 64),
     );
   if (s.kind === "clock")
-    form.append(field(s, "timezone", "Zona horaria (ej. Europe/Madrid)"));
+    form.append(field(s, "timezone", "Time zone (e.g. Europe/Madrid)"));
   if (s.kind === "weather")
     form.append(
       el(
         "div",
         { class: "grid" },
-        numeric(s, "latitude", "Latitud", -90, 90, 0.0001),
-        numeric(s, "longitude", "Longitud", -180, 180, 0.0001),
+        numeric(s, "latitude", "Latitude", -90, 90, 0.0001),
+        numeric(s, "longitude", "Longitude", -180, 180, 0.0001),
       ),
     );
   if (s.kind === "countdown")
-    form.append(field(s, "target", "Fecha y hora", "datetime-local"));
+    form.append(field(s, "target", "Date and time", "datetime-local"));
   if (["service", "rss"].includes(s.kind))
     form.append(
       field(
         s,
         "url",
-        s.kind === "rss" ? "URL de RSS / Atom" : "URL del servicio",
+        s.kind === "rss" ? "RSS / Atom URL" : "Service URL",
         "url",
       ),
     );
@@ -583,21 +583,21 @@ function contentForm(s, inList = false) {
       el(
         "div",
         { class: "grid" },
-        numeric(s, "news_seconds", "Segundos por titular", 5, 3600),
-        numeric(s, "news_size", "Tamaño de letra", 8, 28),
+        numeric(s, "news_seconds", "Seconds per headline", 5, 3600),
+        numeric(s, "news_size", "Font size", 8, 28),
       ),
     );
   }
   if (s.kind === "calendar")
     form.append(
-      fileField(s, "path", "Importar calendario ICS", ".ics"),
+      fileField(s, "path", "Import ICS calendar", ".ics"),
       field(
         s,
         "url",
-        "O URL de calendario (vacía el archivo para usarla)",
+        "Or calendar URL (clear the file to use it)",
         "url",
       ),
-      button("Usar URL", () => {
+      button("Use URL", () => {
         s.path = "";
         mark();
         render();
@@ -606,21 +606,21 @@ function contentForm(s, inList = false) {
   if (s.kind === "pc")
     form.append(
       banner(state.capabilities.metrics_label, !state.capabilities.pc),
-      field(s, "pc_view", "Vista", "select", {
+      field(s, "pc_view", "View", "select", {
         usage: "CPU / RAM / GPU",
-        history: "Gráficas",
-        network: "Red",
-        temperature: "Temperaturas",
-        storage: "Disco",
+        history: "Graphs",
+        network: "Network",
+        temperature: "Temperatures",
+        storage: "Disk",
       }),
-      field(s, "pc_disk", "Ruta del disco (vacío = principal)"),
+      field(s, "pc_disk", "Disk path (empty = main)"),
     );
   if (s.kind === "music")
     form.append(
       hint(
         state.capabilities.music
-          ? "Se lee la sesión multimedia del equipo servidor; en Linux necesita playerctl y una sesión MPRIS."
-          : "La música de otras apps del teléfono no se puede leer aquí.",
+          ? "Reads the media session of the host machine; on Linux it needs playerctl and an MPRIS session."
+          : "Music from other apps on the phone cannot be read here.",
       ),
     );
   if (s.kind === "sensor") {
@@ -630,22 +630,22 @@ function contentForm(s, inList = false) {
       field(
         s,
         "sensor_source",
-        "Fuente",
+        "Source",
         "select",
         state.capabilities.mode === "mobile"
           ? { http: "HTTP JSON", mqtt: "MQTT WebSocket" }
           : { mqtt: "MQTT", hardware: "Hardware" },
       ),
-      field(s, "sensor_key", "URL HTTP, tema MQTT o identificador"),
-      field(s, "sensor_field", "Ruta JSON (ej. cpu.temperature)"),
-      field(s, "sensor_unit", "Unidad"),
-      numeric(s, "sensor_stale", "Caducidad (segundos)", 10, 86400),
+      field(s, "sensor_key", "HTTP URL, MQTT topic or identifier"),
+      field(s, "sensor_field", "JSON path (e.g. cpu.temperature)"),
+      field(s, "sensor_unit", "Unit"),
+      numeric(s, "sensor_stale", "Expiry (seconds)", 10, 86400),
     );
   }
   if (s.kind === "pomodoro")
     form.append(
       hint(
-        "Inicia, pausa o reinicia la sesión compartida en Automatizaciones.",
+        "Start, pause or reset the shared session in Automations.",
       ),
     );
   if (s.kind === "custom") {
@@ -655,14 +655,14 @@ function contentForm(s, inList = false) {
   if (s.kind === "pc_native") {
     form.append(
       banner(
-        "Experimental: selecciona primero PC Monitor en la app Divoom. El grupo 0 no se permite. El móvil no dispone de métricas del PC.",
+        "Experimental: first select PC Monitor in the Divoom app. Group 0 is not allowed. Mobile has no PC metrics.",
         true,
       ),
-      field(s, "native_pc_mode", "Modo", "select", {
-        existing: "Enviar datos al monitor ya elegido",
-        activate: "Activar con grupo conocido",
+      field(s, "native_pc_mode", "Mode", "select", {
+        existing: "Send data to the already selected monitor",
+        activate: "Activate with known group",
       }),
-      numeric(s, "independence", "Grupo nativo válido", 1, 100000000),
+      numeric(s, "independence", "Valid native group", 1, 100000000),
     );
   }
   form.append(
@@ -670,7 +670,7 @@ function contentForm(s, inList = false) {
       "div",
       { class: "grid" },
       field(s, "color", "Color", "color"),
-      field(s, "background", "Fondo", "color"),
+      field(s, "background", "Background", "color"),
     ),
   );
   return form;
@@ -696,7 +696,7 @@ function designer(s) {
           ? e.text
           : e.type === "bar"
             ? ""
-            : el("span", {}, "Imagen"),
+            : el("span", {}, "Image"),
       );
       if (e.type === "image" && e.path) {
         const img = el("img", {
@@ -745,9 +745,9 @@ function designer(s) {
     for (const [key, label, min, max] of [
       ["x", "X", 0, 127],
       ["y", "Y", 0, 127],
-      ["width", "Ancho", 1, 128],
-      ["height", "Alto", 1, 128],
-      ["size", "Letra", 6, 64],
+      ["width", "Width", 1, 128],
+      ["height", "Height", 1, 128],
+      ["size", "Font", 6, 64],
     ]) {
       const f = numeric(e, key, label, min, max);
       f.addEventListener("input", paint);
@@ -755,22 +755,22 @@ function designer(s) {
     }
     options.append(grid);
     if (e.type === "text") {
-      const f = field(e, "text", "Texto · {time}, {date}, {cpu}…", "textarea");
+      const f = field(e, "text", "Text · {time}, {date}, {cpu}…", "textarea");
       f.addEventListener("input", paint);
       options.append(f);
     }
     if (e.type === "image") options.append(fileField(e, "path"));
     if (e.type === "bar")
       options.append(
-        field(e, "metric", "Métrica", "select", metrics),
-        numeric(e, "maximum", "Valor máximo", 1, 1000000),
+        field(e, "metric", "Metric", "select", metrics),
+        numeric(e, "maximum", "Maximum value", 1, 1000000),
       );
     const color = field(e, "color", "Color", "color");
     color.addEventListener("input", paint);
     options.append(
       color,
       row(
-        button("Subir capa", () => {
+        button("Raise layer", () => {
           if (chosen < s.elements.length - 1) {
             [s.elements[chosen], s.elements[chosen + 1]] = [
               s.elements[chosen + 1],
@@ -783,7 +783,7 @@ function designer(s) {
           }
         }),
         button(
-          "Eliminar elemento",
+          "Delete element",
           () => {
             s.elements.splice(chosen, 1);
             chosen = Math.max(0, chosen - 1);
@@ -801,9 +801,9 @@ function designer(s) {
     row(
       ...["text", "image", "bar"].map((type) =>
         button(
-          "Añadir " + { text: "texto", image: "imagen", bar: "barra" }[type],
+          "Add " + { text: "text", image: "image", bar: "bar" }[type],
           () => {
-            if (s.elements.length >= 20) throw Error("Máximo 20 elementos");
+            if (s.elements.length >= 20) throw Error("Maximum 20 elements");
             s.elements.push({
               type,
               x: 8,
@@ -812,7 +812,7 @@ function designer(s) {
               height: type === "bar" ? 12 : 30,
               size: 16,
               color: "#64e6ca",
-              text: "Nuevo texto",
+              text: "New text",
               metric: "cpu",
               maximum: 100,
             });
@@ -825,7 +825,7 @@ function designer(s) {
       ),
     ),
     hint(
-      "Arrastra los elementos. La vista de diseño usa valores de ejemplo; el contenido enviado usa las fuentes disponibles.",
+      "Drag the elements. The design view uses sample values; the content sent uses the available sources.",
     ),
   );
   paint();
@@ -850,7 +850,7 @@ function panoramaPage(main) {
   const p = pano,
     preview = el("canvas", {
       class: "wide-preview",
-      "aria-label": "Vista previa panorámica",
+      "aria-label": "Panorama preview",
       width: 640,
       height: 128,
     }),
@@ -859,7 +859,7 @@ function panoramaPage(main) {
       class: "crosshair",
       style: `left:${p.x * 100}%;top:${p.y * 100}%`,
     }),
-    message = hint("Selecciona un archivo y prepara la vista previa.");
+    message = hint("Select a file and prepare the preview.");
   let generation = p.generation;
   let previewFrames = [],
     frameIndex = 0;
@@ -868,18 +868,18 @@ function panoramaPage(main) {
     min: 0,
     max: 0,
     value: 0,
-    "aria-label": "Fotograma de vista previa",
+    "aria-label": "Preview frame",
   });
   const paintFrame = () => {
     if (previewFrames.length)
       preview.getContext("2d").drawImage(previewFrames[frameIndex], 0, 0);
     seek.value = frameIndex;
   };
-  const play = button("Pausar vista previa", () => {
+  const play = button("Pause preview", () => {
     if (previewTimer) {
       clearInterval(previewTimer);
       previewTimer = null;
-      play.textContent = "Reproducir vista previa";
+      play.textContent = "Play preview";
     } else startPreview();
   });
   function startPreview() {
@@ -893,7 +893,7 @@ function panoramaPage(main) {
       },
       1000 / (+p.fps || 5),
     );
-    play.textContent = "Pausar vista previa";
+    play.textContent = "Pause preview";
   }
   seek.oninput = () => {
     frameIndex = +seek.value;
@@ -937,8 +937,8 @@ function panoramaPage(main) {
     ["x", "Horizontal", 0, 1, 0.01],
     ["y", "Vertical", 0, 1, 0.01],
     ["zoom", "Zoom", 1, 8, 0.1],
-    ["start", "Inicio (s)", 0, 86400, 0.1],
-    ["duration", "Duración (s)", 0.1, 30, 0.1],
+    ["start", "Start (s)", 0, 86400, 0.1],
+    ["duration", "Duration (s)", 0.1, 30, 0.1],
   ]) {
     const f = numeric(p, key, label, min, max, step);
     f.addEventListener("input", () => {
@@ -957,12 +957,12 @@ function panoramaPage(main) {
       5: "5",
       10: "10",
     }),
-    fit = field(p, "fit", "Ajuste", "select", {
-      cover: "Recortar",
-      contain: "Encajar",
-      stretch: "Estirar",
+    fit = field(p, "fit", "Fit", "select", {
+      cover: "Crop",
+      contain: "Contain",
+      stretch: "Stretch",
     }),
-    rotation = field(p, "rotation", "Giro", "select", {
+    rotation = field(p, "rotation", "Rotation", "select", {
       0: "0°",
       90: "90°",
       180: "180°",
@@ -994,16 +994,16 @@ function panoramaPage(main) {
     source.onpointerup = () => (source.onpointermove = null);
   };
   const apply = button(
-    "Aplicar y enviar",
+    "Apply and send",
     async () => {
-      if (!p.result) throw Error("Prepara antes la vista previa");
+      if (!p.result) throw Error("Prepare the preview first");
       cfg.scenes.push({
         id: id(),
-        name: "Antes de panorámica · " + new Date().toLocaleString(),
+        name: "Before panorama · " + new Date().toLocaleString(),
         ...composition(d()),
       });
       d().screens = copy(p.result.screens);
-      d().screens.forEach((s, i) => (s.title = "Panorámica · " + (i + 1)));
+      d().screens.forEach((s, i) => (s.title = "Panorama · " + (i + 1)));
       d().playlists.forEach((l) => (l.enabled = false));
       mark();
       await saveAndSend();
@@ -1011,13 +1011,13 @@ function panoramaPage(main) {
     "primary",
   );
   apply.disabled = !p.result;
-  const prepare = button("Preparar vista previa", async () => {
-    if (!p.path) throw Error("Elige un archivo");
+  const prepare = button("Prepare preview", async () => {
+    if (!p.path) throw Error("Choose a file");
     prepare.disabled = true;
     apply.disabled = true;
     generation = ++p.generation;
     try {
-      message.textContent = "Convirtiendo…";
+      message.textContent = "Converting…";
       const job = await request("/panorama", "POST", {
         path: p.path,
         fit: p.fit,
@@ -1034,16 +1034,16 @@ function panoramaPage(main) {
       p.result = result;
       await loadPreview(result);
       apply.disabled = false;
-      message.textContent = `${result.count} fotogramas · ${result.duration.toFixed(2)} s · carga mínima ${(result.count * 0.5).toFixed(0)} s, normalmente más.`;
+      message.textContent = `${result.count} frames · ${result.duration.toFixed(2)} s · minimum upload time ${(result.count * 0.5).toFixed(0)} s, usually longer.`;
     } finally {
       prepare.disabled = false;
     }
   });
   main.append(
     card(
-      "Una composición, cinco pantallas",
+      "One composition, five screens",
       row(
-        button("Elegir imagen, GIF o vídeo", () =>
+        button("Choose image, GIF or video", () =>
           chooseFile(
             ".png,.jpg,.jpeg,.gif,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,.m4v",
             async (file) => {
@@ -1054,7 +1054,7 @@ function panoramaPage(main) {
             },
           ),
         ),
-        button("Centrar", () => {
+        button("Center", () => {
           p.x = p.y = 0.5;
           p.zoom = 1;
           p.result = null;
@@ -1065,20 +1065,20 @@ function panoramaPage(main) {
       hint(
         p.path
           ? p.path.split(/[\\/]/).pop()
-          : "Hasta 100 MB. Vídeo sin audio. En móvil, códecs compatibles con el teléfono.",
+          : "Up to 100 MB. Video without audio. On mobile, codecs supported by the phone.",
       ),
       source,
       hint(
-        "Pulsa o arrastra para elegir la zona; afina con Horizontal, Vertical y Zoom.",
+        "Click or drag to choose the area; fine-tune with Horizontal, Vertical and Zoom.",
       ),
       controls,
       row(
         prepare,
-        button("Cancelar conversión", async () => {
+        button("Cancel conversion", async () => {
           p.generation++;
           p.result = null;
           if (p.job) await request("/jobs/" + p.job + "/cancel", "POST");
-          message.textContent = "Conversión cancelada";
+          message.textContent = "Conversion cancelled";
         }),
         apply,
       ),
@@ -1086,13 +1086,13 @@ function panoramaPage(main) {
       preview,
       row(play, seek),
       banner(
-        "Las cinco partes se envían una tras otra: puede haber desfase aunque la vista previa esté sincronizada. Máximo 30 segundos y 120 fotogramas por pantalla.",
+        "The five parts are sent one after another: they may drift out of sync even if the preview is synchronized. Maximum 30 seconds and 120 frames per screen.",
         true,
       ),
     ),
   );
   if (p.result) {
-    message.textContent = `${p.result.count} fotogramas · ${p.result.duration.toFixed(2)} s`;
+    message.textContent = `${p.result.count} frames · ${p.result.duration.toFixed(2)} s`;
     run(() => loadPreview(p.result));
   }
 }
@@ -1100,12 +1100,12 @@ function panoramaPage(main) {
 function scenePage(main) {
   main.append(
     card(
-      "Composiciones",
+      "Compositions",
       row(
         button(
-          "Guardar composición actual",
+          "Save current composition",
           () => {
-            const name = prompt("Nombre de la escena");
+            const name = prompt("Scene name");
             if (name?.trim()) {
               cfg.scenes.push({
                 id: id(),
@@ -1120,7 +1120,7 @@ function scenePage(main) {
         ),
       ),
       hint(
-        "Una escena incluye las cinco pantallas y sus listas. Se guarda con los archivos de la biblioteca.",
+        "A scene includes the five screens and their playlists. It is saved with the library files.",
       ),
     ),
   );
@@ -1129,14 +1129,14 @@ function scenePage(main) {
       card(
         scene.name,
         row(
-          button("Aplicar y enviar", async () => {
+          button("Apply and send", async () => {
             await save();
             await action("scene", d().id, { scene_id: scene.id });
             await load();
             render();
           }),
-          button("Renombrar", () => {
-            const name = prompt("Nombre", scene.name);
+          button("Rename", () => {
+            const name = prompt("Name", scene.name);
             if (name?.trim()) {
               scene.name = name.trim();
               mark();
@@ -1144,10 +1144,10 @@ function scenePage(main) {
             }
           }),
           button(
-            "Eliminar",
+            "Delete",
             () => {
               if (
-                !confirm("Se eliminarán esta escena y las reglas que la usan.")
+                !confirm("This scene and the rules that use it will be deleted.")
               )
                 return;
               cfg.scenes = cfg.scenes.filter((s) => s.id !== scene.id);
@@ -1171,8 +1171,8 @@ function scenePage(main) {
     );
   }
   const rotation = card(
-    "Rotación de escenas",
-    numeric(d(), "rotation_seconds", "Cambiar cada (segundos)", 30, 86400),
+    "Scene rotation",
+    numeric(d(), "rotation_seconds", "Change every (seconds)", 30, 86400),
   );
   cfg.scenes.forEach((s) => {
     const obj = { use: d().rotation.includes(s.id) },
@@ -1190,21 +1190,21 @@ function devicePage(main) {
   const value = d();
   main.append(
     card(
-      "Conexión local",
+      "Local connection",
       el(
         "div",
         { class: "grid" },
-        field(value, "name", "Nombre"),
-        field(value, "ip", "IP del Times Gate (ej. 192.168.1.116)"),
+        field(value, "name", "Name"),
+        field(value, "ip", "Times Gate IP (e.g. 192.168.1.116)"),
       ),
-      field(value, "enabled", "Actualización automática", "checkbox"),
+      field(value, "enabled", "Automatic update", "checkbox"),
       row(
-        button("Guardar y comprobar", async () => {
+        button("Save and check", async () => {
           await save();
           await action("health", d().id);
-          toast("Comprobación terminada; consulta Actividad");
+          toast("Check complete; see Activity");
         }),
-        button("Buscar LAN", async () => {
+        button("Scan LAN", async () => {
           await save();
           const result = await action("discover", d().id, {
             seed: d().ip,
@@ -1212,42 +1212,42 @@ function devicePage(main) {
           });
           toast(
             result?.devices
-              ? "Dispositivos: " + JSON.stringify(result.devices)
-              : "Consulta los resultados en Actividad",
+              ? "Devices: " + JSON.stringify(result.devices)
+              : "See the results in Activity",
           );
         }),
-        button("Descubrir mediante Divoom", async () => {
+        button("Discover via Divoom", async () => {
           await save();
           await action("discover", d().id, { cloud: true, seed: d().ip });
-          toast("Consulta los resultados en Actividad");
+          toast("See the results in Activity");
         }),
       ),
       hint(
-        "El teléfono o servidor y el Times Gate deben poder comunicarse por la red local. En Docker puede ser necesario indicar la IP: la búsqueda usa la subred visible desde el contenedor.",
+        "The phone or server and the Times Gate must be able to communicate over the local network. In Docker you may need to enter the IP: discovery uses the subnet visible from the container.",
       ),
     ),
   );
   main.append(
     card(
-      "Enviar y restaurar",
+      "Send and restore",
       el(
         "div",
         { class: "grid three" },
-        numeric(value, "quality", "Calidad JPEG", 30, 100),
-        numeric(value, "speed", "Milisegundos por fotograma", 1, 60000),
+        numeric(value, "quality", "JPEG quality", 30, 100),
+        numeric(value, "speed", "Milliseconds per frame", 1, 60000),
         numeric(
           value,
           "interval_minutes",
-          "Reenviar medios cada (minutos)",
+          "Resend media every (minutes)",
           1,
           10080,
         ),
       ),
-      field(value, "suspended", "Pausar envíos", "checkbox"),
-      field(cfg, "resend_on_startup", "Reenviar al iniciar", "checkbox"),
+      field(value, "suspended", "Pause sending", "checkbox"),
+      field(cfg, "resend_on_startup", "Resend on startup", "checkbox"),
       row(
         button(
-          "Reanudar y reenviar",
+          "Resume and resend",
           async () => {
             await save();
             await action("resume", d().id);
@@ -1256,18 +1256,18 @@ function devicePage(main) {
           },
           "primary",
         ),
-        button("Enviar todo", () => saveAndSend()),
+        button("Send all", () => saveAndSend()),
       ),
       hint(
-        "Los GIF panorámicos conservan su velocidad propia. La pausa deja el contenido ya enviado en el dispositivo.",
+        "Panoramic GIFs keep their own speed. Pausing leaves the content already sent on the device.",
       ),
     ),
   );
   main.append(
     card(
-      "Varios dispositivos",
+      "Multiple devices",
       row(
-        button("Añadir dispositivo", () => {
+        button("Add device", () => {
           const value = device();
           cfg.devices.push(value);
           cfg.active_device = value.id;
@@ -1275,11 +1275,11 @@ function devicePage(main) {
           render();
         }),
         button(
-          "Eliminar seleccionado",
+          "Delete selected",
           () => {
             if (cfg.devices.length === 1)
-              throw Error("Conserva al menos un dispositivo");
-            if (!confirm("Eliminar este dispositivo y sus horarios y reglas?"))
+              throw Error("Keep at least one device");
+            if (!confirm("Delete this device and its schedules and rules?"))
               return;
             const did = d().id;
             cfg.devices = cfg.devices.filter((d) => d.id !== did);
@@ -1295,8 +1295,8 @@ function devicePage(main) {
       el(
         "div",
         { class: "grid" },
-        field(value, "mac", "MAC (opcional)"),
-        numeric(value, "device_id", "DeviceId Divoom (opcional)", 0, 999999999),
+        field(value, "mac", "MAC (optional)"),
+        numeric(value, "device_id", "Divoom DeviceId (optional)", 0, 999999999),
       ),
     ),
   );
@@ -1306,39 +1306,39 @@ function lightingPage(main) {
   const deviceId=d().id;
   if(!lightingDrafts.has(deviceId))lightingDrafts.set(deviceId,{...lightingDefaults(),...d().lighting});
   const settings=lightingDrafts.get(deviceId);
-  const preview=el('div',{class:'light-device','aria-label':'Vista previa de color y zonas del Times Gate',role:'img'});
+  const preview=el('div',{class:'light-device','aria-label':'Color and zone preview of the Times Gate',role:'img'});
   const glow=el('div',{class:'light-back'}),panels=el('div',{class:'light-panels'},...[1,2,3,4,5].map(n=>el('div',{class:'light-screen'},el('span',{},String(n))))),keys=el('div',{class:'light-keys'});
   preview.append(glow,panels,keys);
-  const status=el('p',{class:'hint'},'Vista orientativa de color, brillo y zonas. Los efectos animados se comprueban en el Times Gate.');
+  const status=el('p',{class:'hint'},'Approximate view of color, brightness and zones. Animated effects are checked on the Times Gate.');
   const draw=()=>{
     preview.style.setProperty('--light',settings.color);preview.style.setProperty('--brightness',settings.on?settings.brightness/100:0);
     preview.classList.toggle('cycling',settings.cycle);preview.classList.toggle('edges',settings.zone!==2);preview.classList.toggle('backlight',settings.zone!==1);preview.classList.toggle('keys-on',settings.keys);
   };
-  const color=colorControl(settings.color,'Color de la iluminación',value=>{settings.color=value;draw();});
-  const brightness=el('input',{type:'range',min:0,max:100,step:1,value:settings.brightness,'aria-label':'Brillo RGB'}),percentage=el('output',{},settings.brightness+'%');
+  const color=colorControl(settings.color,'Lighting color',value=>{settings.color=value;draw();});
+  const brightness=el('input',{type:'range',min:0,max:100,step:1,value:settings.brightness,'aria-label':'RGB brightness'}),percentage=el('output',{},settings.brightness+'%');
   brightness.oninput=()=>{settings.brightness=+brightness.value;percentage.textContent=settings.brightness+'%';draw();};
-  const zones=el('div',{class:'segmented','aria-label':'Zona iluminada',role:'group'});
-  ['Todas las zonas','Bordes','Luz trasera'].forEach((name,index)=>{
+  const zones=el('div',{class:'segmented','aria-label':'Lit zone',role:'group'});
+  ['All zones','Edges','Backlight'].forEach((name,index)=>{
     const b=button(name,()=>{settings.zone=index;for(const [i,item] of [...zones.children].entries())item.setAttribute('aria-pressed',String(i===index));draw();});b.setAttribute('aria-pressed',String(index===settings.zone));zones.append(b);
   });
   const switches=el('div',{class:'lighting-switches'});
-  for(const [key,name] of [['on','Iluminación encendida'],['cycle','Ciclo multicolor'],['keys','Luz de teclas']]){
+  for(const [key,name] of [['on','Lighting on'],['cycle','Multicolor cycle'],['keys','Key light']]){
     const input=el('input',{type:'checkbox',checked:settings[key]});input.onchange=()=>{settings[key]=input.checked;draw();};switches.append(el('label',{class:'light-toggle'},input,el('span',{},name)));
   }
   const presets=el('div',{class:'mood-grid'});
   moods.forEach(([name,value,level,cycle])=>{
     const b=button(name,()=>{Object.assign(settings,{color:value,brightness:level,cycle,on:true});render();});b.prepend(el('span',{class:'mood-dot',style:`--swatch:${value}`}));presets.append(b);
   });
-  const effects=el('div',{class:'effect-grid',role:'group','aria-label':'Efectos RGB'});
+  const effects=el('div',{class:'effect-grid',role:'group','aria-label':'RGB effects'});
   for(let i=0;i<12;i++){
     const b=button('',()=>{settings.effect=i;for(const [n,item] of [...effects.children].entries())item.setAttribute('aria-pressed',String(n===i));});
-    b.setAttribute('aria-pressed',String(settings.effect===i));b.setAttribute('aria-label','Efecto '+(i+1));
-    b.append(el('span',{class:'effect-symbol','aria-hidden':'true'},'▱ ▱ ▱ ▱ ▱'),el('span',{},'Efecto '+(i+1)));effects.append(b);
+    b.setAttribute('aria-pressed',String(settings.effect===i));b.setAttribute('aria-label','Effect '+(i+1));
+    b.append(el('span',{class:'effect-symbol','aria-hidden':'true'},'▱ ▱ ▱ ▱ ▱'),el('span',{},'Effect '+(i+1)));effects.append(b);
   }
-  main.append(card('Tu ambiente, de un vistazo',preview,status,el('div',{class:'lighting-layout'},el('div',{},color),el('div',{},el('p',{class:'color-label'},'Zona iluminada'),zones,el('div',{class:'brightness-row'},el('span',{},'Brillo'),brightness,percentage),switches))),
-    card('Ambientes rápidos',hint('Elige una combinación de color y brillo. Conserva el efecto y la zona que hayas seleccionado.'),presets),
-    card('Efectos del dispositivo',hint('Selecciona una tarjeta. Los modos conservan el orden del dispositivo; sus animaciones varían según el firmware.'),effects,
-      el('div',{class:'lighting-apply'},button('Aplicar iluminación',async()=>{await action('command',deviceId,{payload:lightingPayload(settings)});toast('Iluminación enviada al Times Gate');},'primary'),hint('La vista previa no envía cambios hasta que pulses Aplicar iluminación.'))));
+  main.append(card('Your mood at a glance',preview,status,el('div',{class:'lighting-layout'},el('div',{},color),el('div',{},el('p',{class:'color-label'},'Lit zone'),zones,el('div',{class:'brightness-row'},el('span',{},'Brightness'),brightness,percentage),switches))),
+    card('Quick moods',hint('Choose a combination of color and brightness. Keeps the effect and zone you selected.'),presets),
+    card('Device effects',hint('Select a card. Modes keep the device order; their animations vary by firmware.'),effects,
+      el('div',{class:'lighting-apply'},button('Apply lighting',async()=>{await action('command',deviceId,{payload:lightingPayload(settings)});toast('Lighting sent to the Times Gate');},'primary'),hint('The preview does not send changes until you press Apply lighting.'))));
   draw();
 }
 function toolPage(main) {
@@ -1359,30 +1359,30 @@ function toolPage(main) {
     action("command", d().id, { payload, pause });
   main.append(
     card(
-      "Pantallas y brillo",
-      numeric(values, "brightness", "Brillo", 0, 100),
+      "Screens and brightness",
+      numeric(values, "brightness", "Brightness", 0, 100),
       row(
-        button("Aplicar brillo", () =>
+        button("Apply brightness", () =>
           command({
             Command: "Channel/SetBrightness",
             Brightness: values.brightness,
           }),
         ),
-        button("Encender", async () => {
+        button("Turn on", async () => {
           await command({ Command: "Channel/OnOffScreen", OnOff: 1 });
           await load();
           render();
         }),
-        button("Apagar", async () => {
+        button("Turn off", async () => {
           await command({ Command: "Channel/OnOffScreen", OnOff: 0 });
           await load();
           render();
         }),
-        button("Leer configuración", () => action("health", d().id)),
+        button("Read settings", () => action("health", d().id)),
         button(
-          "Reiniciar dispositivo",
+          "Restart device",
           async () => {
-            if (confirm("¿Reiniciar el Times Gate?"))
+            if (confirm("Restart the Times Gate?"))
               await command({ Command: "Device/SysReboot" });
           },
           "danger",
@@ -1392,23 +1392,23 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Aviso temporal",
-      field(values, "text", "Mensaje", "textarea"),
+      "Temporary alert",
+      field(values, "text", "Message", "textarea"),
       el(
         "div",
         { class: "grid three" },
-        field(values, "panel", "Pantalla", "select", {
+        field(values, "panel", "Screen", "select", {
           0: "1",
           1: "2",
           2: "3",
           3: "4",
           4: "5",
         }),
-        numeric(values, "duration", "Duración (s)", 5, 300),
-        field(values, "buzzer", "Pitido", "checkbox"),
+        numeric(values, "duration", "Duration (s)", 5, 300),
+        field(values, "buzzer", "Buzzer", "checkbox"),
       ),
       button(
-        "Enviar aviso",
+        "Send alert",
         () =>
           action("notification", d().id, {
             panel: +values.panel,
@@ -1422,19 +1422,19 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Herramientas nativas",
+      "Native tools",
       banner(
-        "Estas herramientas pueden cambiar el modo del dispositivo. Al usarlas se pausa el reenvío; pulsa Recuperar composición para volver.",
+        "These tools can change the device mode. Using them pauses resending; press Restore composition to go back.",
         true,
       ),
       el(
         "div",
         { class: "grid" },
-        numeric(values, "minutes", "Temporizador: minutos", 0, 999),
-        numeric(values, "seconds", "Segundos", 0, 59),
+        numeric(values, "minutes", "Timer: minutes", 0, 999),
+        numeric(values, "seconds", "Seconds", 0, 59),
       ),
       row(
-        button("Iniciar temporizador", () =>
+        button("Start timer", () =>
           command(
             {
               Command: "Tools/SetTimer",
@@ -1445,7 +1445,7 @@ function toolPage(main) {
             true,
           ),
         ),
-        button("Detener", () =>
+        button("Stop", () =>
           command(
             { Command: "Tools/SetTimer", Minute: 0, Second: 0, Status: 0 },
             true,
@@ -1454,24 +1454,24 @@ function toolPage(main) {
       ),
       el("hr", { class: "divider" }),
       row(
-        button("Cronómetro: iniciar", () =>
+        button("Stopwatch: start", () =>
           command({ Command: "Tools/SetStopWatch", Status: 1 }, true),
         ),
-        button("Pausar", () =>
+        button("Pause", () =>
           command({ Command: "Tools/SetStopWatch", Status: 2 }, true),
         ),
-        button("Reiniciar cronómetro", () =>
+        button("Reset stopwatch", () =>
           command({ Command: "Tools/SetStopWatch", Status: 0 }, true),
         ),
       ),
       el(
         "div",
         { class: "grid" },
-        numeric(values, "red", "Marcador rojo", 0, 999),
-        numeric(values, "blue", "Marcador azul", 0, 999),
+        numeric(values, "red", "Red score", 0, 999),
+        numeric(values, "blue", "Blue score", 0, 999),
       ),
       row(
-        button("Mostrar marcador", () =>
+        button("Show scoreboard", () =>
           command(
             {
               Command: "Tools/SetScoreBoard",
@@ -1481,13 +1481,13 @@ function toolPage(main) {
             true,
           ),
         ),
-        button("Medidor de sonido", () =>
+        button("Sound meter", () =>
           command({ Command: "Tools/SetNoiseStatus", NoiseStatus: 1 }, true),
         ),
-        button("Parar medidor", () =>
+        button("Stop meter", () =>
           command({ Command: "Tools/SetNoiseStatus", NoiseStatus: 0 }, true),
         ),
-        button("Probar pitido", () =>
+        button("Test buzzer", () =>
           command({
             Command: "Device/PlayBuzzer",
             ActiveTimeInCycle: 150,
@@ -1497,7 +1497,7 @@ function toolPage(main) {
         ),
       ),
       button(
-        "Recuperar composición",
+        "Restore composition",
         async () => {
           await action("resume", d().id);
           await load();
@@ -1509,16 +1509,16 @@ function toolPage(main) {
   );
   main.append(
     card(
-      "Catálogo y reloj nativo experimental",
+      "Experimental native catalog and clock",
       hint(
-        "Usa únicamente un grupo nativo válido. El grupo 0 está bloqueado porque altera otras pantallas.",
+        "Use only a valid native group. Group 0 is blocked because it alters other screens.",
       ),
       el(
         "div",
         { class: "grid three" },
         numeric(values, "clock", "ClockId", 1, 10000000),
-        numeric(values, "group", "Grupo LcdIndependence", 1, 100000000),
-        field(values, "panel", "Pantalla", "select", {
+        numeric(values, "group", "LcdIndependence group", 1, 100000000),
+        field(values, "panel", "Screen", "select", {
           0: "1",
           1: "2",
           2: "3",
@@ -1527,12 +1527,12 @@ function toolPage(main) {
         }),
       ),
       row(
-        button("Consultar catálogo", async () => {
+        button("Query catalog", async () => {
           const r = await action("catalog", d().id);
           if (r) toast(JSON.stringify(r).slice(0, 500));
-          else toast("Consulta Actividad");
+          else toast("See Activity");
         }),
-        button("Activar reloj", () =>
+        button("Activate clock", () =>
           command(
             {
               Command: "Channel/SetClockSelectId",
@@ -1563,26 +1563,26 @@ function automationPage(main) {
     el(
       "div",
       { class: "grid three" },
-      numeric(p, "work", "Trabajo (min)", 1, 180),
-      numeric(p, "rest", "Descanso (min)", 1, 180),
-      numeric(p, "long_rest", "Descanso largo (min)", 1, 180),
-      numeric(p, "cycles", "Ciclos", 1, 12),
-      field(p, "panel", "Pantalla de avisos", "select", {
+      numeric(p, "work", "Work (min)", 1, 180),
+      numeric(p, "rest", "Break (min)", 1, 180),
+      numeric(p, "long_rest", "Long break (min)", 1, 180),
+      numeric(p, "cycles", "Cycles", 1, 12),
+      field(p, "panel", "Alert screen", "select", {
         0: "1",
         1: "2",
         2: "3",
         3: "4",
         4: "5",
       }),
-      field(p, "buzzer", "Pitido", "checkbox"),
+      field(p, "buzzer", "Buzzer", "checkbox"),
     ),
     row(
       ...Object.entries({
-        start: "Iniciar",
-        pause: "Pausar",
-        resume: "Continuar",
-        skip: "Saltar fase",
-        reset: "Reiniciar",
+        start: "Start",
+        pause: "Pause",
+        resume: "Continue",
+        skip: "Skip phase",
+        reset: "Reset",
       }).map(([operation, title]) =>
         button(title, () =>
           action("pomodoro", d().id, { operation, ...p, panel: +p.panel }),
@@ -1592,17 +1592,17 @@ function automationPage(main) {
   );
   main.append(pc);
   for (const [group, title] of [
-    ["schedules", "Horarios"],
-    ["reminders", "Recordatorios"],
-    ["alerts", "Alertas"],
-    ["profiles", "Perfiles automáticos"],
+    ["schedules", "Schedules"],
+    ["reminders", "Reminders"],
+    ["alerts", "Alerts"],
+    ["profiles", "Automatic profiles"],
   ]) {
     if (group === "profiles" && !state.capabilities.profiles) {
       main.append(
         card(
           title,
           hint(
-            "Los teléfonos no permiten consultar los procesos ni el bloqueo de sesión de un PC. Los perfiles importados se conservan, pero no se ejecutan en el móvil.",
+            "Phones cannot query the processes or session lock of a PC. Imported profiles are kept, but they do not run on mobile.",
           ),
         ),
       );
@@ -1610,10 +1610,10 @@ function automationPage(main) {
     }
     const section = card(
       title,
-      button("Añadir", () => {
+      button("Add", () => {
         let rule = {
           id: id(),
-          name: "Nueva regla",
+          name: "New rule",
           device_id: d().id,
           enabled: true,
         };
@@ -1634,7 +1634,7 @@ function automationPage(main) {
           Object.assign(rule, {
             panel: 0,
             seconds: 15,
-            text: "Recordatorio",
+            text: "Reminder",
             buzzer: false,
             ...(group === "reminders"
               ? { minutes: 30 }
@@ -1662,13 +1662,13 @@ function automationPage(main) {
         "div",
         { class: "list-item" },
         row(
-          field(r, "enabled", r.name || r.time || "Regla", "checkbox"),
-          button("Editar", () => {
+          field(r, "enabled", r.name || r.time || "Rule", "checkbox"),
+          button("Edit", () => {
             editing = editing === r.id ? null : r.id;
             render();
           }),
           button(
-            "Eliminar",
+            "Delete",
             () => {
               cfg[group] = cfg[group].filter((x) => x.id !== r.id);
               mark();
@@ -1683,27 +1683,27 @@ function automationPage(main) {
           el(
             "div",
             { class: "grid" },
-            field(r, "name", "Nombre"),
-            field(r, "device_id", "Dispositivo", "select", deviceOptions()),
+            field(r, "name", "Name"),
+            field(r, "device_id", "Device", "select", deviceOptions()),
           ),
         );
         if (group === "schedules") {
           box.append(
-            field(r, "time", "Hora local", "time"),
-            field(r, "action", "Acción", "select", {
-              on: "Encender",
-              off: "Apagar",
-              brightness: "Brillo",
-              scene: "Escena",
+            field(r, "time", "Local time", "time"),
+            field(r, "action", "Action", "select", {
+              on: "Turn on",
+              off: "Turn off",
+              brightness: "Brightness",
+              scene: "Scene",
             }),
           );
           box.lastChild.addEventListener("change", () => render());
           if (r.action === "scene")
-            box.append(field(r, "value", "Escena", "select", sceneOptions()));
+            box.append(field(r, "value", "Scene", "select", sceneOptions()));
           if (r.action === "brightness")
-            box.append(numeric(r, "value", "Brillo", 0, 100));
+            box.append(numeric(r, "value", "Brightness", 0, 100));
           const days = row();
-          ["L", "M", "X", "J", "V", "S", "D"].forEach((label, i) => {
+          ["M", "T", "W", "T", "F", "S", "S"].forEach((label, i) => {
             const v = { use: r.days.includes(i) },
               f = field(v, "use", label, "checkbox");
             f.addEventListener("change", () => {
@@ -1716,84 +1716,84 @@ function automationPage(main) {
           box.append(days);
         } else if (group === "profiles") {
           box.append(
-            field(r, "trigger", "Condición", "select", {
-              process: "Proceso abierto",
-              locked: "Sesión bloqueada",
-              desktop: "Escritorio",
+            field(r, "trigger", "Condition", "select", {
+              process: "Open process",
+              locked: "Locked session",
+              desktop: "Desktop",
             }),
-            field(r, "process", "Nombre del proceso"),
-            field(r, "scene_id", "Escena", "select", sceneOptions()),
+            field(r, "process", "Process name"),
+            field(r, "scene_id", "Scene", "select", sceneOptions()),
             hint(
-              "En Docker solo se ven sus procesos. El bloqueo de sesión se recibe en la aplicación de escritorio Windows; no se detecta desde el contenedor.",
+              "In Docker only its own processes are visible. Session lock is received from the Windows desktop app; it is not detected from the container.",
             ),
           );
         } else {
           box.append(
-            field(r, "text", "Mensaje", "textarea"),
+            field(r, "text", "Message", "textarea"),
             el(
               "div",
               { class: "grid three" },
-              field(r, "panel", "Pantalla", "select", {
+              field(r, "panel", "Screen", "select", {
                 0: "1",
                 1: "2",
                 2: "3",
                 3: "4",
                 4: "5",
               }),
-              numeric(r, "seconds", "Duración (s)", 5, 300),
-              field(r, "buzzer", "Pitido", "checkbox"),
+              numeric(r, "seconds", "Duration (s)", 5, 300),
+              field(r, "buzzer", "Buzzer", "checkbox"),
             ),
           );
           const panel = box.querySelector("select:last-of-type");
           if (panel)
             panel.addEventListener("change", () => (r.panel = +r.panel));
           if (group === "reminders")
-            box.append(numeric(r, "minutes", "Repetir cada (min)", 1, 10080));
+            box.append(numeric(r, "minutes", "Repeat every (min)", 1, 10080));
           else {
             box.append(
               field(
                 r,
                 "metric",
-                "Métrica",
+                "Metric",
                 "select",
                 state.capabilities.mode === "mobile"
-                  ? { service: "Servicio caído (1=falla)", sensor: "Sensor" }
+                  ? { service: "Service down (1=failure)", sensor: "Sensor" }
                   : {
                       ...metrics,
-                      disk_free: "Disco libre",
-                      service: "Servicio caído (1=falla)",
+                      disk_free: "Free disk",
+                      service: "Service down (1=failure)",
                       sensor: "Sensor",
                     },
               ),
               el(
                 "div",
                 { class: "grid" },
-                field(r, "operator", "Condición", "select", {
-                  above: "Mayor que",
-                  below: "Menor que",
+                field(r, "operator", "Condition", "select", {
+                  above: "Greater than",
+                  below: "Less than",
                 }),
-                numeric(r, "threshold", "Umbral", -1000000000, 1000000000, 0.1),
+                numeric(r, "threshold", "Threshold", -1000000000, 1000000000, 0.1),
               ),
               field(
                 r,
                 "source",
-                "URL del servicio / sensor, tema MQTT o ruta de disco",
+                "Service / sensor URL, MQTT topic or disk path",
               ),
               field(
                 r,
                 "sensor_source",
-                "Fuente de sensor",
+                "Sensor source",
                 "select",
                 state.capabilities.mode === "mobile"
                   ? { http: "HTTP JSON", mqtt: "MQTT" }
                   : { mqtt: "MQTT", hardware: "Hardware" },
               ),
-              field(r, "field", "Ruta JSON"),
+              field(r, "field", "JSON path"),
               el(
                 "div",
                 { class: "grid" },
-                numeric(r, "hold", "Condición mantenida (s)", 0, 3600),
-                numeric(r, "cooldown", "Separación mínima (s)", 30, 86400),
+                numeric(r, "hold", "Condition held (s)", 0, 3600),
+                numeric(r, "cooldown", "Minimum interval (s)", 30, 86400),
               ),
             );
           }
@@ -1805,50 +1805,57 @@ function automationPage(main) {
   }
   main.append(
     hint(
-      "Activa Actualización automática en Dispositivo. Horarios según la zona horaria del teléfono o servidor; no se recuperan horarios perdidos. Los avisos necesitan contenido restaurable.",
+      "Turn on Automatic update in Device. Schedules follow the time zone of the phone or server; missed schedules are not recovered. Alerts need restorable content.",
     ),
   );
 }
 function pomoText() {
   const p = state.runtime?.pomodoro || {};
-  return `${p.phase || "Preparado"} · ${Math.floor((p.remaining || 0) / 60)}:${Math.floor(
+  // The backend reports Spanish phase names as stable protocol values.
+  const phases = {
+    Preparado: "Ready",
+    Trabajo: "Work",
+    Descanso: "Break",
+    "Descanso largo": "Long break",
+  };
+  return `${phases[p.phase] || p.phase || "Ready"} · ${Math.floor((p.remaining || 0) / 60)}:${Math.floor(
     (p.remaining || 0) % 60,
   )
     .toString()
-    .padStart(2, "0")} · ciclo ${p.cycle || 0}`;
+    .padStart(2, "0")} · cycle ${p.cycle || 0}`;
 }
 function integrationPage(main) {
   const mqtt = cfg.integrations.mqtt;
   main.append(
     card(
       "MQTT / Home Assistant",
-      field(mqtt, "enabled", "Activar MQTT", "checkbox"),
+      field(mqtt, "enabled", "Enable MQTT", "checkbox"),
       state.capabilities.mode === "mobile"
         ? field(
             mqtt,
             "websocket_url",
-            "URL WebSocket del broker (ws:// o wss://)",
+            "Broker WebSocket URL (ws:// or wss://)",
           )
         : el(
             "div",
             { class: "grid" },
-            field(mqtt, "host", "Servidor"),
-            numeric(mqtt, "port", "Puerto", 1, 65535),
+            field(mqtt, "host", "Server"),
+            numeric(mqtt, "port", "Port", 1, 65535),
           ),
       el(
         "div",
         { class: "grid" },
-        field(mqtt, "username", "Usuario"),
-        field(mqtt, "password", "Contraseña", "password"),
+        field(mqtt, "username", "Username"),
+        field(mqtt, "password", "Password", "password"),
       ),
-      field(mqtt, "prefix", "Prefijo de temas"),
+      field(mqtt, "prefix", "Topic prefix"),
       state.capabilities.mode === "mobile"
         ? hint(
-            "El broker debe ofrecer WebSockets. Sensores y comandos se reciben mientras la app está activa. No usa el servidor Keeper.",
+            "The broker must offer WebSockets. Sensors and commands are received while the app is active. It does not use the Keeper server.",
           )
         : field(mqtt, "tls", "TLS", "checkbox"),
       hint(
-        "Las credenciales se excluyen de las copias exportadas. Configura cada widget Sensor con su tema MQTT.",
+        "Credentials are excluded from exported backups. Configure each Sensor widget with its MQTT topic.",
       ),
     ),
   );
@@ -1856,47 +1863,47 @@ function integrationPage(main) {
     const api = cfg.integrations.api;
     main.append(
       card(
-        "API de automatización",
-        field(api, "enabled", "Activar API adicional", "checkbox"),
+        "Automation API",
+        field(api, "enabled", "Enable additional API", "checkbox"),
         el(
           "div",
           { class: "grid" },
-          field(api, "host", "Escuchar en", "select", {
-            "127.0.0.1": "Solo localhost",
-            "0.0.0.0": "Red local",
+          field(api, "host", "Listen on", "select", {
+            "127.0.0.1": "Localhost only",
+            "0.0.0.0": "Local network",
           }),
-          numeric(api, "port", "Puerto (distinto al portal)", 1, 65535),
+          numeric(api, "port", "Port (different from the portal)", 1, 65535),
         ),
         field(api, "token", "Token Bearer", "password"),
-        button("Generar token", () => {
+        button("Generate token", () => {
           api.token = id() + id() + id();
           mark();
           render();
         }),
         hint(
-          "Esta API adicional conserva /v1/status y /v1/action. El portal usa su propio token, definido en KEEPER_TOKEN o data/admin.token.",
+          "This additional API keeps /v1/status and /v1/action. The portal uses its own token, defined in KEEPER_TOKEN or data/admin.token.",
         ),
       ),
       card(
-        "Fuentes del equipo",
+        "Host sources",
         field(
           cfg.integrations,
           "hardware",
-          "Leer sensores disponibles",
+          "Read available sensors",
           "checkbox",
         ),
         banner(state.capabilities.metrics_label),
         hint(
-          "Linux: sensores de psutil y música MPRIS con playerctl. Windows: LibreHardwareMonitor y sesión multimedia. El contenedor no recibe automáticamente las fuentes del escritorio.",
+          "Linux: psutil sensors and MPRIS music via playerctl. Windows: LibreHardwareMonitor and media session. The container does not automatically receive the desktop sources.",
         ),
       ),
     );
   } else
     main.append(
       card(
-        "Fuentes en el móvil",
+        "Mobile sources",
         hint(
-          "Puedes mostrar valores de Home Assistant u otros equipos mediante un sensor HTTP JSON o un tema MQTT. El teléfono no obtiene CPU, GPU ni temperaturas de tu PC automáticamente. La API HTTP de escucha y los perfiles de procesos del PC no están disponibles aquí.",
+          "You can show values from Home Assistant or other machines through an HTTP JSON sensor or an MQTT topic. The phone does not get your PC CPU, GPU or temperatures automatically. The listening HTTP API and PC process profiles are not available here.",
         ),
       ),
     );
@@ -1904,13 +1911,13 @@ function integrationPage(main) {
 function backupPage(main) {
   main.append(
     card(
-      "Copia portátil",
+      "Portable backup",
       hint(
-        "Incluye medios, pantallas, listas, escenas y reglas. La importación desactiva los envíos automáticos y las integraciones para revisar la configuración.",
+        "Includes media, screens, playlists, scenes and rules. Importing disables automatic sending and integrations so you can review the configuration.",
       ),
       row(
         button(
-          "Exportar ZIP",
+          "Export ZIP",
           async () => {
             await save();
             await download(
@@ -1920,11 +1927,11 @@ function backupPage(main) {
           },
           "primary",
         ),
-        button("Importar ZIP", () =>
+        button("Import ZIP", () =>
           chooseFile(".zip", async (file) => {
             if (
               !confirm(
-                "¿Sustituir la configuración por esta copia? Se conservará una copia de la actual.",
+                "Replace the configuration with this backup? A copy of the current one will be kept.",
               )
             )
               return;
@@ -1932,7 +1939,7 @@ function backupPage(main) {
             await load();
             render();
             toast(
-              "Copia importada; revisa la IP y activa los envíos cuando quieras.",
+              "Backup imported; check the IP and enable sending when you are ready.",
             );
           }),
         ),
@@ -1941,8 +1948,8 @@ function backupPage(main) {
   );
   main.append(
     card(
-      "Biblioteca",
-      button("Ver archivos", async () => {
+      "Library",
+      button("View files", async () => {
         const files = await request("/library");
         const list = $("#library-list");
         list.replaceChildren(
@@ -1953,7 +1960,7 @@ function backupPage(main) {
               row(
                 el("span", {}, f.original || f.name),
                 el("small", {}, (f.size / 1024).toFixed(0) + " KB"),
-                button("Usar en pantalla " + (selected + 1), () => {
+                button("Use on screen " + (selected + 1), () => {
                   d().screens[selected] = screen("media", { path: f.path });
                   mark();
                   page = "screens";
@@ -1969,23 +1976,23 @@ function backupPage(main) {
   );
   main.append(
     card(
-      "Ajustes y sesión",
-      field(cfg, "resend_on_startup", "Reenviar al iniciar", "checkbox"),
-      button("Recargar configuración", async () => {
-        if (dirty && !confirm("¿Descartar los cambios pendientes?")) return;
+      "Settings and session",
+      field(cfg, "resend_on_startup", "Resend on startup", "checkbox"),
+      button("Reload configuration", async () => {
+        if (dirty && !confirm("Discard unsaved changes?")) return;
         await load();
         render();
       }),
       state.capabilities.mode === "server"
-        ? button("Cerrar sesión", () => {
+        ? button("Sign out", () => {
             sessionStorage.removeItem("keeper-token");
             login();
           })
         : hint(
-            "Los datos se guardan en el teléfono. Exporta una copia antes de desinstalar la app o borrar sus datos.",
+            "Data is stored on the phone. Export a backup before uninstalling the app or clearing its data.",
           ),
       hint(
-        "Windows 2.3 conserva su aplicación y datos. Esta versión utiliza el mismo protocolo de envío y mantiene las restricciones de los modos nativos.",
+        "Windows 2.3 keeps its own application and data. This version uses the same send protocol and keeps the restrictions of the native modes.",
       ),
     ),
   );
@@ -1993,9 +2000,9 @@ function backupPage(main) {
 function activityPage(main) {
   main.append(
     card(
-      "Actividad",
+      "Activity",
       el("pre", { id: "activity" }, eventText()),
-      button("Actualizar", async () => {
+      button("Refresh", async () => {
         const fresh = await request("/state");
         state.events = fresh.events;
         $("#activity").textContent = eventText();
@@ -2020,8 +2027,8 @@ function login() {
       "div",
       { class: "login card" },
       el("div", { class: "brand" }, "Divoom ", el("span", {}, "Keeper")),
-      el("h1", {}, "Tu Times Gate, a mano"),
-      hint("Introduce el token del servidor para acceder a tus pantallas."),
+      el("h1", {}, "Your Times Gate, at hand"),
+      hint("Enter the server token to access your screens."),
       el(
         "form",
         {
@@ -2037,7 +2044,7 @@ function login() {
         el(
           "label",
           { class: "field" },
-          "Token de acceso",
+          "Access token",
           el("input", {
             id: "token",
             type: "password",
@@ -2045,10 +2052,10 @@ function login() {
             autocomplete: "current-password",
           }),
         ),
-        el("button", { class: "primary", type: "submit" }, "Entrar"),
+        el("button", { class: "primary", type: "submit" }, "Sign in"),
       ),
       hint(
-        "El token está en data/admin.token o en la variable KEEPER_TOKEN del servidor.",
+        "The token is in data/admin.token or in the server's KEEPER_TOKEN variable.",
       ),
     ),
   );

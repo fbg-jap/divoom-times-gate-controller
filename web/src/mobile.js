@@ -51,20 +51,20 @@ export function validateCommand(payload) {
     },
   };
   const schema = commands[payload?.Command];
-  if (!schema) throw Error("Comando no admitido");
+  if (!schema) throw Error("Unsupported command");
   for (const [key, [low, high]] of Object.entries(schema))
     if (
       !Number.isInteger(payload[key]) ||
       payload[key] < low ||
       payload[key] > high
     )
-      throw Error("Parámetro inválido: " + key);
+      throw Error("Invalid parameter: " + key);
   if (
     Object.keys(payload).some(
       (key) => !["Command", "DeviceId", ...Object.keys(schema)].includes(key),
     )
   )
-    throw Error("Parámetro desconocido");
+    throw Error("Unknown parameter");
 }
 export function payloadForFrame(panel, count, index, picId, speed, data) {
   return {
@@ -97,7 +97,7 @@ export class MobileEngine {
     this.sensors = new Map();
     this.alarms = new Map();
     this.pomo = {
-      phase: "Preparado",
+      phase: "Ready",
       remaining: 1500,
       total: 1500,
       running: false,
@@ -116,7 +116,7 @@ export class MobileEngine {
         screen("text", { text: "KEEPER\nMOBILE" }),
         screen("weather"),
         screen("pomodoro"),
-        screen("text", { text: "Sin servidor" }),
+        screen("text", { text: "No server" }),
       ];
     }
     if (!this.demo)
@@ -124,15 +124,15 @@ export class MobileEngine {
         this.active = isActive;
         this.log(
           isActive
-            ? "Aplicación activa: se reanudan las tareas"
-            : "Aplicación en segundo plano: tareas pausadas",
+            ? "App active: tasks resumed"
+            : "App in background: tasks paused",
         );
       });
     this.timer = setInterval(() => this.tick(), 1000);
     this.log(
       this.demo
-        ? "Móvil DEMO: no envía al dispositivo"
-        : "Control autónomo · tareas continuas mientras la app esté activa",
+        ? "Mobile DEMO: does not send to the device"
+        : "Standalone control · tasks keep running while the app is active",
     );
   }
   log(message, level = "info") {
@@ -155,7 +155,7 @@ export class MobileEngine {
         ["queued", "running"].includes(j.status),
       ).length >= 20
     )
-      throw Error("Cola llena");
+      throw Error("Queue full");
     const key = id(),
       job = { id: key, operation, status: "queued" };
     this.jobs.set(key, job);
@@ -183,8 +183,8 @@ export class MobileEngine {
     return { job: key };
   }
   async http(url, options = {}) {
-    if (!/^https?:\/\//.test(url)) throw Error("Se necesita URL HTTP o HTTPS");
-    if (this.demo) throw Error("Fuente externa no disponible en demo móvil");
+    if (!/^https?:\/\//.test(url)) throw Error("An HTTP or HTTPS URL is required");
+    if (this.demo) throw Error("External source not available in mobile demo");
     const response = await CapacitorHttp.request({
       url,
       method: "GET",
@@ -197,13 +197,13 @@ export class MobileEngine {
     return response.data;
   }
   async command(d, payload) {
-    if (!this.active) throw Error("Abre la app para controlar el dispositivo");
+    if (!this.active) throw Error("Open the app to control the device");
     const ip = validIp(d.ip);
     if (
       payload.Command === "Channel/SetClockSelectId" &&
       !(payload.LcdIndependence > 0)
     )
-      throw Error("El grupo nativo 0 puede alterar otras pantallas");
+      throw Error("Native group 0 can alter other screens");
     const result = this.demo
       ? { error_code: 0, demo: true }
       : await this.http(`http://${ip}/post`, {
@@ -213,7 +213,7 @@ export class MobileEngine {
           responseType: "json",
         });
     if (!result || ![0, "0"].includes(result.error_code))
-      throw Error("El dispositivo rechazó " + payload.Command);
+      throw Error("The device rejected " + payload.Command);
     return result;
   }
   async cached(key, seconds, fn) {
@@ -225,11 +225,11 @@ export class MobileEngine {
   }
   async file(path) {
     const value = await read("media", path.split("/").pop());
-    if (!value) throw Error("Archivo no encontrado en el teléfono");
+    if (!value) throw Error("File not found on the phone");
     return value.blob;
   }
   async saveFile(blob, name) {
-    if (blob.size > 100 * 1024 ** 2) throw Error("Máximo 100 MB");
+    if (blob.size > 100 * 1024 ** 2) throw Error("Maximum 100 MB");
     const ext = name.split(".").pop().toLowerCase();
     if (
       ![
@@ -248,7 +248,7 @@ export class MobileEngine {
         "m4v",
       ].includes(ext)
     )
-      throw Error("Archivo no compatible");
+      throw Error("Unsupported file");
     const digest = crypto.subtle
       ? await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())
       : crypto.getRandomValues(new Uint8Array(32));
@@ -348,10 +348,10 @@ export class MobileEngine {
         break;
       case "pc":
       case "pc_native":
-        text("Datos del PC\nno disponibles\nen el móvil", 32, 15);
+        text("PC data\nnot available\non mobile", 32, 15);
         break;
       case "music":
-        text("Usa una fuente\nexterna para la\nmúsica del PC", 32, 15);
+        text("Use an external\nsource for\nPC music", 32, 15);
         break;
       case "weather": {
         let v = { temperature_2m: 23, relative_humidity_2m: 48 };
@@ -368,7 +368,7 @@ export class MobileEngine {
             )
           ).current;
         text(Math.round(v.temperature_2m) + "°", 38, 40);
-        text("Humedad " + v.relative_humidity_2m + "%", 101, 12, color);
+        text("Humidity " + v.relative_humidity_2m + "%", 101, 12, color);
         break;
       }
       case "countdown": {
@@ -377,8 +377,8 @@ export class MobileEngine {
           Math.ceil((new Date(s.target) - Date.now()) / 1000),
         );
         if (!Number.isFinite(seconds))
-          throw Error("Fecha de cuenta atrás inválida");
-        text(Math.floor(seconds / 86400) + " días", 34, 24);
+          throw Error("Invalid countdown date");
+        text(Math.floor(seconds / 86400) + " days", 34, 24);
         text(
           `${Math.floor(seconds / 3600) % 24}h ${Math.floor(seconds / 60) % 60}m`,
           79,
@@ -401,7 +401,7 @@ export class MobileEngine {
         const titles = await this.cached("rss:" + s.url, 300, async () => {
           const xml = String(await this.http(s.url, { responseType: "text" }));
           if (xml.length > 2000000 || /<!DOCTYPE|<!ENTITY/i.test(xml))
-            throw Error("Fuente RSS inválida");
+            throw Error("Invalid RSS source");
           const doc = new DOMParser().parseFromString(xml, "text/xml");
           return [...doc.querySelectorAll("item > title, entry > title")]
             .slice(0, 50)
@@ -409,7 +409,7 @@ export class MobileEngine {
         });
         text(
           titles[Math.floor(now() / +(s.news_seconds || 15)) % titles.length] ||
-            "Sin noticias",
+            "No news",
           30,
           +(s.news_size || 13),
         );
@@ -424,7 +424,7 @@ export class MobileEngine {
               ? await (await this.file(s.path)).text()
               : String(await this.http(s.url, { responseType: "text" }));
             if (raw.length > 2000000)
-              throw Error("Calendario demasiado grande");
+              throw Error("Calendar too large");
             const parsed = new ICAL.Component(ICAL.parse(raw));
             return parsed
               .getAllSubcomponents("vevent")
@@ -445,7 +445,7 @@ export class MobileEngine {
           }
         }
         future.sort((a, b) => a.date - b.date);
-        text(future[0]?.summary || "Sin eventos", 30, 15);
+        text(future[0]?.summary || "No events", 30, 15);
         if (future[0])
           text(
             future[0].date.toLocaleString("es", {
@@ -464,7 +464,7 @@ export class MobileEngine {
         const value = await metric();
         text(
           value == null
-            ? "N/D"
+            ? "N/A"
             : typeof value === "number"
               ? value.toFixed(1)
               : String(value),
@@ -485,7 +485,7 @@ export class MobileEngine {
           52,
           29,
         );
-        text("Ciclo " + this.pomo.cycle, 101, 12, color);
+        text("Cycle " + this.pomo.cycle, 101, 12, color);
         break;
       case "custom":
         for (const e of s.elements || []) {
@@ -498,7 +498,7 @@ export class MobileEngine {
             value = value
               .replaceAll("{time}", new Date().toLocaleTimeString("es"))
               .replaceAll("{date}", new Date().toLocaleDateString("es"))
-              .replace(/\{[^}]+\}/g, "N/D");
+              .replace(/\{[^}]+\}/g, "N/A");
             text(value, e.y, e.size || 16, e.color, e.x, e.width);
           } else if (e.type === "image" && e.path)
             ctx.drawImage(
@@ -511,13 +511,13 @@ export class MobileEngine {
           else if (e.type === "bar") {
             ctx.fillStyle = "#26334b";
             ctx.fillRect(e.x, e.y, e.width, e.height);
-            text("N/D", e.y, 8, e.color, e.x, e.width);
+            text("N/A", e.y, 8, e.color, e.x, e.width);
           }
           ctx.restore();
         }
         break;
       default:
-        text("Sin gestionar", 48, 15);
+        text("Unmanaged", 48, 15);
     }
     return c;
   }
@@ -538,12 +538,12 @@ export class MobileEngine {
     return list.items[cursor.index].screen;
   }
   async sendPanel(d, panel, force = false, replacement = null) {
-    if (!this.active) throw Error("Vuelve a abrir la app para enviar");
+    if (!this.active) throw Error("Reopen the app to send");
     const key = d.id + ":" + panel,
       s = replacement || this.effective(d, panel);
     if (["empty", "native"].includes(s.kind)) return;
     if (s.kind === "pc_native")
-      throw Error("El PC nativo necesita datos de un ordenador");
+      throw Error("Native PC needs data from a computer");
     const signature = JSON.stringify(s),
       last = this.last.get(key),
       interval =
@@ -560,7 +560,7 @@ export class MobileEngine {
     for (let index = 0; index < frames.length; index++) {
       if (!this.active)
         throw Error(
-          "Envío interrumpido al pasar a segundo plano. Reenvía al volver.",
+          "Sending was interrupted when the app went to the background. Resend when you return.",
         );
       await this.command(
         d,
@@ -578,10 +578,10 @@ export class MobileEngine {
     this.last.set(key, { signature, time: now() });
     const cursor = this.cursors.get(key);
     if (cursor && !cursor.at) cursor.at = now();
-    this.log(`${d.name} · pantalla ${panel + 1} enviada`);
+    this.log(`${d.name} · screen ${panel + 1} sent`);
   }
   async send(d, panel, force = true) {
-    if (d.screens_off) throw Error("Enciende primero las pantallas");
+    if (d.screens_off) throw Error("Turn the screens on first");
     const failures = [];
     for (const i of panel == null ? [0, 1, 2, 3, 4] : [+panel]) {
       if (this.overrides.has(d.id + ":" + i)) continue;
@@ -597,7 +597,7 @@ export class MobileEngine {
     const d = this.config.devices.find(
       (d) => d.id === (deviceId || this.config.active_device),
     );
-    if (!d) throw Error("Dispositivo desconocido");
+    if (!d) throw Error("Unknown device");
     if (operation === "send" || operation === "resume") {
       d.suspended = false;
       await this.persist();
@@ -619,7 +619,7 @@ export class MobileEngine {
     }
     if (operation === "scene") {
       const scene = this.config.scenes.find((s) => s.id === args.scene_id);
-      if (!scene) throw Error("Escena no encontrada");
+      if (!scene) throw Error("Scene not found");
       Object.assign(d, composition(scene));
       this.cursors.clear();
       this.last.clear();
@@ -630,15 +630,15 @@ export class MobileEngine {
       const s = this.effective(d, args.panel);
       if (["empty", "native", "pc_native"].includes(s.kind) || d.screens_off)
         throw Error(
-          "El aviso necesita una pantalla activa con contenido recuperable",
+          "The alert needs an active screen with restorable content",
         );
       if (this.overrides.has(d.id + ":" + args.panel))
-        throw Error("Ya hay un aviso en esa pantalla");
+        throw Error("There is already an alert on that screen");
       await this.sendPanel(
         d,
         args.panel,
         true,
-        screen("text", { text: args.text, title: args.title || "AVISO" }),
+        screen("text", { text: args.text, title: args.title || "ALERT" }),
       );
       this.overrides.set(d.id + ":" + args.panel, {
         until: now() + args.seconds,
@@ -660,7 +660,7 @@ export class MobileEngine {
     }
     if (operation === "discover") {
       if (!args.seed)
-        throw Error("Indica una IP para comprobarla desde el móvil");
+        throw Error("Enter an IP to check it from the phone");
       await this.command(
         { ...d, ip: args.seed },
         { Command: "Channel/GetAllConf" },
@@ -672,7 +672,7 @@ export class MobileEngine {
         `https://app.divoom-gz.com/Channel/Get5LcdInfoV2?DeviceType=LCD&DeviceId=${+d.device_id || 0}`,
         { responseType: "json" },
       );
-    throw Error("Acción no compatible");
+    throw Error("Unsupported action");
   }
   pomodoro(operation, args) {
     const p = this.pomo;
@@ -680,11 +680,11 @@ export class MobileEngine {
       for (const k of ["work", "rest", "long_rest", "cycles"]) {
         const value = +(args[k] || this.pomoSettings[k]);
         if (value < 1 || value > (k === "cycles" ? 12 : 180))
-          throw Error("Duración inválida");
+          throw Error("Invalid duration");
         this.pomoSettings[k] = value;
       }
       Object.assign(p, {
-        phase: "Trabajo",
+        phase: "Work",
         running: true,
         cycle: 1,
         total: this.pomoSettings.work * 60,
@@ -692,34 +692,34 @@ export class MobileEngine {
       });
       this.pomoTarget = args;
     } else if (operation === "pause") p.running = false;
-    else if (operation === "resume") p.running = p.phase !== "Preparado";
+    else if (operation === "resume") p.running = p.phase !== "Ready";
     else if (operation === "reset")
       Object.assign(p, {
-        phase: "Preparado",
+        phase: "Ready",
         running: false,
         cycle: 0,
         remaining: this.pomoSettings.work * 60,
         total: this.pomoSettings.work * 60,
       });
     else if (operation === "skip") {
-      const rest = p.phase === "Trabajo";
+      const rest = p.phase === "Work";
       p.phase = rest
         ? p.cycle % this.pomoSettings.cycles === 0
-          ? "Descanso largo"
-          : "Descanso"
-        : "Trabajo";
+          ? "Long break"
+          : "Break"
+        : "Work";
       if (!rest) p.cycle++;
       p.total = p.remaining =
         60 *
         this.pomoSettings[
-          rest ? (p.phase === "Descanso largo" ? "long_rest" : "rest") : "work"
+          rest ? (p.phase === "Long break" ? "long_rest" : "rest") : "work"
         ];
     }
     this.pomoAt = now();
   }
   async tick() {
     if (this.busy || !this.active) return;
-    this.task("Actualización", async () => {
+    this.task("Update", async () => {
       const time = now();
       if (this.pomo.running) {
         this.pomo.remaining = Math.max(
@@ -912,7 +912,7 @@ export class MobileEngine {
     if (!c.enabled || this.demo) return;
     if (!/^wss?:\/\//.test(c.websocket_url || "")) {
       this.log(
-        "En el móvil MQTT necesita la URL WebSocket del broker",
+        "On mobile, MQTT needs the broker WebSocket URL",
         "warning",
       );
       return;
@@ -932,13 +932,13 @@ export class MobileEngine {
       },
     });
     this.mqtt.on("connect", () => {
-      this.log("MQTT conectado");
+      this.log("MQTT connected");
       this.discoveryTopics = [];
       this.availabilityTopic = c.prefix + "/availability";
       this.mqtt.publish(c.prefix + "/availability", "online", { retain: true });
       for (const d of this.config.devices)
         for (const scene of [
-          { id: "restore", name: "Enviar composición" },
+          { id: "restore", name: "Send composition" },
           ...this.config.scenes,
         ]) {
           const uid = "keeper_mobile_" + d.id + "_" + scene.id;
@@ -957,7 +957,7 @@ export class MobileEngine {
               availability_topic: c.prefix + "/availability",
               device: {
                 identifiers: ["keeper_mobile_" + d.id],
-                name: "Keeper móvil · " + d.name,
+                name: "Keeper mobile · " + d.name,
               },
             }),
             { retain: true },
@@ -1064,13 +1064,13 @@ export class MobileEngine {
           hardware: false,
           continuous: false,
           metrics_label:
-            "El móvil no puede leer las métricas del PC. Usa un sensor HTTP o MQTT.",
+            "The phone cannot read PC metrics. Use an HTTP or MQTT sensor.",
         },
       };
     if (route === "/config") {
-      return this.task("Guardar", async () => {
+      return this.task("Save", async () => {
         if (data.revision !== String(this.revision))
-          throw Error("La configuración cambió; recarga antes de guardar");
+          throw Error("The configuration changed; reload before saving");
         validate(data.config);
         for (const a of assets(data.config))
           if (a.path) await this.file(a.path);
@@ -1091,7 +1091,7 @@ export class MobileEngine {
         return { cancelled: true };
       }
       const job = this.jobs.get(route.split("/").pop());
-      if (!job) throw Error("Tarea caducada");
+      if (!job) throw Error("Task expired");
       return copy(job);
     }
     if (route.startsWith("/preview/")) {
@@ -1111,7 +1111,7 @@ export class MobileEngine {
         this.operate(data.action, data.device_id, data.args),
       );
     if (route === "/panorama")
-      return this.task("Panorámica", async () => {
+      return this.task("Panorama", async () => {
         this.cancelConversion = new AbortController();
         const result = await decode(
           await this.file(data.path),
@@ -1151,14 +1151,14 @@ export class MobileEngine {
       return zip.generateAsync({ type: "blob" });
     }
     if (route === "/import")
-      return this.task("Importar", async () => {
-        if (data.size > 100 * 1024 ** 2) throw Error("Copia demasiado grande");
+      return this.task("Import", async () => {
+        if (data.size > 100 * 1024 ** 2) throw Error("Backup too large");
         const zip = await JSZip.loadAsync(data);
         let total = 0;
         for (const f of Object.values(zip.files)) {
           total += f._data?.uncompressedSize || 0;
           if (total > 250 * 1024 ** 2)
-            throw Error("Copia descomprimida demasiado grande");
+            throw Error("Decompressed backup too large");
         }
         const cfg = normalize(
           JSON.parse(await zip.file("config.json").async("string")),
@@ -1167,9 +1167,9 @@ export class MobileEngine {
         for (const a of assets(cfg))
           if (a.path) {
             if (!/^media\/[\w.-]+$/.test(a.path) || a.path.includes(".."))
-              throw Error("Ruta de copia inválida");
+              throw Error("Invalid backup path");
             const f = zip.file(a.path);
-            if (!f) throw Error("Falta un archivo");
+            if (!f) throw Error("A file is missing");
             a.path = (await this.saveFile(await f.async("blob"), a.path)).path;
           }
         for (const d of cfg.devices) d.enabled = false;
@@ -1182,6 +1182,6 @@ export class MobileEngine {
         this.overrides.clear();
         await this.persist();
       });
-    throw Error("Ruta no compatible: " + route);
+    throw Error("Unsupported route: " + route);
   }
 }

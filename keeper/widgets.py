@@ -19,7 +19,7 @@ import requests
 def http_url(value):
     p = urlparse(value)
     if p.scheme not in {"http", "https"} or not p.hostname:
-        raise ValueError("Se necesita una URL http:// o https://")
+        raise ValueError("An http:// or https:// URL is required")
     return value
 
 
@@ -150,7 +150,7 @@ class Providers:
             return {"temperature_2m": 23, "relative_humidity_2m": 48, "weather_code": 1}
         lat, lon = float(latitude), float(longitude)
         if not -90 <= lat <= 90 or not -180 <= lon <= 180:
-            raise ValueError("Coordenadas inválidas")
+            raise ValueError("Invalid coordinates")
 
         def fetch():
             response = self.session.get("https://api.open-meteo.com/v1/forecast", params={
@@ -177,7 +177,7 @@ class Providers:
 
     def calendar(self, source):
         if self.demo:
-            return "Revisión del proyecto", "16:30"
+            return "Project review", "16:30"
 
         def fetch():
             if source.startswith(("http://", "https://")):
@@ -201,11 +201,11 @@ class Providers:
             elif start.tzinfo is None:
                 start = start.replace(tzinfo=now.tzinfo)
             if start >= now or (all_day and start.date() == now.date()):
-                candidates.append((start, str(event.get("SUMMARY", "Evento")), all_day))
+                candidates.append((start, str(event.get("SUMMARY", "Event")), all_day))
         if not candidates:
-            return "Sin eventos", "7 días"
+            return "No events", "7 days"
         start, title, all_day = min(candidates, key=lambda x: x[0])
-        when = "Todo el día" if all_day else start.astimezone().strftime("%H:%M")
+        when = "All day" if all_day else start.astimezone().strftime("%H:%M")
         if start.date() != now.date():
             when = start.strftime("%d/%m ") + when
         return title, when
@@ -289,14 +289,14 @@ class Renderer:
                 drive = slot.get("pc_disk", "") or Path.home().anchor
                 label(str(drive) + " · FREE", 35, 10)
                 free = disk["free"]
-                label("N/D" if free is None else f"{free / 1024**3:.1f} GiB", 49, 22, "white", bold=True)
+                label("N/A" if free is None else f"{free / 1024**3:.1f} GiB", 49, 22, "white", bold=True)
             keys = ["cpu_temp", "gpu_temp"] if view == "temperature" else ["disk", "ram"] if view == "storage" else ["cpu", "ram", "gpu"]
             for i, key in enumerate(keys):
                 value = values[key]
                 y = (75 if view == "storage" else 37) + i * 27
                 label(key.replace("_temp", "").upper(), y, 11)
                 suffix = "°C" if key.endswith("_temp") else "%"
-                label("N/D" if value is None else f"{value:.0f}{suffix}", y, 12, "white", center=True, bold=True)
+                label("N/A" if value is None else f"{value:.0f}{suffix}", y, 12, "white", center=True, bold=True)
                 if view == "history":
                     graph(key, y + 14)
                     continue
@@ -307,9 +307,9 @@ class Renderer:
             data = self.providers.weather(slot["latitude"], slot["longitude"])
             label(f"{data['temperature_2m']:.0f}°", 35, 40, "white", center=True, bold=True)
             code = data["weather_code"]
-            state = "DESPEJADO" if code == 0 else "NUBES" if code < 4 else "NIEBLA" if code < 50 else "LLUVIA / NIEVE"
+            state = "CLEAR" if code == 0 else "CLOUDY" if code < 4 else "FOG" if code < 50 else "RAIN / SNOW"
             label(state, 85, 11, center=True)
-            label(f"Humedad {data['relative_humidity_2m']}%", 104, 10, center=True)
+            label(f"Humidity {data['relative_humidity_2m']}%", 104, 10, center=True)
         elif kind == "countdown":
             target = datetime.fromisoformat(slot["target"])
             if target.tzinfo is None:
@@ -320,13 +320,13 @@ class Renderer:
             minutes, secs = divmod(rem, 60)
             value = f"{days}d {hours}h" if days else f"{hours:02}:{minutes:02}" if hours else f"{minutes:02}:{secs:02}"
             label(value, 43, 32, "white", center=True, bold=True)
-            label("FINALIZADO" if seconds == 0 else "TIEMPO RESTANTE", 94, 10, center=True)
+            label("FINISHED" if seconds == 0 else "TIME LEFT", 94, 10, center=True)
         elif kind == "service":
             ok, latency = self.providers.service(slot["url"])
             color = "#64e6ca" if ok else "#ff8091"
             draw.ellipse((54, 37, 74, 57), fill=color)
             label("ONLINE" if ok else "OFFLINE", 67, 22, color, center=True, bold=True)
-            label(f"{latency} ms" if ok else "Sin respuesta", 103, 12, center=True)
+            label(f"{latency} ms" if ok else "No response", 103, 12, center=True)
         elif kind == "calendar":
             summary, when = self.providers.calendar(slot.get("url") or slot.get("path"))
             label(when, 35, 19, "white", bold=True)
@@ -340,7 +340,7 @@ class Renderer:
 
 def format_rate(value):
     if value is None:
-        return "Midiendo…"
+        return "Measuring…"
     if value >= 1024**2:
         return f"{value / 1024**2:.1f} MiB/s"
     if value >= 1024:

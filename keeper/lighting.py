@@ -62,16 +62,16 @@ def defaults():
 
 def validate_lighting(settings):
     if not isinstance(settings, dict):
-        raise ValueError('Configuración de iluminación inválida')
+        raise ValueError('Invalid lighting configuration')
     value = {**defaults(), **settings}
     if not isinstance(value['color'], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', value['color']):
-        raise ValueError('Color RGB inválido')
+        raise ValueError('Invalid RGB color')
     for key, maximum in [('brightness', 100), ('effect', 11), ('zone', 2)]:
         if type(value[key]) is not int or not 0 <= value[key] <= maximum:
-            raise ValueError('Valor de iluminación inválido: ' + key)
+            raise ValueError('Invalid lighting value: ' + key)
     for key in ['on', 'cycle', 'keys']:
         if type(value[key]) is not bool:
-            raise ValueError('Estado de iluminación inválido: ' + key)
+            raise ValueError('Invalid lighting state: ' + key)
     return value
 
 
@@ -87,18 +87,18 @@ def payload(settings):
 def from_payload(p):
     expected = {'Command', 'Brightness', 'Color', 'OnOff', 'KeyOnOff', 'ColorCycle', 'SelectLightIndex', 'LightList'}
     if not isinstance(p, dict) or set(p) != expected or p['Command'] != 'Channel/SetRGBInfo':
-        raise ValueError('Comando de iluminación inválido')
+        raise ValueError('Invalid lighting command')
     lights = p['LightList']
     if (not isinstance(lights, list) or len(lights) not in (1, 3)
             or any(not isinstance(item, dict) or set(item) != {'SelectEffect'}
                    or type(item['SelectEffect']) is not int or not 0 <= item['SelectEffect'] <= 11 for item in lights)):
-        raise ValueError('Lista de efectos RGB inválida')
+        raise ValueError('Invalid RGB effect list')
     if type(p['SelectLightIndex']) is not int or not 0 <= p['SelectLightIndex'] <= 2:
-        raise ValueError('Zona RGB inválida')
+        raise ValueError('Invalid RGB zone')
     index = p['SelectLightIndex'] if len(lights) == 3 else 0
     if len(lights) == 3 and any(item['SelectEffect'] != 0 for i, item in enumerate(lights) if i != index):
-        raise ValueError('La configuración admite un único efecto principal')
+        raise ValueError('The configuration allows only one main effect')
     if any(type(p[k]) is not int or p[k] not in (0, 1) for k in ['OnOff', 'KeyOnOff', 'ColorCycle']):
-        raise ValueError('Interruptor RGB inválido')
+        raise ValueError('Invalid RGB switch')
     return validate_lighting(dict(color=p['Color'], brightness=p['Brightness'], effect=lights[index]['SelectEffect'],
                                   zone=p['SelectLightIndex'], on=bool(p['OnOff']), keys=bool(p['KeyOnOff']), cycle=bool(p['ColorCycle'])))

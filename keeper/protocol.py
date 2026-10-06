@@ -14,7 +14,7 @@ import requests
 def valid_ip(value):
     ip = ipaddress.ip_address(value.strip())
     if ip.version != 4:
-        raise ValueError("Introduce una dirección IPv4")
+        raise ValueError("Enter an IPv4 address")
     return str(ip)
 
 
@@ -35,8 +35,8 @@ class Client:
         selecting_panel = payload.get("Command") == "Channel/SetClockSelectId" and "LcdIndex" in payload
         selecting_group = payload.get("Command") == "Channel/Set5LcdChannelType" and payload.get("ChannelType") == 1
         if (selecting_panel or selecting_group) and int(payload.get("LcdIndependence", 0)) <= 0:
-            raise DeviceError("Falta un grupo nativo válido. El grupo 0 altera otras pantallas. "
-                              "Selecciona PC Monitor desde Divoom y usa el modo de solo envío de datos.")
+            raise DeviceError("A valid native group is missing. Group 0 alters other screens. "
+                              "Select PC Monitor from Divoom and use the data-only sending mode.")
         response = self.session.post(f"http://{self.ip}/post", json=payload, timeout=self.timeout)
         response.raise_for_status()
         body = response.json()
@@ -46,14 +46,14 @@ class Client:
 
     def send_frames(self, frames, panel, quality=85, speed=100, stop=None):
         if panel not in range(5) or not frames:
-            raise ValueError("Pantalla o animación inválida")
+            raise ValueError("Invalid screen or animation")
         # The working legacy app uses Unix seconds, not a wrapped microsecond ID.
         # Multiple uploads within one second must still have increasing IDs.
         pic_id = max(int(time.time()), self.last_pic_id + 1)
         self.last_pic_id = pic_id
         for offset, frame in enumerate(frames):
             if stop is not None and stop.is_set():
-                raise InterruptedError("Envío cancelado")
+                raise InterruptedError("Send cancelled")
             buf = io.BytesIO()
             frame.convert("RGB").save(buf, "JPEG", quality=max(30, min(100, int(quality))))
             self.command({"Command": "Draw/SendHttpGif", "LcdArray": [int(i == panel) for i in range(5)],
@@ -88,7 +88,7 @@ def media_frames(path, fit="contain", frame_step=1):
         count = getattr(image, "n_frames", 1)
         step = max(1, int(frame_step))
         if (count + step - 1) // step > 600:
-            raise ValueError("Máximo 600 fotogramas por envío. Aumenta el salto de fotogramas.")
+            raise ValueError("Maximum 600 frames per send. Increase the frame step.")
         for i, frame in enumerate(ImageSequence.Iterator(image)):
             if i % step == 0:
                 frames.append(resize(frame.copy(), fit))
@@ -108,7 +108,7 @@ def discover(seed="", cloud=False):
         response.raise_for_status()
         body = response.json()
         if body.get("ReturnCode") not in (0, "0"):
-            raise DeviceError("Divoom no devolvió la lista de dispositivos")
+            raise DeviceError("Divoom did not return the device list")
         return [{"ip": d.get("DevicePrivateIP", ""), "name": d.get("DeviceName", "Divoom"),
                  "mac": d.get("DeviceMac", ""), "device_id": d.get("DeviceId", 0)}
                 for d in body.get("DeviceList", [])]
@@ -126,12 +126,12 @@ def discover(seed="", cloud=False):
         except ValueError:
             pass
     if not prefixes:
-        raise ValueError("No se encontró una subred local. Introduce la IP del dispositivo.")
+        raise ValueError("No local subnet found. Enter the device IP.")
     found = []
     with ThreadPoolExecutor(max_workers=32) as pool:
         futures = {pool.submit(probe, f"{prefix}.{i}"): f"{prefix}.{i}"
                    for prefix in prefixes for i in range(1, 255)}
         for f in as_completed(futures):
             if f.result() is not None:
-                found.append({"ip": futures[f], "name": "Divoom compatible"})
+                found.append({"ip": futures[f], "name": "Compatible Divoom"})
     return sorted(found, key=lambda d: tuple(map(int, d["ip"].split("."))))

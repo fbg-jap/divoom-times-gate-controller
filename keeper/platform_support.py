@@ -17,7 +17,7 @@ def data_directory():
 def linux_music():
     playerctl = shutil.which("playerctl")
     if not playerctl:
-        return {"title": "", "artist": "", "status": "Instala playerctl para leer música MPRIS", "art": ""}
+        return {"title": "", "artist": "", "status": "Install playerctl to read MPRIS music", "art": ""}
     def run(*args):
         return subprocess.run([playerctl, *args], capture_output=True, text=True, timeout=3).stdout.strip()
     art = ""
@@ -42,7 +42,7 @@ def linux_music():
     except (OSError, ValueError):
         pass
     return {"title": run("metadata", "xesam:title"), "artist": run("metadata", "xesam:artist"),
-            "status": run("status") or "Sin reproducción", "art": art}
+            "status": run("status") or "Nothing playing", "art": art}
 
 
 def linux_locked():
@@ -75,7 +75,7 @@ def linux_startup(enabled, config_root):
     def quote(value):
         value = str(value)
         if "\n" in value or "\r" in value:
-            raise ValueError("Ruta de autoarranque inválida")
+            raise ValueError("Invalid autostart path")
         return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%') + '"'
     args = [sys.executable]
     if not getattr(sys, "frozen", False):

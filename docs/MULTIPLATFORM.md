@@ -187,4 +187,4 @@ The iOS job requires Xcode 26. Simulator artifacts cannot be installed on a real
 
 References: [Capacitor environment](https://capacitorjs.com/docs/getting-started/environment-setup), [native HTTP](https://capacitorjs.com/docs/apis/http), [Qt for Python deployment](https://doc.qt.io/qtforpython-6.8/deployment/index.html), [Docker Compose networking](https://docs.docker.com/compose/how-tos/networking/).
 
-[README](../README.md) · [Desktop guide](ESCRITORIO.md) · [RGB 3.1.1](RGB-3.1.1.md)
+[README](../README.md) · [Desktop guide](DESKTOP.md) · [RGB 3.1.1](RGB-3.1.1.md)
