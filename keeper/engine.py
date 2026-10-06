@@ -13,6 +13,7 @@ import time
 from .config import slot
 from .content import PlaylistCursor, composition, empty_playlists
 from .protocol import Client, discover, media_frames
+from .timesync import timesource
 from .widgets import Renderer, png_bytes
 
 
@@ -36,6 +37,7 @@ class Engine(threading.Thread):
         from .integrations import Bridge
         self.automations = Automations(self)
         self.bridge = Bridge(self)
+        self.clock_sent = None
         self.hashes = {}
         self.last_sent = {}
         self.last_attempt = {}
@@ -97,6 +99,21 @@ class Engine(threading.Thread):
             for key in list(mapping):
                 if key[0] == device_id and (panel is None or key[1] == panel):
                     mapping.pop(key, None)
+
+    def forget_device(self, device_id):
+        """Drop every runtime entry of a removed device. Runs on the engine thread."""
+        self.invalidate(device_id)
+        for mapping in [self.overrides, self.rotation_at, self.rotation_index, self.clients, self.last_health, self.online,
+                        self.automations.profile_ids]:
+            for key in list(mapping):
+                if key == device_id or (isinstance(key, tuple) and key[0] == device_id):
+                    mapping.pop(key, None)
+        for group in (self.paused, self.power_off):
+            group.discard(device_id)
+        for key in list(self.lighting_restored):
+            if key[0] == device_id:
+                self.lighting_restored.discard(key)
+        self.automations.notice_queue[:] = [item for item in self.automations.notice_queue if item[1] != device_id]
 
     def playlist_content(self, d, panel, advance=False):
         playlist = d.get("playlists", empty_playlists())[panel]
@@ -252,6 +269,9 @@ class Engine(threading.Thread):
             self.paused = {d["id"] for d in data["devices"] if d.get("suspended")}
             self.power_off = {d["id"] for d in data["devices"] if d.get("screens_off")}
             return
+        if action == "forget_device":
+            self.forget_device(device_id)
+            return
         if action == "session_lock":
             self.automations.locked = bool(args["locked"])
             return
@@ -365,11 +385,27 @@ class Engine(threading.Thread):
                 # An RGB failure must not suspend image/GIF uploads.
                 self.log(f"{d['name']} · could not recover lighting: {error}", 'warning')
 
+    def sync_device_clock(self, data, now):
+        """integrations.timesync.sync_device: push the corrected UTC to each enabled device after a good sync, then at most every 6 h."""
+        if not (timesource.sync_device and timesource.synced()):
+            self.clock_sent = None
+            return
+        if self.clock_sent is not None and now - self.clock_sent < 6 * 3600:
+            return
+        self.clock_sent = now
+        for d in data["devices"]:
+            if d.get("enabled") and d["id"] not in self.paused:
+                try:
+                    self.submit("command", d["id"], payload={"Command": "Device/SetUTC", "Utc": int(timesource.time())})
+                except Exception as error:
+                    self.log(f"{d['name']} · device clock sync failed: {error}", "warning")
+
     def tick(self):
         data = self.store.snapshot()
         now = time.monotonic()
-        wall = datetime.now()
+        wall = timesource.now()
         self.bridge.tick(data, now)
+        self.sync_device_clock(data, now)
         if self.session_probe and any(r.get("trigger") == "locked" for r in data.get("profiles", [])):
             locked, _ = self.session_probe.read()
             if locked is not None:
@@ -453,6 +489,7 @@ class Engine(threading.Thread):
                 self.jobs.task_done()
 
         self.bridge.close()
+        timesource.stop()
 
     def stop(self):
         self.stop_event.set()

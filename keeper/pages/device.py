@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QSlider, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QSlider, QHeaderView, QSizePolicy, QTableWidget, QVBoxLayout
 
 from ..color_ui import LightingPanel
 from ..config import device
@@ -12,6 +12,28 @@ class DevicePage:
     def build_device(self):
         layout = self.page(self.t("Tu dispositivo", "Your device"), self.t("Conexión local, controles de pantalla e iluminación ambiental.",
                                                                            "Local connection, display controls and ambient lighting."))
+        devices = box()
+        devices_layout = QVBoxLayout(devices)
+        devices_layout.addWidget(QLabel(self.t("Dispositivos", "Devices")))
+        self.devices_table = QTableWidget(0, 4)
+        self.devices_table.setHorizontalHeaderLabels([self.t("Nombre", "Name"), "IP", self.t("Activo", "Active"),
+                                                      self.t("Auto", "Auto")])
+        self.devices_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.devices_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.devices_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.devices_table.verticalHeader().hide()
+        self.devices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.devices_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.devices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.devices_table.setMaximumHeight(150)
+        self.devices_table.cellDoubleClicked.connect(lambda row, _column: self.select_device_row(row))
+        devices_layout.addWidget(self.devices_table)
+        row = QHBoxLayout()
+        row.addWidget(button(self.t("Seleccionar", "Select"), lambda: self.select_device_row(self.devices_table.currentRow())))
+        row.addWidget(button(self.t("Quitar", "Remove"), lambda: self.remove_device_row(self.devices_table.currentRow())))
+        row.addStretch()
+        devices_layout.addLayout(row)
+        layout.addWidget(devices)
         card = box()
         form = QFormLayout(card)
         self.device_name, self.device_ip, self.device_mac = QLineEdit(), QLineEdit(), QLineEdit()

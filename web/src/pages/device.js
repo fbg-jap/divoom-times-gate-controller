@@ -1,9 +1,70 @@
 import {ctx} from "../ctx.js";
 import {el,button,row,card,hint,toast,mark,field,numeric,d,load,save,action,saveAndSend,render} from "../ui.js";
 import {t} from "../i18n.js";
-import {device} from "../model.js";
+import {device,removeDevice} from "../model.js";
+function removeWithConfirm(dev) {
+  if (ctx.cfg.devices.length <= 1) throw Error(t("ui.keep_at_least_one_device"));
+  if (!confirm(t("ui.remove_device_confirm").replace("{name}", dev.name || dev.ip || dev.id)))
+    return;
+  const error = removeDevice(ctx.cfg, dev.id);
+  if (error) throw Error(error);
+  mark();
+  render();
+}
+function devicesCard() {
+  const online = ctx.state?.runtime?.online;
+  return card(
+    t("ui.devices_list"),
+    el(
+      "div",
+      { class: "devlist" },
+      ctx.cfg.devices.map((dev) => {
+        const active = dev.id === ctx.cfg.active_device;
+        const status = online && dev.id in online ? online[dev.id] : null;
+        return el(
+          "div",
+          { class: "devrow" + (active ? " active" : "") },
+          el(
+            "div",
+            { class: "devinfo" },
+            el("strong", {}, dev.name || t("ui.unnamed_device")),
+            el("span", { class: dev.ip ? "" : "muted" }, dev.ip || t("ui.no_ip_set")),
+          ),
+          el(
+            "div",
+            { class: "devchips" },
+            active ? el("span", { class: "chip on" }, t("ui.active")) : null,
+            el(
+              "span",
+              { class: "chip" + (dev.enabled ? " on" : "") },
+              dev.enabled ? t("ui.auto_update_on") : t("ui.auto_update_off"),
+            ),
+            status === null
+              ? null
+              : el(
+                  "span",
+                  { class: "chip" + (status ? " on" : " off") },
+                  status ? t("ui.online") : t("ui.offline"),
+                ),
+          ),
+          row(
+            active
+              ? null
+              : button(t("ui.select"), () => {
+                  ctx.cfg.active_device = dev.id;
+                  mark();
+                  render();
+                }),
+            button(t("ui.remove"), () => removeWithConfirm(dev), "danger"),
+          ),
+        );
+      }),
+    ),
+  );
+}
 export function devicePage(main) {
   const value = d();
+  main.append(devicesCard());
   main.append(
     card(
       t("ui.local_connection"),
@@ -92,19 +153,7 @@ export function devicePage(main) {
         }),
         button(
           t("ui.delete_selected"),
-          () => {
-            if (ctx.cfg.devices.length === 1)
-              throw Error(t("ui.keep_at_least_one_device"));
-            if (!confirm(t("ui.delete_this_device_and_its")))
-              return;
-            const did = d().id;
-            ctx.cfg.devices = ctx.cfg.devices.filter((d) => d.id !== did);
-            for (const g of ["schedules", "alerts", "reminders", "profiles"])
-              ctx.cfg[g] = ctx.cfg[g].filter((r) => r.device_id !== did);
-            ctx.cfg.active_device = ctx.cfg.devices[0].id;
-            mark();
-            render();
-          },
+          () => removeWithConfirm(d()),
           "danger",
         ),
       ),

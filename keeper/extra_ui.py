@@ -4,6 +4,7 @@ import copy
 import json
 import secrets
 import threading
+import time
 
 import requests
 
@@ -16,6 +17,7 @@ from .config import uid
 from .extensions import METRICS, normalize_phase, validate_content, spotify_redirect_kind
 from .content import assets
 from .platform_support import open_external
+from .timesync import timesource
 from .widgets import http_url
 
 
@@ -34,6 +36,22 @@ def combo(options, value=None):
     if value is not None:
         w.setCurrentIndex(max(0, w.findData(value)))
     return w
+
+
+def time_status_text(status, t):
+    if not status["enabled"]:
+        return t("Estado: desactivado", "Status: off")
+    parts = []
+    if status["offset_ms"] is not None:
+        age = max(0, int((time.time() - status["synced_at"]) / 60)) if status["synced_at"] else 0
+        parts.append(f"{status['offset_ms']:+.0f} ms · {status['server']} ({status['source']}) · " + t(f"hace {age} min", f"{age} min ago"))
+        if status["stale"]:
+            parts.append(t("obsoleto: se usa la hora del PC", "stale: using the PC clock"))
+    else:
+        parts.append(t("sin sincronizar", "not synced yet"))
+    if status["error"]:
+        parts.append(t("error: ", "error: ") + status["error"])
+    return t("Estado: ", "Status: ") + " · ".join(parts)
 
 
 def hint(text):
@@ -377,6 +395,23 @@ class IntegrationPanel(QWidget):
                            "Requires the PC notifications above to be enabled. For privacy only the sender and 'New message' are shown unless you enable the preview. Teams in a browser is matched by its domain.")))
         self.nt_status = QLabel(); form.addRow(self.nt_status)
         tabs.addTab(page, t("Notificaciones", "Notifications"))
+        ts = {**base["timesync"], **(data.get("timesync") if isinstance(data.get("timesync"), dict) else {})}
+        page = QWidget(); form = QFormLayout(page)
+        self.ts_on = QCheckBox(t("Corregir la hora con un servidor de hora en línea", "Correct the time with an online time server")); self.ts_on.setChecked(ts["enabled"])
+        self.ts_source = combo([("ntp", "NTP (UDP 123)"), ("https", "HTTPS (Date)")], ts["source"])
+        self.ts_servers = QLineEdit(", ".join(ts["servers"])); self.ts_url = QLineEdit(ts["https_url"])
+        self.ts_interval = number(5, 1440, ts["interval_minutes"])
+        self.ts_fallback = QCheckBox(t("Usar HTTPS si NTP falla", "Use HTTPS if NTP fails")); self.ts_fallback.setChecked(ts["fallback_https"])
+        self.ts_device = QCheckBox(t("Sincronizar el reloj del dispositivo automáticamente", "Sync device clock automatically")); self.ts_device.setChecked(ts["sync_device"])
+        self.ts_status = QLabel()
+        form.addRow(self.ts_on); form.addRow(t("Fuente", "Source"), self.ts_source)
+        form.addRow(t("Servidores NTP (separados por comas)", "NTP servers (comma separated)"), self.ts_servers)
+        form.addRow(t("URL HTTPS", "HTTPS URL"), self.ts_url); form.addRow(t("Intervalo (minutos)", "Interval (minutes)"), self.ts_interval)
+        form.addRow(self.ts_fallback); form.addRow(self.ts_device); form.addRow(self.ts_status)
+        form.addRow(btn(t("Sincronizar ahora", "Sync now"), self.time_sync_now))
+        form.addRow(hint(t("Desactivado por defecto. Al activarlo, Keeper contacta con los servidores configurados (UDP 123 para NTP, HTTPS para el respaldo) para corregir el reloj de los widgets y las programaciones; no cambia la hora del sistema. Sin sincronización durante 6 h se vuelve a usar la hora del PC.",
+                           "Off by default. When enabled, Keeper contacts the configured time servers (UDP 123 for NTP, HTTPS for the fallback) to correct the clock used by widgets and schedules; it does not change the system time. After 6 h without a sync the PC clock is used again.")))
+        tabs.addTab(page, t("Hora", "Time"))
         self.refresh_spotify_status()
 
     def refresh_spotify_status(self):
@@ -461,6 +496,9 @@ class IntegrationPanel(QWidget):
                                               "chats": self.tm_chats.isChecked(), "mentions": self.tm_mentions.isChecked(), "calls": self.tm_calls.isChecked(),
                                               "panel": self.tm_panel.currentData(), "seconds": self.tm_seconds, "call_seconds": self.tm_call_seconds.value(),
                                               "buzzer_on_call": self.tm_buzzer.isChecked()}},
+                  "timesync": {"enabled": self.ts_on.isChecked(), "source": self.ts_source.currentData(), "servers": names(self.ts_servers) or ["pool.ntp.org"],
+                               "https_url": self.ts_url.text().strip(), "interval_minutes": self.ts_interval.value(),
+                               "fallback_https": self.ts_fallback.isChecked(), "sync_device": self.ts_device.isChecked()},
                   "hardware": self.hardware.isChecked(),
                   "api": {"enabled": self.api_on.isChecked(), "host": "0.0.0.0" if self.api_lan.isChecked() else "127.0.0.1", "port": self.api_port.value(), "token": self.token.text().strip()},
                   "mqtt": {"enabled": self.mqtt_on.isChecked(), "host": self.mqtt_host.text().strip(), "port": self.mqtt_port.value(), "prefix": self.mqtt_prefix.text().strip(), "username": self.user.text(), "password": self.password.text(), "tls": self.tls.isChecked()}}
@@ -479,6 +517,12 @@ class IntegrationPanel(QWidget):
         self.api_status.setText("Status: " + self.window.engine.bridge.api_status)
         self.mqtt_status.setText("Status: " + self.window.engine.bridge.mqtt_status)
         self.nt_status.setText("Status: " + self.window.engine.bridge.notifications.status)
+        self.ts_status.setText(time_status_text(timesource.status(), self.window.t))
+
+    def time_sync_now(self):
+        # The saved settings are what gets contacted; the thread keeps the UI responsive.
+        self.ts_status.setText(self.window.t("Sincronizando…", "Syncing…"))
+        threading.Thread(target=timesource.sync_now, daemon=True, name="keeper-timesync-now").start()
 
     def reload(self):
         from .config import defaults
@@ -502,6 +546,10 @@ class IntegrationPanel(QWidget):
         self.tm_preview.setChecked(tm["show_preview"]); self.tm_panel.setCurrentIndex(max(0, self.tm_panel.findData(tm["panel"])))
         self.tm_call_seconds.setValue(tm["call_seconds"]); self.tm_buzzer.setChecked(tm["buzzer_on_call"])
         self.tm_patterns.setText(", ".join(tm["patterns"])); self.tm_seconds = tm["seconds"]
+        ts = {**defaults()["integrations"]["timesync"], **(data.get("timesync") if isinstance(data.get("timesync"), dict) else {})}
+        self.ts_on.setChecked(ts["enabled"]); self.ts_source.setCurrentIndex(max(0, self.ts_source.findData(ts["source"])))
+        self.ts_servers.setText(", ".join(ts["servers"])); self.ts_url.setText(ts["https_url"]); self.ts_interval.setValue(ts["interval_minutes"])
+        self.ts_fallback.setChecked(ts["fallback_https"]); self.ts_device.setChecked(ts["sync_device"])
 
     def poll_sensors(self):
         extra = self.window.engine.renderer.providers.extra

@@ -550,3 +550,12 @@ button:focus-visible,input:focus-visible,.color-plane:focus-visible { outline:3p
 .lighting-apply { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-top:22px; }
 @media(max-width:900px){.effect-grid {grid-template-columns:repeat(3,minmax(0,1fr));}.lighting-layout {gap:18px;}.light-device {height:160px;padding:28px 15px;}.light-screen {height:85px;}.light-panels {gap:7px;}}
 @media(max-width:540px){.lighting-layout {grid-template-columns:1fr;gap:6px;}.mood-grid {grid-template-columns:repeat(2,minmax(0,1fr));}.light-device {height:140px;padding:25px 10px;}.light-screen {height:70px;padding:5px;}.light-screen::before {border-width:3px;}.light-panels {gap:5px;}.color-dialog {padding:18px;}.lighting-apply button {width:100%;}.color-swatches {gap:7px;}}
+
+.devlist { display: flex; flex-direction: column; gap: 10px; }
+.devrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px; border: 1px solid #2b394e; border-radius: 10px; }
+.devrow.active { border-color: #64e6ca; }
+.devinfo { display: flex; flex-direction: column; gap: 2px; flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.devchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid #2b394e; color: #9fb0c4; }
+.chip.on { color: #64e6ca; border-color: #64e6ca; }
+.chip.off { color: #ff9b9b; border-color: #ff9b9b; }

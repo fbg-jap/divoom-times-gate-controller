@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 import io
 import math
 import re
@@ -11,6 +10,8 @@ import time
 from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageOps
+
+from .timesync import timesource
 
 # Seconds a widget's very first draw may wait for its background sampler before showing a placeholder.
 FIRST_READ_WAIT = 2.5
@@ -183,6 +184,39 @@ def validate_new_integrations(integrations):
             patterns = teams.get("patterns", [])
             if not isinstance(patterns, list) or len(patterns) > 20 or any(not isinstance(v, str) or not 1 <= len(v) <= 64 for v in patterns):
                 raise ValueError("Invalid patterns")
+    validate_timesync(integrations.get("timesync", {}))
+
+
+_HOST_LABEL = re.compile(r"(?!-)[A-Za-z0-9-]{1,63}(?<!-)")
+
+
+def _time_server(value):
+    import ipaddress
+    if not isinstance(value, str) or not value or len(value) > 253 or value != value.strip():
+        return False
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return all(_HOST_LABEL.fullmatch(label) for label in value.rstrip(".").split("."))
+
+
+def validate_timesync(conf):
+    from urllib.parse import urlparse
+    from .widgets import http_url
+    if not isinstance(conf, dict):
+        raise ValueError("Invalid timesync settings")
+    for key in ("enabled", "fallback_https", "sync_device"):
+        _flag(conf, key)
+    if conf.get("source", "ntp") not in {"ntp", "https"}:
+        raise ValueError("Invalid source")
+    servers = conf.get("servers", ["pool.ntp.org"])
+    if not isinstance(servers, list) or not 1 <= len(servers) <= 5 or not all(_time_server(s) for s in servers):
+        raise ValueError("Invalid time servers")
+    url = _text(conf, "https_url", 300) if "https_url" in conf else "https://www.cloudflare.com/"
+    if not url or urlparse(http_url(url)).scheme != "https" or any(c.isspace() for c in url):
+        raise ValueError("Invalid https_url")
+    _bounded(conf, "interval_minutes", 5, 1440, 60)
 
 
 # Legacy Spanish phase values; only used to migrate previously saved/loaded state.
@@ -380,7 +414,8 @@ def custom_image(screen, values):
                 draw.text((2, 0), "N/A", fill=color, font=font(10))
         else:
             text = str(e.get("text", "Text"))
-            for key, value in {**values, "time": datetime.now().strftime("%H:%M"), "date": datetime.now().strftime("%d/%m")}.items():
+            clock = timesource.now()
+            for key, value in {**values, "time": clock.strftime("%H:%M"), "date": clock.strftime("%d/%m")}.items():
                 text = text.replace("{" + key + "}", "N/A" if value is None else f"{value:.0f}" if isinstance(value, (float, int)) else str(value))
             size = int(e.get("size", 16))
             for n, line in enumerate(wrap_text(draw, text, font(size), w)[:h // max(1, size) + 1]):

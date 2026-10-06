@@ -7,6 +7,7 @@ import json
 import threading
 import time
 from . import __version__
+from .timesync import timesource
 
 
 class Bridge:
@@ -69,6 +70,7 @@ class Bridge:
 
     def configure(self, data):
         config = data.get("integrations", {})
+        timesource.configure({} if self.engine.demo else config.get("timesync", {}))
         self.engine.renderer.providers.extra.hardware_enabled = bool(config.get("hardware", False))
         self.engine.renderer.providers.extra.prtg_conf = config.get("prtg", {})
         self.engine.renderer.providers.extra.mail_conf = config.get("mail", {})

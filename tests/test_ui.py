@@ -15,6 +15,7 @@ from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from keeper.config import ConfigStore, device, slot, uid
+from keeper.content import empty_playlists
 from keeper.engine import Engine
 from keeper.ui import Window, KINDS
 
@@ -539,6 +540,105 @@ class UiTests(unittest.TestCase):
             self.window.save_settings()
             startup.assert_not_called()
 
+    def add_second_device(self):
+        first = self.store.get_device()["id"]
+        second = device("", "Leftover")
+        def change(data):
+            data["devices"].append(second)
+            data["scenes"] = [{"id": "scene1", "name": "S", "screens": [slot() for _ in range(5)], "playlists": empty_playlists()}]
+            rules = {"schedules": {"time": "08:00", "days": [0], "action": "on", "value": 0},
+                     "alerts": {"metric": "cpu", "text": "hot"}, "reminders": {"text": "drink"},
+                     "profiles": {"scene_id": "scene1", "trigger": "locked"}}
+            for group, extra in rules.items():
+                data[group] = [{"id": uid(), "device_id": owner, **extra} for owner in (first, second["id"])]
+        self.store.change(change)
+        self.window.load_devices()
+        return first, second["id"]
+
+    def test_devices_list_shows_every_device(self):
+        first, second = self.add_second_device()
+        table = self.window.devices_table
+        self.assertEqual(table.rowCount(), 2)
+        self.assertEqual(table.item(0, 0).text(), "Times Gate")
+        self.assertEqual(table.item(0, 1).text(), "192.168.1.10")
+        self.assertEqual(table.item(0, 2).text(), "●")
+        self.assertEqual(table.item(1, 0).text(), "Leftover")
+        self.assertEqual(table.item(1, 1).text(), "no IP set")
+        self.assertEqual(table.item(1, 2).text(), "")
+
+    def test_devices_list_select_switches_active_device(self):
+        first, second = self.add_second_device()
+        self.window.select_device_row(1)
+        self.assertEqual(self.store.snapshot()["active_device"], second)
+        self.assertEqual(self.window.device_picker.currentData(), second)
+        self.assertEqual(self.window.devices_table.item(1, 2).text(), "●")
+        self.assertEqual(self.window.devices_table.item(0, 2).text(), "")
+
+    def test_devices_list_remove_prunes_and_repairs_active(self):
+        first, second = self.add_second_device()
+        self.window.select_device_row(0)
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            self.window.remove_device_row(0)
+        data = self.store.snapshot()
+        self.assertEqual([d["id"] for d in data["devices"]], [second])
+        self.assertEqual(data["active_device"], second)
+        for group in ("schedules", "alerts", "reminders", "profiles"):
+            self.assertEqual([r["device_id"] for r in data[group]], [second])
+        self.assertEqual(self.window.devices_table.rowCount(), 1)
+        self.assertEqual(self.window.device_picker.count(), 1)
+
+    def test_devices_list_remove_cancel_changes_nothing(self):
+        self.add_second_device()
+        before = self.store.snapshot()
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+            self.window.remove_device_row(1)
+        self.assertEqual(self.store.snapshot(), before)
+
+    def test_devices_list_refuses_last_device(self):
+        before = self.store.snapshot()
+        with patch.object(QMessageBox, "warning") as warning, patch.object(QMessageBox, "question") as question:
+            self.window.remove_device_row(0)
+        warning.assert_called_once()
+        question.assert_not_called()
+        self.assertEqual(self.store.snapshot(), before)
+
+    def test_devices_list_remove_clears_engine_runtime(self):
+        first, second = self.add_second_device()
+        self.engine.online[second] = True
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            self.window.remove_device_row(1)
+        self.drain()
+        self.assertNotIn(second, self.engine.online)
+
+    def test_forget_device_clears_runtime_maps(self):
+        gone, kept = "gone", "kept"
+        e = self.engine
+        for device_id in (gone, kept):
+            e.hashes[(device_id, 0)] = "h"
+            e.last_sent[(device_id, 0)] = 1
+            e.last_attempt[(device_id, 0)] = 1
+            e.overrides[(device_id, 0)] = 1
+            e.clients[(device_id, "1.2.3.4", ())] = object()
+            e.last_health[device_id] = 1
+            e.online[device_id] = True
+            e.rotation_at[device_id] = 1
+            e.rotation_index[device_id] = 1
+            e.automations.profile_ids[device_id] = "sig"
+            e.paused.add(device_id)
+            e.power_off.add(device_id)
+            e.lighting_restored.add((device_id, "1.2.3.4"))
+            e.automations.notice_queue.append((time.monotonic() + 60, device_id, {"panel": 0}))
+        e.forget_device(gone)
+        for mapping in (e.hashes, e.last_sent, e.last_attempt, e.overrides, e.clients, e.last_health, e.online,
+                        e.rotation_at, e.rotation_index, e.automations.profile_ids):
+            self.assertEqual(len(mapping), 1)
+            self.assertTrue(all((k[0] if isinstance(k, tuple) else k) == kept for k in mapping))
+        self.assertNotIn(gone, e.paused)
+        self.assertIn(kept, e.power_off)
+        self.assertEqual(e.lighting_restored, {(kept, "1.2.3.4")})
+        self.assertEqual([i[1] for i in e.automations.notice_queue], [kept])
+        e.forget_device("unknown")
+
     def test_small_window_all_pages_scroll_without_horizontal_overflow(self):
         self.window.resize(1120, 760)
         for i in range(self.window.pages.count()):
@@ -546,6 +646,27 @@ class UiTests(unittest.TestCase):
             self.app.processEvents()
             scroll = self.window.pages.widget(i)
             self.assertEqual(scroll.horizontalScrollBar().maximum(), 0, f"Horizontal overflow on page {i}")
+
+    def test_time_tab_round_trips_and_shows_status(self):
+        panel = self.window.integration_panel
+        panel.ts_on.setChecked(True); panel.ts_source.setCurrentIndex(panel.ts_source.findData("https"))
+        panel.ts_servers.setText("time.example.org, 10.0.0.1"); panel.ts_url.setText("https://time.example.org/")
+        panel.ts_interval.setValue(30); panel.ts_fallback.setChecked(False); panel.ts_device.setChecked(True)
+        panel.save()
+        conf = self.store.snapshot()["integrations"]["timesync"]
+        self.assertEqual(conf, {"enabled": True, "source": "https", "servers": ["time.example.org", "10.0.0.1"], "https_url": "https://time.example.org/",
+                                "interval_minutes": 30, "fallback_https": False, "sync_device": True})
+        panel.ts_on.setChecked(False); panel.ts_servers.setText("")
+        panel.reload()
+        self.assertTrue(panel.ts_on.isChecked())
+        self.assertEqual((panel.ts_servers.text(), panel.ts_interval.value(), panel.ts_device.isChecked()), ("time.example.org, 10.0.0.1", 30, True))
+        from keeper.extra_ui import time_status_text
+        t = lambda es, en: en
+        self.assertEqual(time_status_text({"enabled": False}, t), "Status: off")
+        text = time_status_text({"enabled": True, "offset_ms": 12.4, "server": "pool.ntp.org", "source": "ntp", "synced_at": time.time() - 180,
+                                 "error": None, "stale": False}, t)
+        self.assertIn("+12 ms", text); self.assertIn("pool.ntp.org", text); self.assertIn("3 min ago", text)
+        self.assertIn("stale", time_status_text({"enabled": True, "offset_ms": 1.0, "server": "s", "source": "ntp", "synced_at": None, "error": "x", "stale": True}, t))
 
 
 if __name__ == "__main__":

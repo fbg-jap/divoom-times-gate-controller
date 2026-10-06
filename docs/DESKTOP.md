@@ -66,6 +66,8 @@ Brightness and lighting power are global. Firmware can also change the other zon
 
 ## Device controls and native tools
 
+The **Devices** list at the top of the Device page shows every device with its IP (or "no IP set"), which one is active and whether automatic updates are on. **Select** (or double-click) makes a device the active one; **Remove** deletes it after a confirmation, together with its screens, playlists, schedules, alerts, reminders and profiles (scenes are shared and stay). The last remaining device cannot be removed. The web interface has the same list and also shows Online/Offline when the server reports it.
+
 - Screen brightness, screen power, mirroring, 12/24-hour time and °C/°F.
 - UTC synchronization with the computer and its current timezone offset. The native timezone is not automatically resynchronized at daylight saving changes; clock widgets use an IANA timezone.
 - Timer, stopwatch, scoreboard, noise meter and buzzer.

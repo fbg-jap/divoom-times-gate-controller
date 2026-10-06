@@ -47,6 +47,8 @@ def defaults():
                                                "teams": {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"],
                                                          "show_preview": False, "chats": True, "mentions": True, "calls": True, "panel": 0,
                                                          "seconds": 0, "call_seconds": 20, "buzzer_on_call": False}},
+                             "timesync": {"enabled": False, "source": "ntp", "servers": ["pool.ntp.org"], "https_url": "https://www.cloudflare.com/",
+                                          "interval_minutes": 60, "fallback_https": True, "sync_device": False},
                              "hardware": False}}
 
 

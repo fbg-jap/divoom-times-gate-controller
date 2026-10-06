@@ -171,6 +171,25 @@ Keeper can recognise Teams chat, mention and call pop-ups from this PC and show 
 - **Screen and filters**: the Teams *screen* can differ from the general one (0 = same). The general rate limit still applies first, and the general blocked-apps list still wins over Teams (a blocked app is dropped before Teams is evaluated); an allowed-apps list that excludes the app also excludes it.
 - **Limitations**: the kinds are heuristics on the notification text, so they depend on the Teams display language. Teams must have operating-system notifications enabled; Focus assist / Do not disturb silences them and Keeper sees nothing. Linux needs `jeepney` as above. The Windows backend is still unverified, and no real Teams client has been tested yet.
 
+## Online time
+
+By default Keeper trusts the PC clock. Under **Integrations → Time** (`integrations.timesync`, off by default) it can instead correct the time it uses from an online time server. **Enabling it makes network requests**: UDP port 123 to the configured NTP servers and, as a fallback, HTTPS to the configured URL. Nothing else is sent; the system clock itself is never changed.
+
+What is corrected: the clock and countdown widgets, the calendar widget's "now", the wall clock the engine uses for schedules, the `{time}` / `{date}` placeholders of custom screens, and the value sent by **Sync computer time** (`Device/SetUTC`, UTC seconds, so it is independent of time zone and daylight saving). Scene names such as "Before panorama" keep using the system time.
+
+| Setting | Meaning |
+| --- | --- |
+| `enabled` | Off by default. |
+| `source` | `ntp` (SNTP, RFC 4330, typically accurate to a few milliseconds) or `https` (the `Date` header of `https_url`, one-second resolution, so about ±1 s). |
+| `servers` | 1-5 host names or IP addresses, default `pool.ntp.org`. Up to three answers are compared; the median (or the lowest round-trip delay) is used. |
+| `https_url` | An `https://` address used when `source` is `https` or when NTP fails and `fallback_https` is true. Redirects are not followed and the certificate is verified. |
+| `interval_minutes` | 5-1440, default 60. A failed attempt is retried after 1 min, then 2, 4, 8 and up to 15 min. |
+| `sync_device` | Off by default. After a successful sync Keeper sends `Device/SetUTC` to each enabled, non-paused device, then at most every 6 h. |
+
+Replies are checked before use: the answer must echo a random request value (so a forged or stale packet is rejected), be a server reply of version 3 or 4, not flagged unsynchronised, stratum 1-15 (a stratum 0 "Kiss-o'-Death" answer is rejected and its code shown), carry a transmit time and have a round trip under 2 s. An offset of more than one day is treated as a bad sample and shown as an error instead of being applied.
+
+If the last good offset is more than **6 hours** old (for example the network is down), it is ignored and the PC clock is used again; the status shows "stale". Many firewalls and corporate networks block outgoing UDP 123: then NTP fails and, with `fallback_https` on, the HTTPS source is used with its lower accuracy. The Time tab (desktop) and card (web) show the offset, the server used, the age of the last sync and the last error; the desktop tab has a **Sync now** button. The phone/standalone mobile engine does not use this setting (phones already use network time).
+
 ## Credentials and backups
 
 The API token and MQTT password are stored in local user settings. Portable exports omit them and disable integrations; configure them again after importing. Complete copies of the data directory, including manual backups, may contain credentials present at the time.

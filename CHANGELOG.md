@@ -4,6 +4,8 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 
 ## Unreleased
 
+- **Online time** (`integrations.timesync`, off by default): an SNTP client (random request nonce, reply validation, best-of-3, 8 s budget) with an HTTPS `Date` fallback corrects the clock and countdown widgets, schedules, the calendar "now", custom-screen `{time}`/`{date}` and **Sync computer time**; the offset is ignored after 6 h without a sync, and an optional setting sends `Device/SetUTC` to the devices after each sync (at most every 6 h). Desktop Time tab and web Time card with a status line. Tested against a local fake NTP server only; not yet tried against real servers. See [Integrations](docs/INTEGRATIONS.md#online-time).
+- **Packaging for the Qt-free browser shell** (`--ui web`): new `shell_main.py` entry, `packaging/DivoomKeeperStudioWeb.spec` (PySide6 excluded, `web/dist` bundled), `build_linux.sh --ui web`, `build_windows.ps1 -Ui web` (untested), a web AppImage (`APP_NAME=DivoomKeeperStudioWeb packaging/build_appimage.sh`, CI artifact `linux-appimage-web-x86_64`) and `tools/smoke_shell.py`. Autostart relaunches the shell with `--ui web` when it was started that way. The Qt build and AppImage are unchanged.
 - **Microsoft Teams in PC notifications**: Teams chat, mention and call pop-ups (native app, `teams-for-linux`, or Teams in a browser matched by domain) are recognised and shown as `Teams · <sender>` with a purple accent, per-kind filters, own screen, longer call notices with optional buzzer; sender only by default (preview opt-in). Heuristic on notification text, untested against a real Teams client. See [Integrations](docs/INTEGRATIONS.md#microsoft-teams).
 - Spotify widget **Display** option (`spotify_display`: `both`, `art` or `text`) on desktop and the web editor; the default `both` leaves the layout unchanged. See [Integrations](docs/INTEGRATIONS.md#spotify).
 - New **Spotify** widget (now playing, read-only) over the Spotify Web API with PKCE; connect from the desktop app (loopback redirect) or the server portal (`/api/spotify/callback`). Only the client ID and refresh token are stored. Tested with a fake session only, not a real account. See [Integrations](docs/INTEGRATIONS.md#spotify).
@@ -18,6 +20,7 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 - Fixed "got multiple values for argument 'device_id'" when saving a connection.
 - All remaining Spanish source text, defaults and documentation file names translated to English. English is now the default language; Spanish stays selectable on desktop. Existing configurations keep their saved language.
 - Linux AppImage: `packaging/build_appimage.sh` wraps the PyInstaller build into `DivoomKeeperStudio-<version>-x86_64.AppImage` (built and smoke-tested by a new CI job). Autostart inside an AppImage now points at the AppImage file instead of its temporary mount, and the app sets its desktop file name for correct taskbar grouping.
+- **Devices list with remove**: the Device page (desktop and web) now lists every device with its IP, active marker, auto-update state and (web, server mode) online status, with Select and Remove. Removing a device deletes its screens, playlists, schedules, alerts, reminders and profiles; the last device cannot be removed.
 
 ## 3.1.1 · Desktop RGB and Python engine fixes
 

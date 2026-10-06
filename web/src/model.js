@@ -49,6 +49,15 @@ export const device = () => ({
   rotation: [],
   rotation_seconds: 300,
 });
+export function removeDevice(cfg, id) {
+  if (!cfg.devices.some((d) => d.id === id)) return null;
+  if (cfg.devices.length <= 1) return t("ui.keep_at_least_one_device");
+  cfg.devices = cfg.devices.filter((d) => d.id !== id);
+  for (const g of ["schedules", "alerts", "reminders", "profiles"])
+    cfg[g] = cfg[g].filter((r) => r.device_id !== id);
+  if (cfg.active_device === id) cfg.active_device = cfg.devices[0].id;
+  return null;
+}
 export function defaults() {
   const d = device();
   return {
@@ -77,6 +86,15 @@ export function defaults() {
       },
       spotify: { enabled: false, client_id: "", refresh_token: "", redirect_uri: "" },
       prtg: { enabled: false, base_url: "", token: "", verify_tls: true },
+      timesync: {
+        enabled: false,
+        source: "ntp",
+        servers: ["pool.ntp.org"],
+        https_url: "https://www.cloudflare.com/",
+        interval_minutes: 60,
+        fallback_https: true,
+        sync_device: false,
+      },
       mail: {
         enabled: false,
         host: "",
@@ -135,7 +153,7 @@ export const kinds = lazy({
 export function normalize(value) {
   const cfg = { ...defaults(), ...copy(value) };
   cfg.integrations = { ...defaults().integrations, ...cfg.integrations };
-  for (const key of ["api", "mqtt", "spotify", "prtg", "mail", "notifications"])
+  for (const key of ["api", "mqtt", "spotify", "prtg", "mail", "notifications", "timesync"])
     cfg.integrations[key] = {
       ...defaults().integrations[key],
       ...cfg.integrations[key],

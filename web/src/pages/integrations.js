@@ -11,6 +11,31 @@ const names = (conf, key) => ({
     conf[key] = value.split(",").map((n) => n.trim()).filter(Boolean);
   },
 });
+function timeStatus() {
+  const s = ctx.state?.runtime?.timesync;
+  if (!s || !s.enabled) return t("ui.timesync_off");
+  if (s.offset_ms == null) return t("ui.timesync_unsynced") + (s.error ? " · " + t("ui.timesync_error", { error: s.error }) : "");
+  return [
+    t("ui.timesync_status", { offset: Math.round(s.offset_ms), server: s.server, source: s.source }),
+    ...(s.stale ? [t("ui.timesync_stale")] : []),
+    ...(s.error ? [t("ui.timesync_error", { error: s.error })] : []),
+  ].join(" · ");
+}
+function timeCard() {
+  const conf = ctx.cfg.integrations.timesync;
+  return card(
+    t("ui.timesync_title"),
+    field(conf, "enabled", t("ui.timesync_enable"), "checkbox"),
+    field(conf, "source", t("ui.timesync_source"), "select", { ntp: "NTP (UDP 123)", https: "HTTPS (Date)" }),
+    field(names(conf, "servers"), "list", t("ui.timesync_servers")),
+    field(conf, "https_url", t("ui.timesync_url")),
+    numeric(conf, "interval_minutes", t("ui.timesync_interval"), 5, 1440),
+    field(conf, "fallback_https", t("ui.timesync_fallback"), "checkbox"),
+    field(conf, "sync_device", t("ui.timesync_device"), "checkbox"),
+    hint(timeStatus()),
+    hint(t("ui.timesync_hint")),
+  );
+}
 export function integrationPage(main) {
   const mqtt = ctx.cfg.integrations.mqtt;
   main.append(
@@ -158,6 +183,7 @@ export function integrationPage(main) {
         field(names(ctx.cfg.integrations.notifications.teams, "patterns"), "list", t("ui.teams_patterns")),
         hint(t("ui.teams_hint")),
       ),
+      timeCard(),
       card(
         t("ui.host_sources"),
         field(

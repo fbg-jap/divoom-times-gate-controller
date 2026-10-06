@@ -16,6 +16,8 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont
 import psutil
 import requests
 
+from .timesync import timesource
+
 
 def http_url(value):
     p = urlparse(value)
@@ -338,7 +340,7 @@ class Providers:
         blob = self.cached(("calendar", source), 300, fetch)
         from icalendar import Calendar
         import recurring_ical_events
-        now = datetime.now().astimezone()
+        now = timesource.now()
         events = recurring_ical_events.of(Calendar.from_ical(blob)).between(now, now + timedelta(days=7))
         candidates = []
         for event in events:
@@ -389,7 +391,7 @@ class Renderer:
                         "countdown": "COUNTDOWN", "calendar": "CALENDAR", "service": "STATUS"}.get(kind, "KEEPER"),
               17, 11, accent, bold=True)
         if kind == "clock":
-            now = datetime.now(ZoneInfo(slot.get("timezone", "Europe/Madrid")))
+            now = timesource.now(ZoneInfo(slot.get("timezone", "Europe/Madrid")))
             label(now.strftime("%H:%M"), 41, 34, "white", center=True, bold=True)
             label(now.strftime("%d / %m / %Y"), 88, 13, center=True)
         elif kind == "text":
@@ -464,7 +466,7 @@ class Renderer:
             target = datetime.fromisoformat(slot["target"])
             if target.tzinfo is None:
                 target = target.astimezone()
-            seconds = max(0, int((target - datetime.now(timezone.utc)).total_seconds()))
+            seconds = max(0, int((target - timesource.now(timezone.utc)).total_seconds()))
             days, rem = divmod(seconds, 86400)
             hours, rem = divmod(rem, 3600)
             minutes, secs = divmod(rem, 60)

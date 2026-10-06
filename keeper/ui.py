@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from .color_ui import ColorButton, LightingPanel
 from .lighting import payload as lighting_payload
 from .config import device, slot, uid
+from .timesync import timesource
 from .content import PC_VIEWS, EXTRA_KINDS, assets, composition, empty_playlists
 from . import __version__
 from .protocol import valid_ip
@@ -274,7 +275,67 @@ class Window(ScreensPage, DevicePage, PanelPages, QMainWindow):
         self.device_picker.setCurrentIndex(max(0, index))
         self.device_picker.blockSignals(False)
         self.loading = False
+        self.refresh_devices_table()
         self.load_device()
+
+    def refresh_devices_table(self):
+        data = self.store.snapshot()
+        table = self.devices_table
+        table.setRowCount(len(data["devices"]))
+        for row, d in enumerate(data["devices"]):
+            cells = [d["name"], d["ip"] or self.t("sin IP", "no IP set"),
+                     "●" if d["id"] == data["active_device"] else "",
+                     self.t("Sí", "On") if d.get("enabled") else self.t("No", "Off")]
+            for column, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setData(Qt.ItemDataRole.UserRole, d["id"])
+                if column == 1 and not d["ip"]:
+                    item.setForeground(QColor("#8a97a8"))
+                table.setItem(row, column, item)
+        active = next((i for i, d in enumerate(data["devices"]) if d["id"] == data["active_device"]), 0)
+        table.selectRow(active)
+
+    def device_row_id(self, row):
+        item = self.devices_table.item(row, 0) if row >= 0 else None
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def select_device_row(self, row):
+        device_id = self.device_row_id(row)
+        if device_id is None or device_id == self.store.snapshot()["active_device"]:
+            return
+        self.device_picker.setCurrentIndex(self.device_picker.findData(device_id))
+        self.refresh_devices_table()
+
+    def remove_device_row(self, row):
+        device_id = self.device_row_id(row)
+        if device_id is None:
+            return
+        data = self.store.snapshot()
+        if len(data["devices"]) <= 1:
+            QMessageBox.warning(self, self.t("Dispositivos", "Devices"), self.t("Conserva al menos un dispositivo", "Keep at least one device"))
+            return
+        name = next(d["name"] for d in data["devices"] if d["id"] == device_id)
+        answer = QMessageBox.question(self, self.t("Quitar dispositivo", "Remove device"), self.t(
+            f"¿Quitar {name}? Se eliminarán sus pantallas y listas, y sus horarios, alertas, recordatorios y perfiles.",
+            f"Remove {name}? Its screens and playlists, and its schedules, alerts, reminders and profiles, will be deleted."))
+        if answer != QMessageBox.StandardButton.Yes or not self.flush_editor():
+            return
+        def change(data):
+            if len(data["devices"]) <= 1:
+                raise ValueError("Keep at least one device")
+            data["devices"] = [d for d in data["devices"] if d["id"] != device_id]
+            for group in ("schedules", "alerts", "reminders", "profiles"):
+                data[group] = [r for r in data.get(group, []) if r.get("device_id") != device_id]
+            if data["active_device"] == device_id:
+                data["active_device"] = data["devices"][0]["id"]
+        try:
+            self.store.change(change)
+        except ValueError as error:
+            QMessageBox.warning(self, self.t("Dispositivos", "Devices"), str(error))
+            return
+        self.engine.submit("forget_device", device_id)
+        self.load_devices()
+        self.refresh_lists()
 
     def device_changed(self):
         if self.loading or self.device_picker.currentData() is None:
@@ -286,6 +347,7 @@ class Window(ScreensPage, DevicePage, PanelPages, QMainWindow):
             self.device_picker.blockSignals(False)
             return
         self.store.change(lambda data: data.update(active_device=self.device_picker.currentData()))
+        self.refresh_devices_table()
         self.load_device()
         self.refresh_lists()
 
@@ -613,9 +675,8 @@ class Window(ScreensPage, DevicePage, PanelPages, QMainWindow):
         self.command("Device/SetMirrorMode", Mode=int(self.mirror.isChecked()))
 
     def sync_time(self):
-        import time
         offset = datetime.now().astimezone().utcoffset().total_seconds() / 3600
-        self.command("Device/SetUTC", Utc=int(time.time()))
+        self.command("Device/SetUTC", Utc=int(timesource.time()))
         self.command("Sys/TimeZone", TimeZoneValue=f"GMT{offset:+g}")
 
     def apply_rgb(self):
