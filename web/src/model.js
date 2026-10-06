@@ -75,6 +75,26 @@ export function defaults() {
         password: "",
         tls: false,
       },
+      spotify: { enabled: false, client_id: "", refresh_token: "" },
+      prtg: { enabled: false, base_url: "", token: "", verify_tls: true },
+      mail: {
+        enabled: false,
+        host: "",
+        port: 993,
+        user: "",
+        password: "",
+        mailbox: "INBOX",
+        show_subject: false,
+      },
+      notifications: {
+        enabled: false,
+        panel: 1,
+        seconds: 8,
+        allow_apps: [],
+        deny_apps: [],
+        show_body: false,
+        per_minute: 6,
+      },
       hardware: false,
     },
   };
@@ -100,7 +120,7 @@ export const kinds = lazy({
 export function normalize(value) {
   const cfg = { ...defaults(), ...copy(value) };
   cfg.integrations = { ...defaults().integrations, ...cfg.integrations };
-  for (const key of ["api", "mqtt"])
+  for (const key of ["api", "mqtt", "spotify", "prtg", "mail", "notifications"])
     cfg.integrations[key] = {
       ...defaults().integrations[key],
       ...cfg.integrations[key],

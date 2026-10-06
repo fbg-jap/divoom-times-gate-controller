@@ -279,12 +279,71 @@ class IntegrationPanel(QWidget):
         self.sensors = QPlainTextEdit(); self.sensors.setReadOnly(True); self.sensors.setMinimumHeight(230); form.addRow(self.sensors)
         form.addRow(btn("Refresh sensor list", self.poll_sensors))
         tabs.addTab(page, "PC sensors")
+        self.build_new_tabs(tabs, data)
+        tabs.setUsesScrollButtons(True); tabs.tabBar().setExpanding(False)
         layout.addWidget(hint("Save to apply changes. The token and password are stored in your local settings; portable exports omit these credentials."))
         layout.addWidget(btn("Save integrations", self.save))
         self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(1500); self.poll()
 
+    def build_new_tabs(self, tabs, data):
+        t = self.window.t
+        from .config import defaults
+        base = defaults()["integrations"]
+        spotify, prtg, mail, notif = ({**base[k], **data.get(k, {})} for k in ("spotify", "prtg", "mail", "notifications"))
+        def secret(value):
+            w = QLineEdit(value); w.setEchoMode(QLineEdit.EchoMode.Password); return w
+        page = QWidget(); form = QFormLayout(page)
+        self.sp_on = QCheckBox(t("Activar Spotify", "Enable Spotify")); self.sp_on.setChecked(spotify["enabled"])
+        self.sp_client = QLineEdit(spotify["client_id"]); self.sp_token = spotify["refresh_token"]
+        self.sp_status = QLabel()
+        form.addRow(self.sp_on); form.addRow("Client ID", self.sp_client); form.addRow(self.sp_status)
+        form.addRow(hint(t("La conexión con Spotify se añadirá más adelante.", "Connecting to Spotify will be added later.")))
+        tabs.addTab(page, "Spotify")
+        page = QWidget(); form = QFormLayout(page)
+        self.prtg_on = QCheckBox(t("Activar PRTG", "Enable PRTG")); self.prtg_on.setChecked(prtg["enabled"])
+        self.prtg_url = QLineEdit(prtg["base_url"]); self.prtg_token = secret(prtg["token"])
+        self.prtg_tls = QCheckBox(t("Verificar certificado TLS", "Verify TLS certificate")); self.prtg_tls.setChecked(prtg["verify_tls"])
+        form.addRow(self.prtg_on); form.addRow(t("URL base", "Base URL"), self.prtg_url); form.addRow("Token", self.prtg_token); form.addRow(self.prtg_tls)
+        tabs.addTab(page, "PRTG")
+        page = QWidget(); form = QFormLayout(page)
+        self.mail_on = QCheckBox(t("Activar correo (IMAP)", "Enable mail (IMAP)")); self.mail_on.setChecked(mail["enabled"])
+        self.mail_host = QLineEdit(mail["host"]); self.mail_port = number(1, 65535, mail["port"])
+        self.mail_user = QLineEdit(mail["user"]); self.mail_password = secret(mail["password"])
+        self.mail_box = QLineEdit(mail["mailbox"])
+        self.mail_subject = QCheckBox(t("Mostrar el asunto", "Show the subject")); self.mail_subject.setChecked(mail["show_subject"])
+        form.addRow(self.mail_on)
+        for text, w in [(t("Servidor", "Server"), self.mail_host), (t("Puerto", "Port"), self.mail_port), (t("Usuario", "User"), self.mail_user),
+                        (t("Contraseña", "Password"), self.mail_password), (t("Buzón", "Mailbox"), self.mail_box)]:
+            form.addRow(text, w)
+        form.addRow(self.mail_subject)
+        tabs.addTab(page, t("Correo", "Mail"))
+        page = QWidget(); form = QFormLayout(page)
+        self.nt_on = QCheckBox(t("Activar notificaciones del PC", "Enable PC notifications")); self.nt_on.setChecked(notif["enabled"])
+        self.nt_panel = number(1, 5, notif["panel"]); self.nt_seconds = number(5, 60, notif["seconds"]); self.nt_rate = number(1, 60, notif["per_minute"])
+        self.nt_allow = QLineEdit(", ".join(notif["allow_apps"])); self.nt_deny = QLineEdit(", ".join(notif["deny_apps"]))
+        self.nt_body = QCheckBox(t("Mostrar el cuerpo del mensaje", "Show the message body")); self.nt_body.setChecked(notif["show_body"])
+        form.addRow(self.nt_on)
+        for text, w in [(t("Pantalla", "Screen"), self.nt_panel), (t("Segundos", "Seconds"), self.nt_seconds), (t("Máximo por minuto", "Maximum per minute"), self.nt_rate),
+                        (t("Apps permitidas (separadas por comas)", "Allowed apps (comma separated)"), self.nt_allow),
+                        (t("Apps bloqueadas (separadas por comas)", "Blocked apps (comma separated)"), self.nt_deny)]:
+            form.addRow(text, w)
+        form.addRow(self.nt_body)
+        tabs.addTab(page, t("Notificaciones", "Notifications"))
+        self.refresh_spotify_status()
+
+    def refresh_spotify_status(self):
+        t = self.window.t
+        self.sp_status.setText(t("Estado: ", "Status: ") + (t("conectado", "connected") if self.sp_token else t("sin conectar", "not connected")))
+
     def save(self):
-        config = {"hardware": self.hardware.isChecked(),
+        names = lambda w: [n.strip() for n in w.text().split(",") if n.strip()]
+        config = {"spotify": {"enabled": self.sp_on.isChecked(), "client_id": self.sp_client.text().strip(), "refresh_token": self.sp_token},
+                  "prtg": {"enabled": self.prtg_on.isChecked(), "base_url": self.prtg_url.text().strip(), "token": self.prtg_token.text().strip(), "verify_tls": self.prtg_tls.isChecked()},
+                  "mail": {"enabled": self.mail_on.isChecked(), "host": self.mail_host.text().strip(), "port": self.mail_port.value(), "user": self.mail_user.text().strip(),
+                           "password": self.mail_password.text(), "mailbox": self.mail_box.text().strip() or "INBOX", "show_subject": self.mail_subject.isChecked()},
+                  "notifications": {"enabled": self.nt_on.isChecked(), "panel": self.nt_panel.value(), "seconds": self.nt_seconds.value(), "allow_apps": names(self.nt_allow),
+                                    "deny_apps": names(self.nt_deny), "show_body": self.nt_body.isChecked(), "per_minute": self.nt_rate.value()},
+                  "hardware": self.hardware.isChecked(),
                   "api": {"enabled": self.api_on.isChecked(), "host": "0.0.0.0" if self.api_lan.isChecked() else "127.0.0.1", "port": self.api_port.value(), "token": self.token.text().strip()},
                   "mqtt": {"enabled": self.mqtt_on.isChecked(), "host": self.mqtt_host.text().strip(), "port": self.mqtt_port.value(), "prefix": self.mqtt_prefix.text().strip(), "username": self.user.text(), "password": self.password.text(), "tls": self.tls.isChecked()}}
         try:
@@ -307,6 +366,13 @@ class IntegrationPanel(QWidget):
         self.mqtt_port.setValue(mqtt.get("port", 1883)); self.mqtt_prefix.setText(mqtt.get("prefix", "keeper"))
         self.user.setText(mqtt.get("username", "")); self.password.setText(mqtt.get("password", ""))
         self.tls.setChecked(mqtt.get("tls", False)); self.hardware.setChecked(data.get("hardware", False))
+        sp, pr, ml, nt = ({**defaults()["integrations"][k], **data.get(k, {})} for k in ("spotify", "prtg", "mail", "notifications"))
+        self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_token = sp["refresh_token"]; self.refresh_spotify_status()
+        self.prtg_on.setChecked(pr["enabled"]); self.prtg_url.setText(pr["base_url"]); self.prtg_token.setText(pr["token"]); self.prtg_tls.setChecked(pr["verify_tls"])
+        self.mail_on.setChecked(ml["enabled"]); self.mail_host.setText(ml["host"]); self.mail_port.setValue(ml["port"]); self.mail_user.setText(ml["user"])
+        self.mail_password.setText(ml["password"]); self.mail_box.setText(ml["mailbox"]); self.mail_subject.setChecked(ml["show_subject"])
+        self.nt_on.setChecked(nt["enabled"]); self.nt_panel.setValue(nt["panel"]); self.nt_seconds.setValue(nt["seconds"]); self.nt_rate.setValue(nt["per_minute"])
+        self.nt_allow.setText(", ".join(nt["allow_apps"])); self.nt_deny.setText(", ".join(nt["deny_apps"])); self.nt_body.setChecked(nt["show_body"])
 
     def poll_sensors(self):
         extra = self.window.engine.renderer.providers.extra

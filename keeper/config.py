@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import threading
 import uuid
 from .content import all_screens, assets, composition, empty_playlists, validate_playlists, PLAYABLE
@@ -37,6 +38,12 @@ def defaults():
             "scenes": [], "schedules": [], "alerts": [], "reminders": [], "profiles": [],
             "integrations": {"api": {"enabled": False, "host": "127.0.0.1", "port": 8787, "token": ""},
                              "mqtt": {"enabled": False, "host": "", "port": 1883, "prefix": "keeper", "username": "", "password": "", "tls": False},
+                             "spotify": {"enabled": False, "client_id": "", "refresh_token": ""},
+                             "prtg": {"enabled": False, "base_url": "", "token": "", "verify_tls": True},
+                             "mail": {"enabled": False, "host": "", "port": 993, "user": "", "password": "",
+                                      "mailbox": "INBOX", "show_subject": False},
+                             "notifications": {"enabled": False, "panel": 1, "seconds": 8, "allow_apps": [],
+                                               "deny_apps": [], "show_body": False, "per_minute": 6},
                              "hardware": False}}
 
 
@@ -110,6 +117,10 @@ class ConfigStore:
             raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
             validate(raw)
             self.data = {**defaults(), **raw}
+            # Older configs lack the newer integration sections: merge them under the saved values.
+            self.data["integrations"] = {
+                key: {**value, **raw.get("integrations", {}).get(key, {})} if isinstance(value, dict) else raw.get("integrations", {}).get(key, value)
+                for key, value in defaults()["integrations"].items()}
             # Configs written before the flag existed get a one-time language notice.
             self.language_notice = not raw.get("language_notice_shown", False)
         elif migrate:
@@ -155,6 +166,11 @@ class ConfigStore:
             validate(self.data)
             temp = self.path.with_suffix(".tmp")
             with temp.open("w", encoding="utf-8") as stream:
+                if sys.platform != "win32":
+                    try:
+                        os.chmod(temp, 0o600)  # holds integration secrets
+                    except OSError:
+                        pass
                 json.dump(self.data, stream, ensure_ascii=False, indent=2)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -252,7 +268,7 @@ class ConfigStore:
         for conf in data.get("integrations", {}).values():
             if isinstance(conf, dict):
                 conf["enabled"] = False
-                for secret in ("token", "password"):
+                for secret in ("token", "password", "refresh_token", "client_secret", "user", "username"):
                     if secret in conf:
                         conf[secret] = ""
         media_assets = {}

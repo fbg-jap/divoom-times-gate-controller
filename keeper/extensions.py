@@ -94,6 +94,54 @@ def validate_extensions(data):
                 raise ValueError("The API needs a valid address and a token of at least 24 characters")
             if name == "mqtt" and (not conf.get("host", "").strip() or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", conf.get("prefix", "keeper"))):
                 raise ValueError("Invalid MQTT server or prefix")
+    validate_new_integrations(integrations)
+
+
+def _text(conf, key, limit):
+    value = conf.get(key, "")
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError(f"Invalid {key}")
+    return value
+
+
+def _flag(conf, key):
+    if not isinstance(conf.get(key, False), bool):
+        raise ValueError(f"Invalid {key}")
+
+
+def _bounded(conf, key, low, high, default):
+    value = conf.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise ValueError(f"Invalid {key}")
+
+
+def _names(conf, key):
+    values = conf.get(key, [])
+    if not isinstance(values, list) or len(values) > 50 or any(not isinstance(v, str) or len(v) > 64 for v in values):
+        raise ValueError(f"Invalid {key}")
+
+
+def validate_new_integrations(integrations):
+    from .widgets import http_url
+    for name in ("spotify", "prtg", "mail", "notifications"):
+        conf = integrations.get(name, {})
+        if not isinstance(conf, dict):
+            raise ValueError(f"Invalid {name} settings")
+        for key in ("enabled", "verify_tls", "show_subject", "show_body"):
+            _flag(conf, key)
+        if name == "spotify":
+            _text(conf, "client_id", 128); _text(conf, "refresh_token", 1024)
+        elif name == "prtg":
+            _text(conf, "token", 512)
+            if _text(conf, "base_url", 300):
+                http_url(conf["base_url"])
+        elif name == "mail":
+            _bounded(conf, "port", 1, 65535, 993)
+            for key, limit in (("host", 255), ("user", 256), ("password", 256), ("mailbox", 128)):
+                _text(conf, key, limit)
+        else:
+            _bounded(conf, "panel", 1, 5, 1); _bounded(conf, "seconds", 5, 60, 8); _bounded(conf, "per_minute", 1, 60, 6)
+            _names(conf, "allow_apps"); _names(conf, "deny_apps")
 
 
 # Legacy Spanish phase values; only used to migrate previously saved/loaded state.

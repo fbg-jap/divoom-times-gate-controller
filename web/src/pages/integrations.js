@@ -3,6 +3,14 @@ import {el,button,card,hint,banner,mark,field,numeric,render} from "../ui.js";
 import {t,setLanguage,languages} from "../i18n.js";
 import {token} from "../api.js";
 import {id} from "../model.js";
+const names = (conf, key) => ({
+  get list() {
+    return conf[key].join(", ");
+  },
+  set list(value) {
+    conf[key] = value.split(",").map((n) => n.trim()).filter(Boolean);
+  },
+});
 export function integrationPage(main) {
   const mqtt = ctx.cfg.integrations.mqtt;
   main.append(
@@ -62,6 +70,55 @@ export function integrationPage(main) {
         hint(
           t("ui.this_additional_api_keeps_v1"),
         ),
+      ),
+      card(
+        "Spotify",
+        field(ctx.cfg.integrations.spotify, "enabled", t("ui.enable_spotify"), "checkbox"),
+        field(ctx.cfg.integrations.spotify, "client_id", "Client ID"),
+        hint(
+          ctx.cfg.integrations.spotify.refresh_token
+            ? t("ui.spotify_connected")
+            : t("ui.spotify_not_connected"),
+        ),
+      ),
+      card(
+        "PRTG",
+        field(ctx.cfg.integrations.prtg, "enabled", t("ui.enable_prtg"), "checkbox"),
+        field(ctx.cfg.integrations.prtg, "base_url", t("ui.base_url")),
+        field(ctx.cfg.integrations.prtg, "token", "Token", "password"),
+        field(ctx.cfg.integrations.prtg, "verify_tls", t("ui.verify_tls"), "checkbox"),
+      ),
+      card(
+        t("ui.mail_imap"),
+        field(ctx.cfg.integrations.mail, "enabled", t("ui.enable_mail"), "checkbox"),
+        el(
+          "div",
+          { class: "grid" },
+          field(ctx.cfg.integrations.mail, "host", t("ui.server_2")),
+          numeric(ctx.cfg.integrations.mail, "port", t("ui.port"), 1, 65535),
+        ),
+        el(
+          "div",
+          { class: "grid" },
+          field(ctx.cfg.integrations.mail, "user", t("ui.username")),
+          field(ctx.cfg.integrations.mail, "password", t("ui.password"), "password"),
+        ),
+        field(ctx.cfg.integrations.mail, "mailbox", t("ui.mailbox")),
+        field(ctx.cfg.integrations.mail, "show_subject", t("ui.show_subject"), "checkbox"),
+      ),
+      card(
+        t("ui.pc_notifications"),
+        field(ctx.cfg.integrations.notifications, "enabled", t("ui.enable_pc_notifications"), "checkbox"),
+        el(
+          "div",
+          { class: "grid" },
+          numeric(ctx.cfg.integrations.notifications, "panel", t("ui.screen_1_5"), 1, 5),
+          numeric(ctx.cfg.integrations.notifications, "seconds", t("ui.seconds_5_60"), 5, 60),
+          numeric(ctx.cfg.integrations.notifications, "per_minute", t("ui.max_per_minute"), 1, 60),
+        ),
+        field(names(ctx.cfg.integrations.notifications, "allow_apps"), "list", t("ui.allowed_apps")),
+        field(names(ctx.cfg.integrations.notifications, "deny_apps"), "list", t("ui.blocked_apps")),
+        field(ctx.cfg.integrations.notifications, "show_body", t("ui.show_body"), "checkbox"),
       ),
       card(
         t("ui.host_sources"),
