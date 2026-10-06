@@ -77,8 +77,10 @@ def linux_startup(enabled, config_root):
         if "\n" in value or "\r" in value:
             raise ValueError("Invalid autostart path")
         return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%') + '"'
-    args = [sys.executable]
-    if not getattr(sys, "frozen", False):
+    # Inside an AppImage sys.executable is a temporary mount; relaunch the AppImage file itself.
+    appimage = os.getenv("APPIMAGE")
+    args = [appimage] if appimage else [sys.executable]
+    if not appimage and not getattr(sys, "frozen", False):
         args.append(str(Path(__file__).resolve().parents[1] / "app.py"))
     args += ["--minimized", "--config-dir", str(config_root)]
     root.mkdir(parents=True, exist_ok=True)

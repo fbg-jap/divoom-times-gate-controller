@@ -10,4 +10,5 @@ fi
 "${PYTHON:-python3}" -m venv .venv-linux
 .venv-linux/bin/python -m pip install -r requirements.txt 'pyinstaller>=6,<7'
 .venv-linux/bin/python -m PyInstaller --noconfirm --clean --distpath dist/linux packaging/DivoomKeeperStudio.spec
-tar -C dist/linux -czf dist/DivoomKeeperStudio-3.1.1-linux-$(uname -m).tar.gz DivoomKeeperStudio
+VERSION="$(.venv-linux/bin/python -c 'import keeper; print(keeper.__version__)')"
+tar -C dist/linux -czf "dist/DivoomKeeperStudio-${VERSION}-linux-$(uname -m).tar.gz" DivoomKeeperStudio

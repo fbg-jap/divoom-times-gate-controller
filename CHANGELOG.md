@@ -11,6 +11,7 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 - The Pomodoro `phase` value in `/state` and the `pomodoro` events is now English (`Ready`, `Work`, `Break`, `Long break`) instead of Spanish. Scripts or Home Assistant automations that match the old Spanish values must be updated.
 - Fixed "got multiple values for argument 'device_id'" when saving a connection.
 - All remaining Spanish source text, defaults and documentation file names translated to English. English is now the default language; Spanish stays selectable on desktop. Existing configurations keep their saved language.
+- Linux AppImage: `packaging/build_appimage.sh` wraps the PyInstaller build into `DivoomKeeperStudio-<version>-x86_64.AppImage` (built and smoke-tested by a new CI job). Autostart inside an AppImage now points at the AppImage file instead of its temporary mount, and the app sets its desktop file name for correct taskbar grouping.
 
 ## 3.1.1 · Desktop RGB and Python engine fixes
 
