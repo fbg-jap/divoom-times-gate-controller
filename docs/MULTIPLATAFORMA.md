@@ -91,6 +91,15 @@ sudo apt install python3-venv libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 li
 bash run_linux.sh
 ```
 
+On Fedora:
+
+```sh
+sudo dnf install python3 mesa-libGL mesa-libEGL libxkbcommon libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil dejavu-sans-fonts
+bash run_linux.sh
+```
+
+`run_linux.sh` and `build_linux.sh` use Python 3.13, 3.12 or 3.11 when installed (override with `PYTHON=python3.12 bash run_linux.sh`), because the newest Python releases often lack PySide6/PyAV wheels. To switch interpreters, delete `.venv-linux` first.
+
 First startup creates `.venv-linux` and installs dependencies. Data is stored in `$XDG_DATA_HOME/divoom-keeper-studio` or `~/.local/share/divoom-keeper-studio`. Autostart uses a Desktop Entry under `$XDG_CONFIG_HOME/autostart` or `~/.config/autostart`.
 
 ```sh

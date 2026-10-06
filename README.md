@@ -121,7 +121,7 @@ bash run_linux.sh
 bash run_linux.sh --demo
 ```
 
-Install the [Qt libraries and Linux prerequisites](docs/MULTIPLATAFORMA.md#linux-desktop) first.
+Install the [Qt libraries and Linux prerequisites](docs/MULTIPLATAFORMA.md#linux-desktop) first (Debian/Ubuntu and Fedora commands are listed there). The script picks Python 3.13, 3.12 or 3.11 if available; set `PYTHON=python3.12` to choose one. Very new Python releases may not have PySide6 or PyAV wheels yet.
 
 ### Docker and web portal
 
