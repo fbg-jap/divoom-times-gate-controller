@@ -14,3 +14,5 @@ av>=18,<19
 jeepney>=0.8; sys_platform == "linux"
 winrt-Windows.UI.Notifications>=3.2,<4; sys_platform == "win32"
 winrt-Windows.UI.Notifications.Management>=3.2,<4; sys_platform == "win32"
+# Optional tray icon (keeper/tray.py degrades gracefully without it). Linux needs an AppIndicator-capable session for the icon to show.
+pystray>=0.19; sys_platform != 'darwin'
