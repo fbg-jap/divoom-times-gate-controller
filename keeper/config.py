@@ -176,7 +176,8 @@ class ConfigStore:
             data["devices"][idx] = copy.deepcopy(updated)
         self.change(update)
 
-    def update_fields(self, device_id, **fields):
+    def update_fields(self, device_id, /, **fields):
+        # Positional-only so a stored field can itself be named "device_id".
         self.change(lambda data: next(d for d in data["devices"] if d["id"] == device_id).update(copy.deepcopy(fields)))
 
     def update_screen(self, device_id, index, screen):
