@@ -233,3 +233,57 @@ class FactoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StartTrayAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.module = fake_pystray()
+        for p in (patch.dict(sys.modules, {"pystray": self.module}), patch.dict(os.environ, ENV)):
+            p.start()
+            self.addCleanup(p.stop)
+        self.calls, self.startup = [], {"on": False}
+
+    def callbacks(self, **extra):
+        return {"open": lambda: self.calls.append("open"), "quit": lambda: self.calls.append("quit"),
+                "startup_enabled": lambda: self.startup["on"],
+                "set_startup": lambda value: (self.startup.__setitem__("on", value), self.calls.append(("startup", value))), **extra}
+
+    def entries(self):
+        return self.module.Icon.instances[-1].menu.build()
+
+    def test_menu_has_no_pause_entry_when_the_host_cannot_pause(self):
+        started = tray.start_tray(self.callbacks())
+        self.assertIsNotNone(started)
+        self.assertEqual([e.text for e in self.entries() if e is not FakeMenu.SEPARATOR], ["Open Keeper", "Start with system", "Quit"])
+
+    def test_open_quit_and_startup_toggle_reach_the_shell(self):
+        tray.start_tray(self.callbacks())
+        by_text = {e.text: e for e in self.entries() if e is not FakeMenu.SEPARATOR}
+        by_text["Open Keeper"].action()
+        by_text["Quit"].action()
+        by_text["Start with system"].action()
+        self.assertEqual(self.calls, ["open", "quit", ("startup", True)])
+        checked = {e.text: e.checked(e) for e in self.entries() if e is not FakeMenu.SEPARATOR and e.checked is not None}
+        self.assertEqual(checked, {"Start with system": True})   # refreshed state shows the new setting
+        {e.text: e for e in self.entries() if e is not FakeMenu.SEPARATOR}["Start with system"].action()
+        self.assertEqual(self.calls[-1], ("startup", False))
+
+    def test_pause_entry_appears_when_a_pause_callback_exists(self):
+        tray.start_tray(self.callbacks(pause=lambda: self.calls.append("pause")))
+        texts = [e.text for e in self.entries() if e is not FakeMenu.SEPARATOR]
+        self.assertIn("Pause sending", texts)
+
+    def test_returns_none_when_no_tray_is_available(self):
+        with patch.dict(sys.modules, {"pystray": None}):
+            self.assertIsNone(tray.start_tray(self.callbacks()))
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}):
+            module = fake_pystray()
+            with patch.dict(sys.modules, {"pystray": module}):
+                self.assertIsNone(tray.start_tray(self.callbacks()))   # xorg backend on Wayland
+
+    def test_a_failing_startup_state_never_breaks_the_menu(self):
+        def boom():
+            raise RuntimeError("x")
+        started = tray.start_tray({"open": lambda: None, "quit": lambda: None, "startup_enabled": boom, "set_startup": lambda v: None})
+        self.assertIsNotNone(started)
+        self.assertEqual(len(self.entries()), 4)   # open, startup, separator, quit

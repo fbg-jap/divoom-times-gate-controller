@@ -16,13 +16,16 @@ def menu_items(state, t):
     """Pure menu model: list of dicts {id, label, enabled, checked?, separator?}."""
     state = state or {}
     paused = bool(state.get("paused"))
-    return [
+    items = [
         {"id": "open", "label": t("Abrir Keeper", "Open Keeper"), "enabled": True},
         {"id": "startup", "label": t("Iniciar con el sistema", "Start with system"), "checked": bool(state.get("startup")), "enabled": True},
         {"id": "pause", "label": t("Reanudar envío", "Resume sending") if paused else t("Pausar envío", "Pause sending"), "enabled": True},
         {"id": "-", "label": "", "enabled": False, "separator": True},
         {"id": "quit", "label": t("Salir", "Quit"), "enabled": True},
     ]
+    if state.get("can_pause") is False:  # the host cannot pause sending: do not offer a dead menu entry
+        items = [item for item in items if item["id"] != "pause"]
+    return items
 
 
 def _icon_paths():
@@ -229,3 +232,39 @@ def create(callbacks, state_provider, t=None):
         return NullTray(tray.reason)
     except Exception as error:
         return NullTray(str(error))
+
+
+def start_tray(callbacks, t=None):
+    """Adapter for keeper.shell: callbacks {open, quit, startup_enabled(), set_startup(bool)[, pause]}.
+
+    Returns a started tray (with .stop()/.update()/.notify()) or None when no tray can run, never raising.
+    """
+    callbacks = dict(callbacks or {})
+    startup_enabled, set_startup = callbacks.get("startup_enabled"), callbacks.get("set_startup")
+    can_pause = callable(callbacks.get("pause"))
+    holder = {}
+
+    def current_startup():
+        try:
+            return bool(startup_enabled()) if startup_enabled else False
+        except Exception:
+            log.warning("tray startup state failed", exc_info=True)
+            return False
+
+    def state():
+        return {"startup": current_startup(), "paused": False, "can_pause": can_pause}
+
+    def toggle_startup():
+        if set_startup:
+            set_startup(not current_startup())
+        if holder.get("tray"):
+            holder["tray"].update()
+
+    actions = {"open": callbacks.get("open"), "startup": toggle_startup, "pause": callbacks.get("pause"),
+               "quit": callbacks.get("quit")}
+    tray = create({key: value for key, value in actions.items() if value}, state, t)
+    holder["tray"] = tray
+    if not tray.start():
+        log.info("No tray: %s", getattr(tray, "reason", "") or "unavailable")
+        return None
+    return tray
