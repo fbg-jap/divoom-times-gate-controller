@@ -164,6 +164,14 @@ Git history and the v0.1.3 release are preserved. To return to the original app,
 
 ## What has been verified
 
+Run the tests locally (pytest is not required):
+
+```bash
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests -t tests   # Python
+cd web && npm ci && npm test                      # shared frontend
+```
+
 - **126 Python tests** passed for desktop/server 3.1.1, plus **13 Node tests** for the shared frontend.
 - Windows executable in demo mode, real conversion of sample GIF/video files, the web interface and the mobile engine with simulated transport.
 - Android debug build and matching frontend resources in the APK.
