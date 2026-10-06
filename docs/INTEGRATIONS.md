@@ -83,6 +83,24 @@ Windows reads metadata and artwork from the current exposed media session; both 
 
 Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATFORM.md#feature-comparison).
 
+## PC notifications
+
+Keeper can show desktop notifications as notices on a Times Gate screen (**Integrations > Notifications**). Notices reuse the normal notice queue: they wait for a free moment, expire after two minutes, and the previous content is restored afterwards. The screen must show restorable content (an image or widget); otherwise the notice is dropped.
+
+Privacy: notification text can be sensitive and the Times Gate is visible to anyone in the room.
+
+- It is **off by default**.
+- By default only the **app name and the summary** are sent to the screen; the message body is shown only if you enable *Show the message body*.
+- Use the **allowed apps** list to restrict it to chosen apps, and the **blocked apps** list to exclude apps (the blocked list wins; names are matched case-insensitively against the app name the notification reports).
+- At most *per minute* notices are shown; extra ones are dropped. Control characters and line breaks are removed; titles are cut at 80 and text at 500 characters.
+- Notices go to the active device, on the chosen screen (1-5), for the chosen number of seconds. Nothing is stored or sent anywhere else.
+
+The status line shows `Running`, `Disabled` or `Unavailable (reason)`; toggling the option takes effect without a restart.
+
+**Linux** needs a session D-Bus and the `jeepney` package (pure Python, listed in the requirements). Keeper observes `Notify` calls through the D-Bus Monitoring interface; it does not replace your notification daemon. Some D-Bus setups refuse monitoring, in which case the status says so. This path has not been verified against a live desktop yet.
+
+**Windows** uses the `UserNotificationListener` API through `winrt` and requires allowing notification access to Keeper in Windows settings. This backend is **unverified**: it has not been run on a real Windows machine.
+
 ## Credentials and backups
 
 The API token and MQTT password are stored in local user settings. Portable exports omit them and disable integrations; configure them again after importing. Complete copies of the data directory, including manual backups, may contain credentials present at the time.

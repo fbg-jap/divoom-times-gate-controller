@@ -19,10 +19,13 @@ class Bridge:
         self.last_publish = -1e12
         self.last_topics = set()
         self.config = {}
+        from .notifications import NotificationService
+        self.notifications = NotificationService(engine)
 
     def status(self):
         data = self.engine.store.snapshot()
         return {"version": __version__, "api": self.api_status, "mqtt": self.mqtt_status,
+                "notifications": self.notifications.status,
                 "devices": [{"id": d["id"], "name": d["name"], "enabled": d.get("enabled", False)} for d in data["devices"]],
                 "scenes": [{"id": s["id"], "name": s["name"]} for s in data["scenes"]]}
 
@@ -225,6 +228,7 @@ class Bridge:
 
     def tick(self, data, now):
         self.configure(data)
+        self.notifications.tick(data, now)
         if self.mqtt and self.connected and now - self.last_publish >= 30:
             self.last_publish = now
             prefix = self.config.get("mqtt", {}).get("prefix", "keeper")
@@ -232,6 +236,7 @@ class Bridge:
             self.discovery(data)
 
     def close(self):
+        self.notifications.close()
         if self.server:
             self.server.shutdown()
             self.server.server_close()

@@ -11,3 +11,6 @@ winrt-Windows.Media.Control>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Storage.Streams>=3.2,<4; sys_platform == "win32"
 winrt-Windows.Foundation>=3.2,<4; sys_platform == "win32"
 av>=18,<19
+jeepney>=0.8; sys_platform == "linux"
+winrt-Windows.UI.Notifications>=3.2,<4; sys_platform == "win32"
+winrt-Windows.UI.Notifications.Management>=3.2,<4; sys_platform == "win32"
