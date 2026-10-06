@@ -24,7 +24,7 @@ def slot(kind="empty", **kwargs):
 
 
 def device(ip="", name="Times Gate", **kwargs):
-    return {"id": uid(), "name": name, "ip": ip, "mac": "", "device_id": 0,
+    return {"id": uid(), "name": name, "ip": ip, "mac": "", "device_id": 0, "port": 0, "local_token": "",
             "enabled": False, "suspended": False, "screens_off": False, "quality": 85, "speed": 100, "interval_minutes": 60,
             "screens": [slot() for _ in range(5)], "playlists": empty_playlists(), "rotation": [], "rotation_seconds": 300,
             **kwargs}

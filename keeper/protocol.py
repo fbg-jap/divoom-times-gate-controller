@@ -22,9 +22,29 @@ class DeviceError(RuntimeError):
     pass
 
 
+# Hardware 400 serves POST /post on port 80; hardware 402 serves POST /divoom_api on port 9000.
+ENDPOINTS = ((80, "/post"), (9000, "/divoom_api"))
+
+
+def endpoint_candidates(port=0):
+    port = int(port or 0)
+    if not port:
+        return list(ENDPOINTS)
+    return [(port, dict(ENDPOINTS).get(port, "/post"))]
+
+
+def reply_ok(body):
+    if not isinstance(body, dict):
+        return False
+    code = body["error_code"] if "error_code" in body else body.get("ReturnCode")
+    return code in (0, "0")
+
+
 class Client:
-    def __init__(self, ip, session=None, timeout=10):
+    def __init__(self, ip, session=None, timeout=10, port=0, token=""):
         self.ip = valid_ip(ip)
+        self.candidates = endpoint_candidates(port)
+        self.token = str(token or "").strip()
         # Keep the original sender's one-request-per-connection transport.
         # Device acceptance alone does not guarantee that a frame was displayed.
         self.session = session if session is not None else requests
@@ -37,12 +57,29 @@ class Client:
         if (selecting_panel or selecting_group) and int(payload.get("LcdIndependence", 0)) <= 0:
             raise DeviceError("Falta un grupo nativo válido. El grupo 0 altera otras pantallas. "
                               "Selecciona PC Monitor desde Divoom y usa el modo de solo envío de datos.")
-        response = self.session.post(f"http://{self.ip}/post", json=payload, timeout=self.timeout)
-        response.raise_for_status()
-        body = response.json()
-        if not isinstance(body, dict) or body.get("error_code") not in (0, "0"):
+        if self.token and "LocalToken" not in payload:
+            payload = {**payload, "LocalToken": self.token}
+        body = self._post(payload)
+        if not reply_ok(body):
             raise DeviceError(f"{payload.get('Command')}: {body}")
         return body
+
+    def _post(self, payload):
+        # Try each endpoint until one connects; remember it for later commands.
+        last_error = None
+        for index, (port, path) in enumerate(self.candidates):
+            try:
+                host = self.ip if port == 80 else f"{self.ip}:{port}"
+                response = self.session.post(f"http://{host}{path}", json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                body = response.json()
+            except (requests.ConnectionError, requests.Timeout) as error:
+                last_error = error
+                continue
+            if len(self.candidates) > 1:
+                self.candidates = [self.candidates[index]]
+            return body
+        raise last_error
 
     def send_frames(self, frames, panel, quality=85, speed=100, stop=None):
         if panel not in range(5) or not frames:
@@ -95,9 +132,9 @@ def media_frames(path, fit="contain", frame_step=1):
     return frames
 
 
-def probe(ip, timeout=.5):
+def probe(ip, timeout=.5, port=0, token=""):
     try:
-        return Client(ip, timeout=timeout).command({"Command": "Channel/GetAllConf"})
+        return Client(ip, timeout=timeout, port=port, token=token).command({"Command": "Channel/GetAllConf"})
     except Exception:
         return None
 
