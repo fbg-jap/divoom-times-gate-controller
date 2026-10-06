@@ -2,6 +2,13 @@
 
 Versions 2.x and 3.0 were developed and checked locally. Their evolution is published with the 3.1 source; this does not imply a separate binary release for every version. Desktop and the Python server are currently **3.1.1**; the shared web interface and standalone mobile apps remain **3.1.0**.
 
+## Unreleased
+
+- Support for hardware revision 402 firmware: the local API on `http://<ip>:9000/divoom_api` replying with `ReturnCode`, plus the device's local token.
+- New per-device **Port** and **Local token** fields on desktop, web portal and mobile. With the port left empty (auto), Keeper tries port 80, then port 9000, and remembers the one that answers. Existing configurations keep working unchanged.
+- Fixed "got multiple values for argument 'device_id'" when saving a connection.
+- All remaining Spanish source text, defaults and documentation file names translated to English. English is now the default language; Spanish stays selectable on desktop. Existing configurations keep their saved language.
+
 ## 3.1.1 · Desktop RGB and Python engine fixes
 
 - Named effects and descriptions specific to edges and backlight.
