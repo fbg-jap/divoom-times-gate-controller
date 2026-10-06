@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { parseGIF, decompressFrame } from "gifuct-js";
 import * as gifenc from "gifenc";
 const { GIFEncoder, quantize, applyPalette } = gifenc.GIFEncoder
@@ -23,7 +24,7 @@ export function drawFit(
   let sw = source.videoWidth || source.width,
     sh = source.videoHeight || source.height;
   if (!sw || !sh || sw * sh > 20000000)
-    throw Error("Invalid dimensions (maximum 20 megapixels)");
+    throw Error(t("media.invalid_dimensions_maximum_20_megapixels"));
   if (rotation) {
     const rotated = canvas(rotation % 180 ? sh : sw, rotation % 180 ? sw : sh),
       ctx = rotated.getContext("2d");
@@ -76,7 +77,7 @@ export async function image(blob) {
   }
 }
 export async function decode(blob, name, options = {}, signal) {
-  if (blob.size > 100 * 1024 ** 2) throw Error("Maximum 100 MB");
+  if (blob.size > 100 * 1024 ** 2) throw Error(t("media.maximum_100_mb"));
   const panoramic = !!options.panorama,
     width = panoramic ? 640 : 128,
     height = 128;
@@ -92,14 +93,14 @@ export async function decode(blob, name, options = {}, signal) {
       duration > 30 ||
       Math.ceil(duration * fps - 1e-9) > 120)
   )
-    throw Error("Maximum 30 seconds / 120 frames; check start and FPS");
+    throw Error(t("media.maximum_30_seconds_120_frames"));
   const frames = [],
     max = panoramic ? Math.ceil(duration * fps - 1e-9) : 600,
     deadline = Date.now() + 60000;
   const check = () => {
-    if (signal?.aborted) throw Error("Cancelled");
+    if (signal?.aborted) throw Error(t("media.cancelled"));
     if (Date.now() > deadline)
-      throw Error("Conversion too slow; use a shorter clip");
+      throw Error(t("media.conversion_too_slow_use_a"));
   };
   const append = (source) => {
     check();
@@ -120,9 +121,9 @@ export async function decode(blob, name, options = {}, signal) {
     const parsed = parseGIF(await blob.arrayBuffer()),
       parts = parsed.frames.filter((f) => f.image);
     if (parsed.lsd.width * parsed.lsd.height > 20000000 || parts.length > 10000)
-      throw Error("GIF too large");
+      throw Error(t("media.gif_too_large"));
     if (!panoramic && Math.ceil(parts.length / (options.frame_step || 1)) > 600)
-      throw Error("Maximum 600 frames; increase the frame step");
+      throw Error(t("media.maximum_600_frames_increase_the"));
     const surface = canvas(parsed.lsd.width, parsed.lsd.height),
       ctx = surface.getContext("2d", { willReadFrequently: true });
     let timestamp = 0,
@@ -141,7 +142,7 @@ export async function decode(blob, name, options = {}, signal) {
         ctx.putImageData(restore, 0, 0);
       const p = parts[i].image.descriptor;
       if (p.width * p.height > 20000000)
-        throw Error("Frame too large");
+        throw Error(t("media.frame_too_large"));
       const frame = decompressFrame(parts[i], parsed.gct, true);
       restore =
         frame.disposalType === 3
@@ -174,7 +175,7 @@ export async function decode(blob, name, options = {}, signal) {
       if (i % 10 === 0) await pause(0);
     }
   } else if (["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(ext)) {
-    if (!panoramic) throw Error("Use Panorama to convert a video");
+    if (!panoramic) throw Error(t("media.use_panorama_to_convert_a"));
     const video = document.createElement("video"),
       url = URL.createObjectURL(blob);
     video.muted = true;
@@ -194,7 +195,7 @@ export async function decode(blob, name, options = {}, signal) {
           bad = () => {
             cleanup();
             reject(
-              Error("Video not supported on this phone; try MP4 H.264"),
+              Error(t("media.video_not_supported_on_this")),
             );
           };
         const timer = setTimeout(bad, 10000);
@@ -222,7 +223,7 @@ export async function decode(blob, name, options = {}, signal) {
       URL.revokeObjectURL(url);
     }
   } else append(await image(blob));
-  if (!frames.length) throw Error("The clip contains no frames");
+  if (!frames.length) throw Error(t("media.the_clip_contains_no_frames"));
   return {
     frames,
     speed: options.panorama_speed || 1000 / fps,
