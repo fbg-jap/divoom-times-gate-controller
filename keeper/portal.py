@@ -406,7 +406,10 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             with store.lock:
                 if values.get("revision") != revision(store.data):
                     raise ValueError("The configuration changed. Reload before saving to avoid overwriting changes.")
+                previous = {d["id"] for d in store.data["devices"]}
                 store.change(lambda current: (current.clear(), current.update(copy.deepcopy(data))))
+            for gone in previous - {d["id"] for d in data["devices"]}:
+                engine.forget_device(gone)  # runs on the engine thread (engine.enqueue below)
             # Preserve live Pomodoro and temporary notices; synchronize the runtime flags.
             engine.paused = {d["id"] for d in data["devices"] if d.get("suspended")}
             engine.power_off = {d["id"] for d in data["devices"] if d.get("screens_off")}

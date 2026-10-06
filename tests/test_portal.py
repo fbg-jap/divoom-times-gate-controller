@@ -72,6 +72,24 @@ class PortalTests(unittest.TestCase):
         media = self.client.get("/api/media/" + file["name"])
         self.assertEqual(media.headers["content-type"], "image/png")
 
+    def test_removing_a_device_through_the_portal_clears_its_runtime_state(self):
+        engine = self.app.state.engine
+        state = self.client.get("/api/state").json()
+        keep = state["config"]["devices"][0]
+        extra = {**keep, "id": "extra-device-id", "name": "Extra"}
+        state["config"]["devices"].append(extra)
+        self.assertEqual(self.job(self.client.put("/api/config", json=state))["status"], "done")
+        engine.online["extra-device-id"] = True
+        engine.last_health["extra-device-id"] = 1.0
+        engine.paused.add("extra-device-id")
+        state = self.client.get("/api/state").json()
+        state["config"]["devices"] = [d for d in state["config"]["devices"] if d["id"] != "extra-device-id"]
+        self.assertEqual(self.job(self.client.put("/api/config", json=state))["status"], "done")
+        self.assertNotIn("extra-device-id", engine.online)
+        self.assertNotIn("extra-device-id", engine.last_health)
+        self.assertNotIn("extra-device-id", engine.paused)
+        self.assertIn(keep["id"], {d["id"] for d in self.client.get("/api/state").json()["config"]["devices"]})
+
     def test_config_cannot_read_unowned_paths(self):
         state = self.client.get("/api/state").json()
         state["config"]["devices"][0]["screens"][0] = slot("media", path=str(self.root / "config.json"))
