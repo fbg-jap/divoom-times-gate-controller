@@ -10,6 +10,8 @@ import {
   allScreens,
   assets,
   validIp,
+  endpointCandidates,
+  replyOk,
   validate,
   id,
   normalize,
@@ -196,6 +198,32 @@ export class MobileEngine {
       throw Error("HTTP " + response.status);
     return response.data;
   }
+  token(d) {
+    return String(d.local_token || "").trim();
+  }
+  // Try each endpoint until one answers, then remember it for this device.
+  async post(d, ip, body) {
+    const key = `${d.id}|${ip}|${+d.port || 0}`;
+    this.endpoints ??= new Map();
+    const candidates = this.endpoints.get(key) || endpointCandidates(d.port);
+    let lastError;
+    for (const [port, path] of candidates) {
+      try {
+        const host = port === 80 ? ip : `${ip}:${port}`;
+        const result = await this.http(`http://${host}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          data: body,
+          responseType: "json",
+        });
+        this.endpoints.set(key, [[port, path]]);
+        return result;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
   async command(d, payload) {
     if (!this.active) throw Error("Open the app to control the device");
     const ip = validIp(d.ip);
@@ -204,15 +232,11 @@ export class MobileEngine {
       !(payload.LcdIndependence > 0)
     )
       throw Error("Native group 0 can alter other screens");
+    const body = this.token(d) ? { ...payload, LocalToken: this.token(d) } : payload;
     const result = this.demo
       ? { error_code: 0, demo: true }
-      : await this.http(`http://${ip}/post`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          data: payload,
-          responseType: "json",
-        });
-    if (!result || ![0, "0"].includes(result.error_code))
+      : await this.post(d, ip, body);
+    if (!replyOk(result))
       throw Error("The device rejected " + payload.Command);
     return result;
   }
