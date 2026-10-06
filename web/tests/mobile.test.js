@@ -208,3 +208,10 @@ test("endpoint helpers and reply formats", () => {
   assert.equal(replyOk({ error_code: 1, ReturnCode: 0 }), false);
   assert.equal(replyOk(null), false);
 });
+
+test("spotify_display is kept on a screen and passes validation", () => {
+  const cfg = defaults();
+  cfg.devices[0].screens[0] = screen("spotify", { spotify_display: "art" });
+  validate(cfg);
+  assert.equal(normalize(cfg).devices[0].screens[0].spotify_display, "art");
+});

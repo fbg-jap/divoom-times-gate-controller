@@ -109,6 +109,7 @@ export function integrationPage(main) {
         field(ctx.cfg.integrations.prtg, "base_url", t("ui.base_url")),
         field(ctx.cfg.integrations.prtg, "token", "Token", "password"),
         field(ctx.cfg.integrations.prtg, "verify_tls", t("ui.verify_tls"), "checkbox"),
+        hint(t("ui.prtg_hint")),
       ),
       card(
         t("ui.mail_imap"),

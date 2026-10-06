@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
@@ -22,6 +22,36 @@ def http_url(value):
     if p.scheme not in {"http", "https"} or not p.hostname:
         raise ValueError("An http:// or https:// URL is required")
     return value
+
+
+class PrtgError(Exception):
+    """A PRTG failure whose text is one of a small fixed set of safe reasons (never the URL, token or server text)."""
+
+
+PRTG_NOT_API = "not an API endpoint (check the address)"
+
+
+def prtg_base(value):
+    """scheme://host[:port][prefix]: everything from the first /api path segment on, the query and the fragment are dropped."""
+    p = urlparse(http_url(value.strip()))
+    parts = p.path.split("/")
+    if "api" in parts:
+        parts = parts[:parts.index("api")]
+    return urlunparse((p.scheme, p.netloc, "/".join(parts).rstrip("/"), "", "", ""))
+
+
+def prtg_reason(error):
+    """Map any exception to a fixed, safe reason (requests' own text carries the URL)."""
+    if isinstance(error, PrtgError):
+        return str(error)
+    if isinstance(error, requests.Timeout):
+        return "timeout"
+    if isinstance(error, requests.ConnectionError):
+        return "cannot connect"
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    if status in (401, 403):
+        return "access denied"
+    return "unexpected response"
 
 
 def font(size, bold=False):
@@ -82,19 +112,100 @@ class Providers:
     # The token travels only in the query string of this request; it is never logged or returned.
     PRTG_DOWN, PRTG_PAUSED = {5, 13, 14}, {7, 8, 9, 11, 12}
 
+    PRTG_V2_STATES = ("UP", "DOWN", "ACKNOWLEDGED", "WARNING", "UNUSUAL", "UNKNOWN", "COLLECTING")
+    prtg_api = None  # "v2" / "v1" once detected; reset after any error so the next poll detects again
+
     def prtg_fetch(self, base_url, token, verify=True):
-        """Blocking request; raises on any failure. Called from a background sampler (ExtraSources.prtg_state), never a render."""
-        with self.session.get(http_url(base_url).rstrip("/") + "/api/table.json", timeout=8, verify=verify,
+        """Blocking; raises on any failure (ExtraSources maps it with prtg_reason). Called from a background sampler, never a render."""
+        base = prtg_base(base_url)
+        try:
+            if self.prtg_api != "v1":
+                data = self.prtg_fetch_v2(base, token, verify)
+                if data is not None:
+                    self.prtg_api = "v2"
+                    return data
+            data = self.prtg_fetch_v1(base, token, verify)
+            self.prtg_api = "v1"
+            return data
+        except Exception:
+            self.prtg_api = None
+            raise
+
+    @staticmethod
+    def prtg_read(response, cap):
+        chunks, size = [], 0
+        for chunk in response.iter_content(65536):
+            size += len(chunk)
+            if size > cap:
+                raise ValueError("The response is too large")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    # PRTG v2 API: GET {base}/api/v2/sensors?limit=1[&filter=status=UP] with "Authorization: Bearer <API key>"
+    #   -> JSON list of sensors; X-Total-Count is the number of sensors matching the filter. One filter value per request.
+    def prtg_v2_query(self, base, token, verify, deadline, status=None):
+        """(http status, X-Total-Count or None, first sensor or None); None for the sensor when the reply is not v2 JSON."""
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise PrtgError("timeout")
+        params = {"limit": 1, **({"filter": f"status={status}"} if status else {})}
+        with self.session.get(base + "/api/v2/sensors", timeout=min(8, remaining), verify=verify, stream=True, allow_redirects=False,
+                              params=params, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}) as response:
+            code = response.status_code
+            kind = response.headers.get("Content-Type", "")
+            total = response.headers.get("X-Total-Count")
+            body = self.prtg_read(response, 256 * 1024)
+        if not isinstance(kind, str) or not kind.lower().startswith("application/json"):
+            return code, None, None
+        try:
+            items = json.loads(body)
+            total = int(total) if total is not None else None
+        except ValueError:
+            return code, None, None
+        return code, total, items
+
+    def prtg_fetch_v2(self, base, token, verify):
+        """Status counts via the v2 API, or None when the server does not speak it (HTML page, 404, ...)."""
+        deadline = time.monotonic() + 20
+        code, total, items = self.prtg_v2_query(base, token, verify, deadline)
+        if code in (401, 403):
+            raise PrtgError("access denied")
+        if code == 400 and items is not None:
+            raise PrtgError("invalid API key")
+        if code != 200 or not isinstance(items, list) or total is None:
+            return None
+        found, worst = {}, {}
+        for state in self.PRTG_V2_STATES:
+            code, count, items = self.prtg_v2_query(base, token, verify, deadline, state)
+            if code != 200 or not isinstance(items, list) or count is None:
+                raise PrtgError("unexpected response")
+            found[state] = max(0, count)
+            if items and isinstance(items[0], dict):
+                worst[state] = items[0]
+        total = max(0, total)
+        counted = sum(found.values())
+        for state in ("DOWN", "ACKNOWLEDGED", "WARNING", "UNUSUAL"):
+            if state in worst:
+                sensor = worst[state]
+                path = sensor.get("path") if isinstance(sensor.get("path"), list) else []
+                device = next((e.get("name", "") for e in reversed(path) if isinstance(e, dict)
+                               and e.get("type") in ("DEVICE", "REFERENCED_DEVICE")), "")
+                label = f"{device} · {sensor.get('name', '')}".strip(" ·")[:80]
+                break
+        else:
+            label = ""
+        return {"up": found["UP"], "warning": found["WARNING"], "down": found["DOWN"] + found["ACKNOWLEDGED"],
+                "paused": max(0, total - counted), "unusual": found["UNUSUAL"], "worst": label}
+
+    def prtg_fetch_v1(self, base, token, verify):
+        with self.session.get(base + "/api/table.json", timeout=8, verify=verify,
                               stream=True, allow_redirects=False, params={"content": "sensors", "count": 5000, "apitoken": token,
                                                    "columns": "objid,device,sensor,status_raw"}) as response:
             response.raise_for_status()
-            chunks, size = [], 0
-            for chunk in response.iter_content(65536):
-                size += len(chunk)
-                if size > 2 * 1024**2:
-                    raise ValueError("The response exceeds 2 MB")
-                chunks.append(chunk)
-        sensors = json.loads(b"".join(chunks))["sensors"]
+            body = self.prtg_read(response, 2 * 1024**2)
+        if body.lstrip()[:1] == b"<":
+            raise PrtgError(PRTG_NOT_API)  # the PRTG web page answers every unknown path with HTTP 200
+        sensors = json.loads(body)["sensors"]
         counts = {"up": 0, "warning": 0, "down": 0, "paused": 0, "unusual": 0}
         worst = (0, "")
         for item in sensors:

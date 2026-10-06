@@ -12,7 +12,7 @@ import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageColor
 
 from keeper import spotify
 from keeper.config import defaults, validate
@@ -548,6 +548,59 @@ class WidgetTests(unittest.TestCase):
             with unittest.mock.patch.object(providers.extra, "spotify_state", return_value=(payload, "")), \
                     unittest.mock.patch("keeper.extensions.Image.open", side_effect=Image.DecompressionBombError("bomb")):
                 self.assertEqual(self.image(providers).size, (128, 128))
+
+    def display_image(self, mode=None, art=True, color=(200, 30, 30)):
+        from keeper.extensions import render_extra
+        providers = Providers()
+        buffer = io.BytesIO()
+        Image.new("RGB", (40, 40), color).save(buffer, "PNG")
+        data = {"title": "A Long Song Title For Testing", "artist": "Some Artist", "playing": True,
+                "art": base64.b64encode(buffer.getvalue()).decode() if art else "",
+                "progress_ms": 60000, "duration_ms": 200000, "sampled": 100.0}
+        screen = slot("spotify")
+        if mode is not None:
+            screen["spotify_display"] = mode
+        with unittest.mock.patch.object(providers.extra, "spotify_state", return_value=(data, "")), \
+                unittest.mock.patch("keeper.extensions.time.monotonic", return_value=100.0):
+            return render_extra(screen, providers)
+
+    def test_display_modes_differ_and_unknown_means_both(self):
+        images = {m: self.display_image(m) for m in ("both", "art", "text")}
+        for image in images.values():
+            self.assertEqual(image.size, (128, 128))
+        self.assertEqual(len({i.tobytes() for i in images.values()}), 3)
+        self.assertEqual(self.display_image().tobytes(), images["both"].tobytes())
+        self.assertEqual(self.display_image("nonsense").tobytes(), images["both"].tobytes())
+
+    def test_art_mode_fills_the_canvas_and_keeps_the_progress_bar(self):
+        art_color, image = (200, 30, 30), self.display_image("art")
+        self.assertEqual(image.getpixel((64, 64)), art_color)
+        self.assertEqual(image.getpixel((100, 100)), art_color)
+        self.assertEqual(image.getpixel((64, 40)), art_color)  # where TEXT draws the title: plain art, no text
+        self.assertEqual(image.getpixel((119, 124)), ImageColor.getrgb("#26334b"))  # empty part of the thin bar
+        self.assertEqual(image.getpixel((20, 124)), ImageColor.getrgb("#64e6ca"))  # elapsed part
+        self.assertEqual({image.getpixel((x, 80)) for x in range(0, 128)}, {art_color})
+
+    def test_text_mode_has_no_art(self):
+        image = self.display_image("text")
+        self.assertEqual(self.display_image("text").tobytes(), self.display_image("text", art=False).tobytes())
+        self.assertNotIn((200, 30, 30), {image.getpixel((x, y)) for x in range(8, 60) for y in range(22, 74)})
+
+    def test_art_mode_without_art_draws_the_placeholder(self):
+        image = self.display_image("art", art=False)
+        centre = [image.getpixel((x, 64)) for x in range(0, 128)]
+        self.assertIn(ImageColor.getrgb("#64e6ca"), centre)
+        self.assertNotEqual(image.tobytes(), Image.new("RGB", (128, 128), "#101b2b").tobytes())
+        self.assertEqual(image.getpixel((8, 64)), ImageColor.getrgb("#101b2b"))
+
+    def test_display_setting_is_validated_only_for_spotify(self):
+        from keeper.extensions import validate_content
+        for value in ("both", "art", "text"):
+            validate_content(slot("spotify", spotify_display=value))
+        validate_content(slot("spotify"))
+        with self.assertRaises(ValueError):
+            validate_content(slot("spotify", spotify_display="cover"))
+        validate_content(slot("clock", spotify_display="cover"))
 
     def test_first_draw_waits_briefly_so_the_widget_is_not_stuck_on_connecting(self):
         providers = Providers()

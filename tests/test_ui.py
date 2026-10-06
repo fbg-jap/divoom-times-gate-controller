@@ -196,6 +196,29 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any("Now playing" in text for text in texts))
         playlist.reject()
 
+    def test_spotify_display_option_is_edited_and_defaults_to_both(self):
+        from PySide6.QtWidgets import QFormLayout, QWidget
+        from keeper.extra_ui import ContentFields
+        def fields(screen):
+            holder = QWidget()
+            self.addCleanup(holder.deleteLater)
+            result = ContentFields(self.window, QFormLayout(holder), screen)
+            result.holder = holder
+            return result
+        old = slot("spotify")
+        self.assertNotIn("spotify_display", old)
+        editor = fields(old)
+        self.assertEqual([editor.spotify_display.itemData(n) for n in range(3)], ["both", "art", "text"])
+        self.assertEqual(editor.spotify_display.currentData(), "both")
+        editor.spotify_display.setCurrentIndex(editor.spotify_display.findData("art"))
+        saved = copy.deepcopy(old)
+        editor.apply(saved)
+        self.assertEqual(saved["spotify_display"], "art")
+        self.assertEqual(fields(saved).spotify_display.currentData(), "art")
+        editor.spotify_display.setCurrentIndex(0)
+        editor.apply(saved)
+        self.assertEqual(saved["spotify_display"], "both")
+
     def test_designer_drag_persists_and_cancel_is_independent(self):
         from keeper.designer import DesignerDialog
         from PySide6.QtCore import QPoint, Qt

@@ -87,12 +87,16 @@ Docker does not automatically have access to the host desktop's media session. S
 
 The **PRTG status** widget and the `prtg_down` / `prtg_warning` alert metrics read sensor states from a PRTG server. Configure the base URL, API token and TLS option under Integrations → PRTG.
 
-- Create an **API token** in PRTG (Setup → Account Settings → API Keys) and paste it in the Token field. The token is sent only as the `apitoken` query parameter of the request to your server, is never logged, is stored in `config.json` (mode 0600) and is blanked in exports.
+- **Address**: just the PRTG server, e.g. `https://prtg.example.com:1616`. A pasted `/api/...` URL (such as `/api/table.json`) is accepted and trimmed back to the server; a path prefix before `/api` is kept.
+- Create an **API key** in PRTG (web interface → Setup → Account Settings → API Keys) and paste it in the Token field. It works for both API versions. On the v2 API it is sent only as an `Authorization: Bearer` header, on the classic API only as the `apitoken` query parameter of the request to your server. It is never logged, is stored in `config.json` (mode 0600) and is blanked in exports.
+- **Two APIs**: Keeper first tries the PRTG **v2 API** (`/api/v2/sensors`). If the server answers with something else (a 404 or the web page), it uses the classic v1 API (`/api/table.json`). The detected version is remembered and re-detected after an error, so normally only one version is used.
 - **Verify TLS certificate** (`verify_tls`, on by default) checks the server certificate. Turn it off only for a self-signed server on a network you trust.
-- The widget counts sensors by state: **up**, **warning**, **down** (down, acknowledged down and partial down), **paused** (paused by user, dependency, schedule, license or until) and **unusual**; it also names the worst sensor (`device · sensor`). Other states (unknown, collecting, no probe) are not counted.
+- The widget counts sensors by state: **up**, **warning**, **down** (down, acknowledged down and, on the classic API, partial down), **paused** and **unusual**; it also names the worst sensor (`device · sensor`). On the classic API paused means paused by user, dependency, schedule, license or until, and unknown/collecting/no probe are not counted. On the v2 API paused is **derived**: the total number of sensors minus every counted state (up, down, acknowledged, warning, unusual, unknown, collecting), never below 0, so it also includes any other state.
+- **Cost**: the v2 API needs 8 small requests (one per state plus the total, each `limit=1`) every 30 seconds, all within one 20 second budget. The classic API is a single request.
 - `prtg_down` and `prtg_warning` compare the number of sensors in that state with the threshold, like other alert metrics.
 - The server is queried at most every 30 seconds, with an 8 second timeout and a 2 MB response cap; a failure shows "Source unavailable" and is not retried every frame.
-- The API shape was taken from the PRTG documentation and is untested against a live server.
+- The widget and the settings show one of a fixed set of reasons, never the address or the key: `cannot connect`, `timeout`, `not an API endpoint (check the address)` (the address answers with a web page, so it is not the API), `invalid API key`, `access denied` and `unexpected response`.
+- The v2 API was checked against a live server; the classic API shape was taken from the PRTG documentation.
 
 ## Spotify
 
@@ -105,6 +109,8 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
 3. Copy the app's **Client ID** into Integrations → Spotify and enable it. Do not enter a client secret.
 4. Press **Connect Spotify** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. On the portal, reload the page afterwards.
 5. Add a Spotify widget to a screen.
+
+**Display option.** Each Spotify screen has a *Display* setting (`spotify_display`): `both` (default: cover, play state, title and artist), `art` (the cover fills the screen, with a small PLAY/PAUSE label and a thin progress bar) or `text` (large title and artist, no cover). Screens without the setting use `both`. The not-connected, connecting and nothing-playing messages ignore it. Mobile does not render this widget.
 
 **Two ways to connect from the desktop app.** Spotify's documentation permits `http` redirect URIs on loopback IP literals (`127.0.0.1`, `[::1]`; the port may be omitted), but some Dashboards demand `https` anyway. Keeper therefore has a *Redirect URI* setting (`integrations.spotify.redirect_uri`, empty by default, not a secret):
 

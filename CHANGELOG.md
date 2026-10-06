@@ -4,8 +4,10 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 
 ## Unreleased
 
+- Spotify widget **Display** option (`spotify_display`: `both`, `art` or `text`) on desktop and the web editor; the default `both` leaves the layout unchanged. See [Integrations](docs/INTEGRATIONS.md#spotify).
 - New **Spotify** widget (now playing, read-only) over the Spotify Web API with PKCE; connect from the desktop app (loopback redirect) or the server portal (`/api/spotify/callback`). Only the client ID and refresh token are stored. Tested with a fake session only, not a real account. See [Integrations](docs/INTEGRATIONS.md#spotify).
 - Spotify **Redirect URI** setting (`integrations.spotify.redirect_uri`) and a paste-back desktop connect flow that works with any registered `https` redirect address (no local server), for Dashboards that reject the `http://127.0.0.1` loopback URI. Tested with a fake session only. See [Integrations](docs/INTEGRATIONS.md#spotify).
+- **PRTG widget works with PRTG's new v2 API** (`/api/v2/sensors`, Bearer API key), detected automatically with a fallback to the classic API; a pasted `/api/...` address is trimmed to the server, and failures show a fixed reason (`cannot connect`, `timeout`, `not an API endpoint`, `invalid API key`, `access denied`, `unexpected response`). On v2, paused is derived from the totals. See [Integrations](docs/INTEGRATIONS.md#prtg).
 - Documented the PRTG widget and alert metrics. See [Integrations](docs/INTEGRATIONS.md#prtg).
 - New **Unread mail** widget and `mail_unread` alert metric over IMAP (read-only, count only unless the subject is enabled; STARTTLS enforced on port 143). Polled every 120 s in the background. Not yet tried against a real IMAP server. See [Integrations](docs/INTEGRATIONS.md#unread-mail-imap).
 - PC notifications on the Times Gate (off by default, app name and summary only unless the body is enabled, allow/deny app lists, per-minute limit). Linux uses D-Bus through the optional `jeepney` package; the Windows listener is unverified. See [Integrations](docs/INTEGRATIONS.md#pc-notifications).

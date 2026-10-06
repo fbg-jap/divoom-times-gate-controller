@@ -27,8 +27,13 @@ def finite(value):
         return None
 
 
+SPOTIFY_DISPLAYS = ("both", "art", "text")
+
+
 def validate_content(s):
     from .widgets import http_url
+    if s.get("kind") == "spotify" and s.get("spotify_display", "both") not in SPOTIFY_DISPLAYS:
+        raise ValueError("Spotify display must be both, art or text")
     if s.get("panorama_speed") and int(s["panorama_speed"]) not in {100, 200, 250, 500, 1000}:
         raise ValueError("Invalid panorama speed")
     if s.get("kind") == "rss" and s.get("url"):
@@ -245,8 +250,10 @@ class ExtraSources:
             def sample():
                 try:
                     return self.providers.prtg_fetch(*key)
-                except Exception:
-                    raise RuntimeError("PRTG request failed") from None  # the original message can carry the URL with the token
+                except Exception as error:
+                    from .widgets import prtg_reason
+                    raise RuntimeError(prtg_reason(error)) from None  # a fixed reason: the original message can carry the URL with the token
+            self.providers.prtg_api = None
             self.prtg_key, self.prtg_probe = key, AsyncProbe(sample, 30, 120)
         value, error = self.prtg_probe.read(wait=FIRST_READ_WAIT)
         return value, error or ""
@@ -443,7 +450,9 @@ def render_extra(s, providers):
         if data is None and error.startswith("Waiting"):
             lines("Connecting…", 40, 13, 2, "#9aa4b5")
         elif data is None:
-            lines("Source unavailable", 40, 13, 3, "#ff6b6b")
+            lines("Source unavailable", 36, 13, 2, "#ff6b6b")
+            if error and error != "not configured":
+                lines(error, 76, 10, 4, "#9aa4b5")
         else:
             face = font(22, True)
             for n, (key, color) in enumerate((("up", "#4ade80"), ("warning", "#facc15"), ("down", "#ff4d4d"), ("paused", "#9aa4b5"))):
@@ -463,27 +472,51 @@ def render_extra(s, providers):
         elif data.get("idle"):
             lines("Nothing playing", 40, 13, 3, "#9aa4b5")
         else:
-            if data.get("art"):
+            mode = s.get("spotify_display")
+            mode = mode if mode in SPOTIFY_DISPLAYS else "both"
+            art = None
+            if mode != "text" and data.get("art"):
                 try:
-                    with Image.open(io.BytesIO(base64.b64decode(data["art"]))) as art:
-                        image.paste(ImageOps.fit(art.convert("RGB"), (52, 52)), (8, 22))
+                    with Image.open(io.BytesIO(base64.b64decode(data["art"]))) as source:
+                        art = ImageOps.fit(source.convert("RGB"), (128, 122) if mode == "art" else (52, 52))
                 except Exception:
-                    data = {**data, "art": ""}
-            if not data.get("art"):
-                draw.ellipse((9, 23, 57, 71), outline=accent, width=2)
-                draw.text((25, 29), "♪", fill=accent, font=font(25))
-            draw.text((66, 28), "PLAY" if data.get("playing") else "PAUSE", fill=accent, font=font(10))
-            lines(data.get("title") or "Spotify", 77, 13, 2)
-            lines(data.get("artist", ""), 105, 10, 1, accent)
+                    art = None
+            state = "PLAY" if data.get("playing") else "PAUSE"
+            bar_top = 123 if mode == "art" else 122
+            if mode == "art":
+                draw.rectangle((0, 0, 127, 122), fill=s.get("background", "#101b2b"))
+                if art:
+                    image.paste(art, (0, 0))
+                else:
+                    draw.ellipse((28, 28, 100, 100), outline=accent, width=3)
+                    draw.text((64, 64), "♪", fill=accent, font=font(56), anchor="mm")
+                face = font(10)
+                pill = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
+                ImageDraw.Draw(pill).rounded_rectangle((3, 3, 12 + int(draw.textlength(state, font=face)), 18), 5, fill=(0, 0, 0, 160))
+                image.paste(pill, (0, 0), pill)
+                draw.text((8, 5), state, fill=accent, font=face)
+            elif mode == "text":
+                draw.text((8, 24), state, fill=accent, font=font(10))
+                lines(data.get("title") or "Spotify", 37, 16, 3)
+                lines(data.get("artist", ""), 93, 12, 2, accent)
+            else:
+                if art:
+                    image.paste(art, (8, 22))
+                else:
+                    draw.ellipse((9, 23, 57, 71), outline=accent, width=2)
+                    draw.text((25, 29), "♪", fill=accent, font=font(25))
+                draw.text((66, 28), state, fill=accent, font=font(10))
+                lines(data.get("title") or "Spotify", 77, 13, 2)
+                lines(data.get("artist", ""), 105, 10, 1, accent)
             total = int(data.get("duration_ms") or 0)
             if total > 0:
                 progress = int(data.get("progress_ms") or 0)
                 if data.get("playing"):
                     progress += int((time.monotonic() - data.get("sampled", time.monotonic())) * 1000)
                 end = 8 + int(111 * max(0, min(1, progress / total)))
-                draw.rectangle((8, 122, 119, 124), fill="#26334b")
+                draw.rectangle((8, bar_top, 119, bar_top + 2), fill="#26334b")
                 if end > 8:
-                    draw.rectangle((8, 122, end, 124), fill=accent)
+                    draw.rectangle((8, bar_top, end, bar_top + 2), fill=accent)
     elif kind == "mail":
         data, error = extra.mail_state()
         lines(s.get("title") or "Unread mail", 7, 11, 1, accent)

@@ -73,13 +73,16 @@ class ContentFields:
         elif kind == "music":
             form.addRow(hint("Reads the current Windows media session: cover art, song and artist. The player must publish its session to Windows. No password required."))
         elif kind == "prtg":
-            form.addRow(hint("Shows PRTG sensor counts (up, warning, down, paused) and the worst sensor. The URL and token are set under Integrations. Refreshes every 30 s."))
+            form.addRow(hint("Shows PRTG sensor counts (up, warning, down, paused) and the worst sensor. The address and API key are set under Integrations. Refreshes every 30 s; if it cannot read the server it shows the reason."))
         elif kind == "mail":
             form.addRow(hint(self.parent.t("Muestra el número de correos sin leer (IMAP, solo lectura). El servidor y la contraseña se configuran en Integraciones. Se actualiza cada 2 minutos.",
                                       "Shows the number of unread emails (IMAP, read-only). Server and password are set under Integrations. Refreshes every 2 minutes.")))
         elif kind == "spotify":
             form.addRow(hint(self.parent.t("Muestra la canción de Spotify (API web, solo lectura). Conecta tu cuenta en Integraciones → Spotify. Se actualiza cada 5 segundos.",
                                       "Shows the song playing on Spotify (Web API, read-only). Connect your account under Integrations → Spotify. Refreshes every 5 seconds.")))
+            self.spotify_display = combo([("both", self.parent.t("Arte y texto", "Artwork and text")), ("art", self.parent.t("Solo carátula", "Artwork only")),
+                                          ("text", self.parent.t("Solo texto", "Text only"))], screen.get("spotify_display", "both"))
+            form.addRow(self.parent.t("Mostrar", "Display"), self.spotify_display)
         elif kind == "pomodoro":
             form.addRow(hint("Shows the Studio work/break session. Start, pause and configure the session under Automations → Pomodoro. Refreshes every 5 seconds."))
 
@@ -101,6 +104,8 @@ class ContentFields:
                      sensor_unit=self.unit.text().strip()[:30], sensor_stale=self.stale.value())
         elif kind == "custom":
             s["elements"] = copy.deepcopy(self.screen.get("elements", []))
+        elif kind == "spotify":
+            s["spotify_display"] = self.spotify_display.currentData()
         validate_content(s)
 
 
@@ -325,6 +330,8 @@ class IntegrationPanel(QWidget):
         self.prtg_url = QLineEdit(prtg["base_url"]); self.prtg_token = secret(prtg["token"])
         self.prtg_tls = QCheckBox(t("Verificar certificado TLS", "Verify TLS certificate")); self.prtg_tls.setChecked(prtg["verify_tls"])
         form.addRow(self.prtg_on); form.addRow(t("URL base", "Base URL"), self.prtg_url); form.addRow("Token", self.prtg_token); form.addRow(self.prtg_tls)
+        form.addRow(hint(t("Dirección: solo el servidor PRTG, p. ej. https://prtg.example.com:1616 (una URL /api/... pegada se recorta). Token: interfaz web de PRTG → Setup → Account Settings → API Keys (sirve para las dos APIs). Se usa la API v2 de PRTG si está disponible; si no, la API clásica.",
+                           "Address: just the PRTG server, e.g. https://prtg.example.com:1616 (a pasted /api/... URL is trimmed). Token: PRTG web interface → Setup → Account Settings → API Keys (works for both API versions). The PRTG v2 API is used when available, otherwise the classic API.")))
         tabs.addTab(page, "PRTG")
         page = QWidget(); form = QFormLayout(page)
         self.mail_on = QCheckBox(t("Activar correo (IMAP)", "Enable mail (IMAP)")); self.mail_on.setChecked(mail["enabled"])

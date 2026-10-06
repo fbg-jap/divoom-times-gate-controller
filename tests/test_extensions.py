@@ -171,8 +171,8 @@ class PrtgTests(unittest.TestCase):
         self.wait_for(p.extra, lambda: p.extra.prtg_state()[1] not in ("", "Waiting for first reading"))
         for _ in range(5):
             data, error = p.extra.prtg_state()
-        self.assertEqual((data, error), (None, "PRTG request failed"))  # the token-bearing URL never reaches the error text
-        self.assertEqual(p.session.get.call_count, 1)
+        self.assertEqual((data, error), (None, "unexpected response"))  # a fixed reason: the token-bearing URL never reaches the error text
+        self.assertEqual(p.session.get.call_count, 2)  # one v2 probe + one v1 request, not retried every frame
 
     def test_oversized_and_unconfigured(self):
         p = Providers(); response = self.reply({}); response.iter_content = lambda size: iter([b"x" * (2 * 1024**2 + 1)])
@@ -249,6 +249,162 @@ class PrtgTests(unittest.TestCase):
         p.extra.prtg_conf = {**conf, "verify_tls": False}; p.extra.prtg_state()
         self.assertIsNot(p.extra.prtg_probe, first)
         self.assertEqual((p.extra.prtg_probe.interval, p.extra.prtg_probe.stale), (30, 120))
+
+
+class FakeReply:
+    def __init__(self, status=200, body=b"", ctype="application/json", total=None):
+        self.status_code, self.body = status, body
+        self.headers = {"Content-Type": ctype, **({"X-Total-Count": str(total)} if total is not None else {})}
+        self.raise_for_status = Mock(side_effect=None if status < 400 else requests.HTTPError("boom", response=self))
+    def iter_content(self, size): return iter([self.body])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+class FakePrtgV2:
+    """A PRTG v2 server: Bearer key required, X-Total-Count per status filter, one sample sensor per query."""
+    KEY = "FAKE-KEY"
+    COUNTS = {None: 919, "UP": 878, "DOWN": 2, "ACKNOWLEDGED": 1, "WARNING": 5, "UNUSUAL": 0, "UNKNOWN": 1, "COLLECTING": 3}
+    PATH = [{"id": 0, "name": "Root", "type": "REFERENCED_ROOT"}, {"id": 1, "name": "Probe", "type": "PROBE"},
+            {"id": 2, "name": "edge-01", "type": "REFERENCED_DEVICE"}]
+
+    def __init__(self, v1=None, html_v2=False, status=None):
+        self.calls, self.v1, self.html_v2, self.status = [], v1, html_v2, status
+
+    def get(self, url, **kw):
+        self.calls.append((url, kw))
+        if "/api/v2/sensors" in url:
+            if self.html_v2 or self.v1 is not None and not self.status:
+                return FakeReply(200, b"<html>PRTG UI is loading</html>", "text/html")
+            if self.status:
+                return FakeReply(self.status, b"{}", "application/json")
+            if kw.get("headers", {}).get("Authorization") != f"Bearer {self.KEY}":
+                return FakeReply(400, b'{"code": "INVALID_TOKEN"}')
+            state = kw["params"].get("filter", "").replace("status=", "") or None
+            item = {"name": f"sensor-{state}", "status": state, "message": "m", "path": self.PATH}
+            count = self.COUNTS[state]
+            return FakeReply(200, json.dumps([item] if count else []).encode(), total=count)
+        if self.v1 is not None:
+            return FakeReply(200, json.dumps(self.v1).encode())
+        return FakeReply(200, b"<html>PRTG UI is loading</html>", "text/html")
+
+
+class PrtgV2Tests(unittest.TestCase):
+    URL = "https://prtg.example.com:1616"
+
+    def setUp(self):
+        patcher = patch("keeper.extensions.FIRST_READ_WAIT", 0)
+        patcher.start(); self.addCleanup(patcher.stop)
+
+    def provider(self, fake):
+        p = Providers(); p.session.get = fake.get
+        return p
+
+    def test_base_url_normalisation(self):
+        from keeper.widgets import prtg_base
+        for given, want in [("https://h.example.com:1616", "https://h.example.com:1616"), ("https://h.example.com:1616/", "https://h.example.com:1616"),
+                            ("https://h.example.com:1616/api/table.json", "https://h.example.com:1616"),
+                            ("https://h.example.com/api/v2/sensors", "https://h.example.com"),
+                            ("http://h.example.com/prtg/api/table.json?apitoken=x#f", "http://h.example.com/prtg"),
+                            ("http://h.example.com/prtg/?a=1", "http://h.example.com/prtg")]:
+            self.assertEqual(prtg_base(given), want)
+        with self.assertRaises(ValueError):
+            prtg_base("ftp://h.example.com")
+
+    def test_v2_counts_paused_worst_and_request_shape(self):
+        fake = FakePrtgV2(); p = self.provider(fake)
+        data = p.prtg_fetch(self.URL + "/api/table.json", fake.KEY, False)
+        self.assertEqual(data, {"up": 878, "warning": 5, "down": 3, "paused": 919 - (878 + 2 + 1 + 5 + 0 + 1 + 3), "unusual": 0,
+                                "worst": "edge-01 · sensor-DOWN"})
+        self.assertEqual(data["paused"], 29)
+        self.assertEqual(len(fake.calls), 8)
+        for url, kw in fake.calls:
+            self.assertEqual(url, self.URL + "/api/v2/sensors")
+            self.assertEqual(kw["params"]["limit"], 1)
+            self.assertEqual(set(kw["params"]) - {"limit", "filter"}, set())
+            self.assertEqual(kw["headers"]["Authorization"], "Bearer FAKE-KEY")
+            self.assertNotIn(fake.KEY, json.dumps(kw["params"]))
+            self.assertIs(kw["verify"], False); self.assertIs(kw["allow_redirects"], False); self.assertLessEqual(kw["timeout"], 8)
+        self.assertEqual({kw["params"].get("filter") for _, kw in fake.calls},
+                         {None} | {f"status={s}" for s in ("UP", "DOWN", "ACKNOWLEDGED", "WARNING", "UNUSUAL", "UNKNOWN", "COLLECTING")})
+
+    def test_worst_falls_back_through_acknowledged_warning_unusual_and_clamps(self):
+        for counts, want in [({"DOWN": 0}, "edge-01 · sensor-ACKNOWLEDGED"), ({"DOWN": 0, "ACKNOWLEDGED": 0}, "edge-01 · sensor-WARNING"),
+                             ({"DOWN": 0, "ACKNOWLEDGED": 0, "WARNING": 0, "UNUSUAL": 2}, "edge-01 · sensor-UNUSUAL"),
+                             ({"DOWN": 0, "ACKNOWLEDGED": 0, "WARNING": 0}, "")]:
+            fake = FakePrtgV2(); fake.COUNTS = {**FakePrtgV2.COUNTS, **counts}
+            self.assertEqual(self.provider(fake).prtg_fetch(self.URL, fake.KEY)["worst"], want)
+        fake = FakePrtgV2(); fake.COUNTS = {**FakePrtgV2.COUNTS, None: 10}  # states add up to more than the total
+        self.assertEqual(self.provider(fake).prtg_fetch(self.URL, fake.KEY)["paused"], 0)
+
+    def test_long_worst_label_is_cut(self):
+        fake = FakePrtgV2(); fake.PATH = [{"name": "d" * 200, "type": "DEVICE"}]
+        self.assertEqual(len(self.provider(fake).prtg_fetch(self.URL, fake.KEY)["worst"]), 80)
+
+    def test_v1_only_server_falls_back_and_is_cached(self):
+        v1 = {"sensors": [{"device": "a", "sensor": "ping", "status_raw": 3}, {"device": "b", "sensor": "x", "status_raw": 5}]}
+        fake = FakePrtgV2(v1=v1); p = self.provider(fake)
+        self.assertEqual(p.prtg_fetch(self.URL, "t")["down"], 1)
+        self.assertEqual([("/api/v2/sensors" in u) for u, _ in fake.calls], [True, False])
+        p.prtg_fetch(self.URL, "t")
+        self.assertEqual(len(fake.calls), 3)  # steady state: v1 only, no v2 probe
+        fake = FakePrtgV2(v1=v1, status=404); p = self.provider(fake)
+        self.assertEqual(p.prtg_fetch(self.URL, "t")["up"], 1)
+
+    def test_v2_detection_cached_and_reset_after_error(self):
+        fake = FakePrtgV2(); p = self.provider(fake)
+        p.prtg_fetch(self.URL, fake.KEY); self.assertEqual(p.prtg_api, "v2")
+        p.prtg_fetch(self.URL, fake.KEY); self.assertEqual(len(fake.calls), 16)  # no separate detection request
+        fake.status = 500
+        with self.assertRaises(Exception):
+            p.prtg_fetch(self.URL, fake.KEY)
+        self.assertIsNone(p.prtg_api)
+
+    def test_errors_map_to_fixed_reasons_without_secrets(self):
+        from keeper.widgets import prtg_reason, PrtgError
+        secret = "SECRET-KEY-123"
+        def reason(fake):
+            p = self.provider(fake)
+            try:
+                p.prtg_fetch(self.URL + "/api/table.json", secret)
+            except Exception as error:
+                return prtg_reason(error)
+        self.assertEqual(reason(FakePrtgV2()), "invalid API key")  # wrong Bearer key -> 400 JSON
+        self.assertEqual(reason(FakePrtgV2(status=401)), "access denied")
+        self.assertEqual(reason(FakePrtgV2(status=403)), "access denied")
+        self.assertEqual(reason(FakePrtgV2(html_v2=True)), "not an API endpoint (check the address)")  # HTML on v2 and on v1
+        self.assertEqual(reason(FakePrtgV2()) , "invalid API key")
+        self.assertEqual(prtg_reason(requests.ConnectionError(f"{self.URL}?apitoken={secret}")), "cannot connect")
+        self.assertEqual(prtg_reason(requests.exceptions.SSLError(secret)), "cannot connect")
+        self.assertEqual(prtg_reason(requests.ReadTimeout(secret)), "timeout")
+        self.assertEqual(prtg_reason(requests.ConnectTimeout(secret)), "timeout")
+        self.assertEqual(prtg_reason(requests.HTTPError("x", response=FakeReply(403))), "access denied")
+        self.assertEqual(prtg_reason(requests.HTTPError(secret, response=FakeReply(500))), "unexpected response")
+        self.assertEqual(prtg_reason(ValueError(secret)), "unexpected response")
+        self.assertEqual(prtg_reason(PrtgError("timeout")), "timeout")
+        for text in ("cannot connect", "timeout", "invalid API key", "access denied", "unexpected response"):
+            self.assertNotIn(secret, text)
+
+    def test_state_and_render_show_the_reason(self):
+        from keeper.extensions import render_extra
+        fake = FakePrtgV2(html_v2=True); p = self.provider(fake)
+        p.extra.prtg_conf = {"enabled": True, "base_url": self.URL, "token": "SECRET-KEY-123", "verify_tls": True}
+        deadline = time.monotonic() + 3
+        while p.extra.prtg_state()[1] in ("", "Waiting for first reading") and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertEqual(p.extra.prtg_state(), (None, "not an API endpoint (check the address)"))
+        blank = Providers(); blank.extra.prtg_conf = {}
+        with_reason = render_extra(slot("prtg"), p)
+        self.assertEqual(with_reason.size, (128, 128))
+        self.assertNotEqual(with_reason.tobytes(), render_extra(slot("prtg"), blank).tobytes())
+
+    def test_sampler_shows_v2_data(self):
+        fake = FakePrtgV2(); p = self.provider(fake)
+        p.extra.prtg_conf = {"enabled": True, "base_url": self.URL, "token": fake.KEY, "verify_tls": True}
+        deadline = time.monotonic() + 3
+        while p.extra.prtg() is None and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertEqual(p.extra.prtg()["down"], 3)
 
 
 class FakeImap:

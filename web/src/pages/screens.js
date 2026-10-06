@@ -273,7 +273,17 @@ export function contentForm(s, inList = false) {
   }
   if (s.kind === "prtg") form.append(hint(t("ui.prtg_widget_hint")));
   if (s.kind === "mail") form.append(hint(t("ui.mail_widget_hint")));
-  if (s.kind === "spotify") form.append(hint(t("ui.spotify_widget_hint")));
+  if (s.kind === "spotify") {
+    s.spotify_display ??= "both";
+    form.append(
+      hint(t("ui.spotify_widget_hint")),
+      field(s, "spotify_display", t("ui.spotify_display"), "select", {
+        both: t("ui.spotify_display_both"),
+        art: t("ui.spotify_display_art"),
+        text: t("ui.spotify_display_text"),
+      }),
+    );
+  }
   if (s.kind === "pomodoro")
     form.append(
       hint(
