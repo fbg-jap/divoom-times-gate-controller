@@ -74,7 +74,8 @@ class Bridge:
         self.engine.renderer.providers.extra.mail_conf = config.get("mail", {})
         self.engine.renderer.providers.extra.spotify_conf = config.get("spotify", {})
         self.engine.renderer.providers.extra.spotify_save = self.save_spotify_token
-        signature = json.dumps({k: v for k, v in config.items() if k != "spotify"}, sort_keys=True)  # a rotated Spotify token must not restart the API/MQTT
+        # Only what start_api/start_mqtt use: editing prtg, mail, notifications or spotify must not restart them.
+        signature = json.dumps({k: config.get(k) for k in ("api", "mqtt")}, sort_keys=True)
         if signature == self.signature:
             self.sync_topics(data)
             return
@@ -98,9 +99,13 @@ class Bridge:
                 self.mqtt_status = type(error).__name__ + ": check the configuration"
                 self.engine.log("MQTT: " + self.mqtt_status, "error")
 
-    def save_spotify_token(self, token):
-        """Persist a rotated refresh token (the only Spotify secret that is stored)."""
-        self.engine.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token))
+    def save_spotify_token(self, token, old):
+        """Persist a rotated refresh token (the only Spotify secret that is stored), unless it was changed meanwhile (e.g. Disconnect)."""
+        def apply(data):
+            spotify = data.setdefault("integrations", {}).setdefault("spotify", {})
+            if spotify.get("refresh_token") == old:
+                spotify["refresh_token"] = token
+        self.engine.store.change(apply)
 
     def start_api(self, config):
         bridge = self

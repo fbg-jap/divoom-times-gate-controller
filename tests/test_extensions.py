@@ -116,7 +116,7 @@ class NewContentTests(FixtureCase):
 
     def test_all_extra_widgets_render_without_external_sources(self):
         r = Renderer(demo=True)
-        for kind in ("music", "rss", "custom", "pomodoro", "sensor", "prtg"):
+        for kind in ("music", "rss", "custom", "pomodoro", "sensor", "prtg", "mail", "spotify"):
             image = r.render(slot(kind, url="https://example.test"))
             self.assertEqual(image.size, (128, 128))
         with self.assertRaises(ValueError):
@@ -138,7 +138,7 @@ class PrtgTests(unittest.TestCase):
 
     def test_counts_worst_sensor_and_request_shape(self):
         p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
-        data = p.prtg("https://prtg.test/", "TOKEN", False)
+        data = p.prtg_fetch("https://prtg.test/", "TOKEN", False)
         self.assertEqual({k: data[k] for k in ("up", "warning", "down", "paused", "unusual")}, dict(up=1, warning=1, down=1, paused=1, unusual=1))
         self.assertEqual(data["worst"], "d · http")
         args, kwargs = p.session.get.call_args
@@ -150,32 +150,84 @@ class PrtgTests(unittest.TestCase):
     def test_worst_ordering_warning_over_unusual(self):
         p = Providers(); sensors = [{"device": "u", "sensor": "1", "status_raw": 10}, {"device": "w", "sensor": "2", "status_raw": 4}]
         p.session.get = Mock(return_value=self.reply({"sensors": sensors}))
-        self.assertEqual(p.prtg("http://x.test", "t")["worst"], "w · 2")
+        self.assertEqual(p.prtg_fetch("http://x.test", "t")["worst"], "w · 2")
 
-    def test_failure_is_negative_cached_and_default_verifies_tls(self):
+    def test_failures_raise_and_the_sampler_does_not_retry_every_frame(self):
         p = Providers(); p.session.get = Mock(return_value=self.reply({}, 500))
-        self.assertIsNone(p.prtg("http://x.test", "t")); self.assertIsNone(p.prtg("http://x.test", "t"))
-        self.assertEqual(p.session.get.call_count, 1); self.assertIs(p.session.get.call_args.kwargs["verify"], True)
+        with self.assertRaises(requests.HTTPError):
+            p.prtg_fetch("http://x.test", "t")
+        self.assertIs(p.session.get.call_args.kwargs["verify"], True)  # TLS verification is the default
         p.session.get = Mock(return_value=self.reply({"unexpected": 1}))
-        self.assertIsNone(p.prtg("http://y.test", "t"))
+        with self.assertRaises(KeyError):
+            p.prtg_fetch("http://y.test", "t")
+        p = Providers(); p.session.get = Mock(return_value=self.reply({}, 500))
+        p.extra.prtg_conf = {"enabled": True, "base_url": "http://x.test", "token": "SECRET-TOKEN", "verify_tls": True}
+        self.wait_for(p.extra, lambda: p.extra.prtg_state()[1] not in ("", "Waiting for first reading"))
+        for _ in range(5):
+            data, error = p.extra.prtg_state()
+        self.assertEqual((data, error), (None, "PRTG request failed"))  # the token-bearing URL never reaches the error text
+        self.assertEqual(p.session.get.call_count, 1)
 
     def test_oversized_and_unconfigured(self):
         p = Providers(); response = self.reply({}); response.iter_content = lambda size: iter([b"x" * (2 * 1024**2 + 1)])
         p.session.get = Mock(return_value=response)
-        self.assertIsNone(p.prtg("http://x.test", "t"))
-        p.session.get.reset_mock(); self.assertIsNone(p.prtg("", "t")); self.assertIsNone(p.prtg("http://x.test", ""))
+        with self.assertRaises(ValueError):
+            p.prtg_fetch("http://x.test", "t")
+        p.session.get.reset_mock()
+        for conf in ({"enabled": True, "base_url": "", "token": "t"}, {"enabled": True, "base_url": "http://x.test", "token": ""},
+                     {"enabled": False, "base_url": "http://x.test", "token": "t"}):
+            p.extra.prtg_conf = conf
+            self.assertEqual(p.extra.prtg_state(), (None, "not configured"))
         p.session.get.assert_not_called()
+
+    @staticmethod
+    def wait_for(extra, ready):
+        for _ in range(300):
+            if ready():
+                return
+            time.sleep(.01)
+        raise AssertionError("sampler did not finish")
 
     def test_render_states_and_validation(self):
         p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
         from keeper.extensions import render_extra
         self.assertIsNone(p.extra.prtg())  # disabled
         p.extra.prtg_conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
+        self.assertIsNone(p.extra.prtg())  # first sample still pending
+        self.assertEqual(render_extra(slot("prtg"), p).size, (128, 128))
+        self.wait_for(p.extra, lambda: p.extra.prtg() is not None)
         self.assertEqual(p.extra.prtg()["down"], 1)
         self.assertEqual(render_extra(slot("prtg"), p).size, (128, 128))
         p.extra.prtg_conf = {}
         self.assertEqual(render_extra(slot("prtg"), p).size, (128, 128))
         validate_content(slot("prtg"))
+
+    def test_render_never_calls_the_network_on_the_calling_thread(self):
+        from keeper.extensions import render_extra
+        p = Providers(); gate = threading.Event(); threads = []
+        def fetch(base, token, verify):
+            threads.append(threading.current_thread()); gate.wait(2)
+            return {"up": 1, "warning": 0, "down": 0, "paused": 0, "unusual": 0, "worst": ""}
+        p.prtg_fetch = fetch
+        p.extra.prtg_conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
+        started = time.monotonic()
+        render_extra(slot("prtg"), p); render_extra(slot("prtg"), p)  # fetch is blocked: render must still return at once
+        self.assertLess(time.monotonic() - started, 1)
+        self.wait_for(p.extra, lambda: threads)
+        self.assertNotIn(threading.current_thread(), threads)
+        self.assertEqual(len(threads), 1)  # single flight
+        gate.set()
+        self.wait_for(p.extra, lambda: p.extra.prtg() is not None)
+
+    def test_sampler_rebuilt_only_when_the_connection_changes(self):
+        p = Providers(); p.session.get = Mock(return_value=self.reply(self.SENSORS))
+        conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
+        p.extra.prtg_conf = dict(conf); p.extra.prtg_state(); first = p.extra.prtg_probe
+        p.extra.prtg_conf = {**conf, "enabled": True}; p.extra.prtg_state()
+        self.assertIs(p.extra.prtg_probe, first)
+        p.extra.prtg_conf = {**conf, "verify_tls": False}; p.extra.prtg_state()
+        self.assertIsNot(p.extra.prtg_probe, first)
+        self.assertEqual((p.extra.prtg_probe.interval, p.extra.prtg_probe.stale), (30, 120))
 
 
 class FakeImap:

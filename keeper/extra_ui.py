@@ -306,7 +306,7 @@ class IntegrationPanel(QWidget):
             w = QLineEdit(value); w.setEchoMode(QLineEdit.EchoMode.Password); return w
         page = QWidget(); form = QFormLayout(page)
         self.sp_on = QCheckBox(t("Activar Spotify", "Enable Spotify")); self.sp_on.setChecked(spotify["enabled"])
-        self.sp_client = QLineEdit(spotify["client_id"]); self.sp_token = spotify["refresh_token"]
+        self.sp_client = QLineEdit(spotify["client_id"]); self.sp_token = spotify["refresh_token"]; self.sp_dirty = False
         self.sp_status = QLabel()
         form.addRow(self.sp_on); form.addRow("Client ID", self.sp_client); form.addRow(self.sp_status)
         self.sp_connect = btn(t("Conectar Spotify", "Connect Spotify"), self.spotify_connect)
@@ -386,7 +386,7 @@ class IntegrationPanel(QWidget):
             self.sp_status.setText(self.window.t("Estado: error · ", "Status: failed · ") + job["error"])
 
     def spotify_store(self, token):
-        self.sp_token = token
+        self.sp_token, self.sp_dirty = token, True
         try:
             self.window.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token, client_id=self.sp_client.text().strip()))
         except Exception as error:
@@ -408,7 +408,12 @@ class IntegrationPanel(QWidget):
                   "api": {"enabled": self.api_on.isChecked(), "host": "0.0.0.0" if self.api_lan.isChecked() else "127.0.0.1", "port": self.api_port.value(), "token": self.token.text().strip()},
                   "mqtt": {"enabled": self.mqtt_on.isChecked(), "host": self.mqtt_host.text().strip(), "port": self.mqtt_port.value(), "prefix": self.mqtt_prefix.text().strip(), "username": self.user.text(), "password": self.password.text(), "tls": self.tls.isChecked()}}
         try:
-            self.window.store.change(lambda data: data.update(integrations=config))
+            def apply(data):
+                if not self.sp_dirty:  # SpotifySource may have rotated the token since this panel loaded it
+                    config["spotify"]["refresh_token"] = data.get("integrations", {}).get("spotify", {}).get("refresh_token", self.sp_token)
+                data.update(integrations=config)
+            self.window.store.change(apply)
+            self.sp_dirty, self.sp_token = False, config["spotify"]["refresh_token"]
             self.window.toast("Integrations saved")
         except Exception as error:
             QMessageBox.warning(self, "Integrations", str(error))
@@ -429,7 +434,7 @@ class IntegrationPanel(QWidget):
         self.user.setText(mqtt.get("username", "")); self.password.setText(mqtt.get("password", ""))
         self.tls.setChecked(mqtt.get("tls", False)); self.hardware.setChecked(data.get("hardware", False))
         sp, pr, ml, nt = ({**defaults()["integrations"][k], **data.get(k, {})} for k in ("spotify", "prtg", "mail", "notifications"))
-        self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_token = sp["refresh_token"]; self.refresh_spotify_status()
+        self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_token, self.sp_dirty = sp["refresh_token"], False; self.refresh_spotify_status()
         self.prtg_on.setChecked(pr["enabled"]); self.prtg_url.setText(pr["base_url"]); self.prtg_token.setText(pr["token"]); self.prtg_tls.setChecked(pr["verify_tls"])
         self.mail_on.setChecked(ml["enabled"]); self.mail_host.setText(ml["host"]); self.mail_port.setValue(ml["port"]); self.mail_user.setText(ml["user"])
         self.mail_password.setText(ml["password"]); self.mail_box.setText(ml["mailbox"]); self.mail_subject.setChecked(ml["show_subject"])

@@ -38,6 +38,8 @@ AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 NOW_PLAYING_URL = "https://api.spotify.com/v1/me/player/currently-playing"
 SCOPES = "user-read-currently-playing user-read-playback-state"
+FORBIDDEN = "forbidden — add this account in the Spotify app's User Management (development mode)"
+FORBIDDEN_BACKOFF = 300
 ART_LIMIT = 1024 * 1024
 TIMEOUT = 8
 
@@ -217,15 +219,17 @@ class SpotifySource:
         self.clock = clock
         self.access_token, self.expires = "", 0.0
         self.blocked_until, self.last = 0.0, None
+        self.dead, self.forbidden = False, False  # `dead`: refresh token rejected; only a rebuilt source (new token) clears it
         self.art_url, self.art = "", ""
 
     def _refresh(self):
         data = refresh_access_token(self.session, self.client_id, self.refresh_token)
         self.access_token, self.expires = data["access_token"], self.clock() + data["expires_in"] - 60
         if data["refresh_token"] and data["refresh_token"] != self.refresh_token:
+            old = self.refresh_token
             self.refresh_token = data["refresh_token"]
             if self.on_refresh_token:
-                self.on_refresh_token(self.refresh_token)
+                self.on_refresh_token(self.refresh_token, old)
 
     def _art(self, url):
         if url != self.art_url:  # one image per track, fetched once; only the current one is kept
@@ -235,8 +239,12 @@ class SpotifySource:
 
     def poll(self):
         """{"idle": True} when nothing plays, else the track dict plus "art" (base64) and "sampled"."""
+        if self.dead:
+            raise SpotifyAuthError("reconnect")  # no network call until the user reconnects
         now = self.clock()
         if now < self.blocked_until:
+            if self.forbidden:
+                raise SpotifyAuthError(FORBIDDEN)
             if self.last is None:
                 raise SpotifyRateLimited(int(self.blocked_until - now) + 1)
             return self.last
@@ -251,13 +259,19 @@ class SpotifySource:
                 self._refresh()  # once; a second 401 propagates as "expired" and means reconnect
                 track = fetch_now_playing(self.session, self.access_token)
         except SpotifyRateLimited as error:
-            self.blocked_until = self.clock() + error.retry_after
+            self.blocked_until, self.forbidden = self.clock() + error.retry_after, False
             if self.last is None:
                 raise
             return self.last
-        except SpotifyAuthError:
+        except SpotifyAuthError as error:
+            if str(error) == "forbidden":  # the token itself is fine; the account is not allowed
+                self.forbidden, self.blocked_until = True, self.clock() + FORBIDDEN_BACKOFF
+                raise SpotifyAuthError(FORBIDDEN) from None
             self.access_token = ""
-            raise SpotifyAuthError("reconnect") from None
+            if str(error) == "expired" or re.search(r"HTTP 4\d\d", str(error)):
+                self.dead = True
+                raise SpotifyAuthError("reconnect") from None
+            raise SpotifyError("cannot refresh the Spotify token") from None  # 5xx: transient, retried at the normal pace
         if track is None:
             self.last = {"idle": True}
         else:

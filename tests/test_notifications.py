@@ -1,6 +1,8 @@
+import json
 import queue
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -202,6 +204,49 @@ class BridgeIntegrationTests(unittest.TestCase):
         engine.store = type("S", (), {"snapshot": lambda self: {"devices": [], "scenes": []}})()
         bridge = Bridge(engine)
         self.assertEqual(bridge.status()["notifications"], "Disabled")
+
+    def bridge(self):
+        from keeper.integrations import Bridge
+        engine = FakeEngine(); engine.demo = False
+        engine.renderer = SimpleNamespace(providers=SimpleNamespace(extra=SimpleNamespace()))
+        bridge = Bridge(engine)
+        self.addCleanup(bridge.notifications.close)
+        return bridge
+
+    def test_only_api_and_mqtt_edits_restart_the_bridge(self):
+        bridge = self.bridge()
+        base = {"integrations": {"api": {"enabled": False}, "mqtt": {"enabled": False}, "prtg": {"enabled": False},
+                                 "mail": {}, "spotify": {}, "notifications": {"enabled": False}}}
+        def edited(section, **values):
+            copy_ = json.loads(json.dumps(base)); copy_["integrations"][section].update(values); return copy_
+        with patch.object(bridge, "close", wraps=bridge.close) as close:
+            bridge.configure(base); self.assertEqual(close.call_count, 1)
+            for change in (edited("prtg", token="t"), edited("mail", host="h"), edited("spotify", refresh_token="r"),
+                           edited("notifications", enabled=True, seconds=9)):
+                bridge.configure(change)
+            self.assertEqual(close.call_count, 1)
+            bridge.configure(edited("api", port=9999)); self.assertEqual(close.call_count, 2)
+            bridge.configure(edited("api", port=9999)); self.assertEqual(close.call_count, 2)
+            bridge.configure(edited("mqtt", host="broker")); self.assertEqual(close.call_count, 3)
+
+    def test_notification_service_still_sees_its_own_config_changes(self):
+        bridge = self.bridge()
+        with patch.object(bridge.notifications, "start") as start:
+            bridge.tick(data(enabled=False), 1.)
+            start.assert_not_called()
+            bridge.tick(data(panel=4), 2.)  # same api/mqtt signature, new notification settings
+            start.assert_called_once()
+            self.assertEqual(bridge.notifications.config["panel"], 4)
+
+    def test_rotated_token_is_saved_only_if_it_replaces_the_stored_one(self):
+        bridge = self.bridge()
+        stored = {"integrations": {"spotify": {"refresh_token": "T0"}}}
+        bridge.engine.store = SimpleNamespace(change=lambda callback: callback(stored))
+        bridge.save_spotify_token("T1", "T0")
+        self.assertEqual(stored["integrations"]["spotify"]["refresh_token"], "T1")
+        stored["integrations"]["spotify"]["refresh_token"] = ""  # Disconnect while a refresh was in flight
+        bridge.save_spotify_token("T2", "T1")
+        self.assertEqual(stored["integrations"]["spotify"]["refresh_token"], "")
 
 
 if __name__ == "__main__":

@@ -78,7 +78,10 @@ def linux_startup(enabled, config_root):
             raise ValueError("Invalid autostart path")
         return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%') + '"'
     # Inside an AppImage sys.executable is a temporary mount; relaunch the AppImage file itself.
-    appimage = os.getenv("APPIMAGE")
+    # APPIMAGE is inherited by child processes, so trust it only when this very process is the frozen binary inside that AppDir.
+    appdir = os.environ.get("APPDIR", "")
+    appimage = os.getenv("APPIMAGE") if (getattr(sys, "frozen", False) and appdir
+                                         and Path(sys.executable).resolve().is_relative_to(Path(appdir).resolve())) else None
     args = [appimage] if appimage else [sys.executable]
     if not appimage and not getattr(sys, "frozen", False):
         args.append(str(Path(__file__).resolve().parents[1] / "app.py"))

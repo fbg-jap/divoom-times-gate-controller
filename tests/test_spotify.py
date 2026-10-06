@@ -150,7 +150,7 @@ class SourceTests(unittest.TestCase):
         self.saved = []
 
     def source(self, session):
-        return spotify.SpotifySource("cid", "R0", self.saved.append, session, lambda: self.now[0])
+        return spotify.SpotifySource("cid", "R0", lambda new, old: self.saved.append(new), session, lambda: self.now[0])
 
     def test_refreshes_once_on_401_then_succeeds(self):
         session = FakeSession(token=[token("A1"), token("A2", refresh="R1")], playing=[FakeResponse(401), track()],
@@ -175,6 +175,36 @@ class SourceTests(unittest.TestCase):
             self.source(session).poll()
         self.assertEqual(str(caught.exception), "reconnect")
         self.assertNotIn("R0", str(caught.exception))
+
+    def test_dead_token_makes_one_token_request_then_no_network(self):
+        session = FakeSession(token=[FakeResponse(400, {"error": "invalid_grant"})])
+        source = self.source(session)
+        for _ in range(5):
+            with self.assertRaises(spotify.SpotifyAuthError) as caught:
+                source.poll()
+            self.assertEqual(str(caught.exception), "reconnect")
+            self.now[0] += 5
+        self.assertEqual(len(session.calls), 1)
+
+    def test_token_server_outage_is_not_a_dead_token(self):
+        session = FakeSession(token=[FakeResponse(503), token()], playing=[FakeResponse(204)])
+        source = self.source(session)
+        with self.assertRaises(spotify.SpotifyError) as caught:
+            source.poll()
+        self.assertNotIsInstance(caught.exception, spotify.SpotifyAuthError)
+        self.assertEqual(source.poll(), {"idle": True})
+
+    def test_forbidden_backs_off_for_five_minutes(self):
+        session = FakeSession(token=[token()], playing=[FakeResponse(403), FakeResponse(204)])
+        source = self.source(session)
+        for _ in range(3):
+            with self.assertRaises(spotify.SpotifyAuthError) as caught:
+                source.poll()
+            self.assertIn("User Management", str(caught.exception))
+            self.now[0] += 5
+        self.assertEqual(len(session.calls), 2)  # one token request, one now-playing request
+        self.now[0] += 300
+        self.assertEqual(source.poll(), {"idle": True})
 
     def test_token_reused_until_expiry_and_204_is_idle(self):
         session = FakeSession(token=[token("A1", expires=3600), token("A2")], playing=[FakeResponse(204), FakeResponse(204), FakeResponse(204)])
@@ -394,6 +424,22 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/api/spotify/callback?code=CODE&state={state}").status_code, 400)  # reused
         self.assertNotIn("PORTAL-REFRESH", ok.text)
 
+    def test_stale_editor_cannot_overwrite_a_rotated_refresh_token(self):
+        store = self.app.state.store
+        store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T0"))
+        state = self.client.get("/api/state", headers=self.auth).json()
+        store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T1"))  # SpotifySource rotated it
+        state["config"]["integrations"]["prtg"]["enabled"] = False
+        response = self.client.put("/api/config", json=state, headers=self.auth)
+        key = response.json()["job"]
+        for _ in range(300):
+            job = self.client.get("/api/jobs/" + key, headers=self.auth).json()
+            if job["status"] in {"done", "error"}:
+                break
+            time.sleep(.02)
+        self.assertEqual(job["status"], "error")
+        self.assertEqual(store.snapshot()["integrations"]["spotify"]["refresh_token"], "T1")
+
     def test_unknown_and_expired_state_rejected(self):
         self.assertEqual(self.client.get("/api/spotify/callback?code=c&state=never-issued").status_code, 400)
         self.assertEqual(self.client.get("/api/spotify/callback?code=c").status_code, 400)
@@ -486,6 +532,28 @@ class WidgetTests(unittest.TestCase):
         extra.spotify_conf = {"enabled": True, "client_id": "c", "refresh_token": "reconnected"}
         extra.spotify_state()
         self.assertIsNot(extra.spotify_source, first)
+
+    def test_new_token_rebuilds_a_dead_source_and_works(self):
+        sessions = [FakeSession(token=[FakeResponse(400, {"error": "invalid_grant"})]), FakeSession(token=[token()], playing=[FakeResponse(204)])]
+        extra = Providers().extra
+        extra.spotify_conf = {"enabled": True, "client_id": "c", "refresh_token": "old"}
+        with unittest.mock.patch("keeper.spotify.requests.Session", lambda: sessions.pop(0)):
+            for _ in range(300):
+                if extra.spotify_state()[1] == "reconnect":
+                    break
+                time.sleep(.01)
+            self.assertTrue(extra.spotify_source.dead)
+            dead = extra.spotify_source
+            extra.spotify_state()
+            self.assertIs(extra.spotify_source, dead)  # same token: stays dead
+            extra.spotify_conf = {"enabled": True, "client_id": "c", "refresh_token": "new"}
+            for _ in range(300):
+                data, _ = extra.spotify_state()
+                if data is not None:
+                    break
+                time.sleep(.01)
+        self.assertIsNot(extra.spotify_source, dead)
+        self.assertEqual(data, {"idle": True})
 
     def test_playing_render_with_art_and_demo(self):
         providers = Providers(demo=True)

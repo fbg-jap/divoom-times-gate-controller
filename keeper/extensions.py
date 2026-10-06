@@ -166,7 +166,7 @@ class ExtraSources:
         self.mqtt_values = {}
         self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
-        self.prtg_conf = {}
+        self.prtg_conf, self.prtg_key, self.prtg_probe = {}, None, None
         self.mail_conf, self.mail_key, self.mail_probe = {}, None, None
         self.spotify_conf, self.spotify_save, self.spotify_source, self.spotify_probe = {}, None, None, None
 
@@ -208,12 +208,28 @@ class ExtraSources:
                 return None
         return value if isinstance(value, (str, int, float)) else None
 
-    def prtg(self):
-        """Status counts from integrations.prtg, or None (not configured/unreachable)."""
+    def prtg_state(self):
+        """(data, error): data is the status counts or None; error is "", "not configured" or a short reason. Never blocks."""
         conf = self.prtg_conf or {}
-        if not self.providers.demo and not conf.get("enabled"):
-            return None
-        return self.providers.prtg(conf.get("base_url", ""), conf.get("token", ""), conf.get("verify_tls", True))
+        if self.providers.demo:
+            return {"up": 118, "warning": 3, "down": 1, "paused": 4, "unusual": 0, "worst": "web-01 · HTTP"}, ""
+        if not conf.get("enabled") or not conf.get("base_url") or not conf.get("token"):
+            return None, "not configured"
+        key = (conf["base_url"], conf["token"], conf.get("verify_tls", True))
+        if key != self.prtg_key:
+            from .windows_sources import AsyncProbe
+            def sample():
+                try:
+                    return self.providers.prtg_fetch(*key)
+                except Exception:
+                    raise RuntimeError("PRTG request failed") from None  # the original message can carry the URL with the token
+            self.prtg_key, self.prtg_probe = key, AsyncProbe(sample, 30, 120)
+        value, error = self.prtg_probe.read()
+        return value, error or ""
+
+    def prtg(self):
+        """Status counts from integrations.prtg, or None (not configured/unreachable/not sampled yet)."""
+        return self.prtg_state()[0]
 
     def mail_state(self):
         """(data, error): data is {"unread","subject"} or None; error is "" or a short reason."""
@@ -398,9 +414,11 @@ def render_extra(s, providers):
         lines(text[:60], 42, 25, 2)
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
     elif kind == "prtg":
-        data = extra.prtg()
+        data, error = extra.prtg_state()
         lines(s.get("title") or "PRTG", 7, 11, 1, accent)
-        if data is None:
+        if data is None and error.startswith("Waiting"):
+            lines("Connecting…", 40, 13, 2, "#9aa4b5")
+        elif data is None:
             lines("Source unavailable", 40, 13, 3, "#ff6b6b")
         else:
             face = font(22, True)

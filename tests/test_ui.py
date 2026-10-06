@@ -222,6 +222,26 @@ class UiTests(unittest.TestCase):
         self.window.automation_panel.control("start"); self.drain()
         self.assertTrue(self.engine.automations.pomodoro.running)
 
+    def test_saving_integrations_keeps_a_token_rotated_since_the_panel_loaded(self):
+        panel = self.window.integration_panel
+        self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T0"))
+        panel.reload()
+        self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T1"))  # SpotifySource rotated it
+        panel.prtg_on.setChecked(True)  # unrelated edit
+        panel.save()
+        saved = self.store.snapshot()["integrations"]
+        self.assertEqual(saved["spotify"]["refresh_token"], "T1")
+        self.assertTrue(saved["prtg"]["enabled"])
+        panel.spotify_store("T2")  # connect replaces it
+        panel.save()
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "T2")
+        panel.spotify_disconnect()
+        panel.save()
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "")
+        self.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="T3"))  # rotated after the disconnect was saved
+        panel.save()
+        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], "T3")
+
     def test_edit_widget_save_and_send(self):
         self.window.text_content.setPlainText("Hello world")
         self.window.save_send()
