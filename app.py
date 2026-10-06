@@ -16,8 +16,14 @@ def main():
     parser.add_argument("--config-dir", type=Path)
     parser.add_argument("--minimized", action="store_true")
     parser.add_argument("--no-tray", action="store_true")
+    parser.add_argument("--ui", choices=("web", "qt"), default="qt", help="web: browser UI served on 127.0.0.1 (no Qt)")
+    parser.add_argument("--port", type=int, help="Local port for --ui web (default 8765, KEEPER_SHELL_PORT)")
+    parser.add_argument("--print-launch-url", action="store_true", help="DEBUG ONLY (--ui web): print the one-time login URL")
     parser.add_argument("--screenshot-dir", type=Path, help="Render all pages in isolated demo mode and exit")
     args = parser.parse_args()
+    if args.ui == "web":
+        from keeper import shell
+        return shell.run(args)
     if args.screenshot_dir:
         args.demo = True
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

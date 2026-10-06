@@ -1,6 +1,6 @@
 import "./style.css";
 import {t,lazy} from "./i18n.js";
-import {init,native,token,request} from "./api.js";
+import {init,native,token,request,redeemLaunch} from "./api.js";
 import {ctx} from "./ctx.js";
 import {$,app,el,button,row,banner,hint,run,field,load,save,deviceOptions,preview,d} from "./ui.js";
 import {screenPage} from "./pages/screens.js";
@@ -161,6 +161,7 @@ function login() {
 }
 run(async () => {
   await init();
+  await redeemLaunch(location.hash);
   try {
     await load();
     render();
@@ -179,10 +180,17 @@ setInterval(async () => {
     if ($("#pomodoro-state")) $("#pomodoro-state").textContent = pomoText();
   } catch {}
 }, 3000);
-setInterval(() => {
+function previewTick() {
   if (ctx.state && ctx.page === "screens" && !ctx.dirty) {
     document
       .querySelectorAll(".panels img")
       .forEach((img, panel) => preview(img, d().id, panel));
   }
-}, 10000);
+}
+let previewTicks = 0;
+// Desktop shell: refresh previews every 3 s while the window has focus, otherwise every 10 s.
+setInterval(() => {
+  previewTicks++;
+  const every = ctx.state?.desktop && document.hasFocus() ? 3 : 10;
+  if (previewTicks % every === 0) previewTick();
+}, 1000);

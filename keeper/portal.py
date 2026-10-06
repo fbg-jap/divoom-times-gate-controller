@@ -21,6 +21,7 @@ import time
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from filelock import FileLock
 from PIL import Image, ImageOps
 
@@ -32,6 +33,7 @@ from .panorama_media import decode_clip, VIDEO_EXTENSIONS, rgb
 from .protocol import valid_ip
 from . import spotify
 from .widgets import png_bytes
+from . import platform_support
 
 MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ics"}
 LIMIT = 100 * 1024**2
@@ -102,6 +104,61 @@ class PortalEngine(Engine):
             self.log(str(error), "error")
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+
+
+def host_name(header):
+    """Hostname of a Host header without its port ('' when malformed)."""
+    header = (header or "").strip().lower()
+    if header.startswith("["):
+        end = header.find("]")
+        return header[:end + 1] if end > 0 and header[end + 1:end + 2] in ("", ":") else ""
+    return header.split(":", 1)[0]
+
+
+class LaunchCodes:
+    """Short-lived single-use codes that let the local shell hand the admin token to a browser it opens.
+
+    Codes are only ever created in-process (`issue()`); there is deliberately no HTTP route that creates them.
+    """
+
+    def __init__(self, clock=time.monotonic, ttl=60, limit=8, max_failures=10, window=60):
+        self.clock, self.ttl, self.limit, self.max_failures, self.window = clock, ttl, limit, max_failures, window
+        self.codes, self.failures = {}, deque()
+        self.lock = threading.Lock()
+
+    def issue(self):
+        code = secrets.token_urlsafe(24)
+        with self.lock:
+            now = self.clock()
+            for old in [c for c, expires in self.codes.items() if expires <= now]:
+                del self.codes[old]
+            while len(self.codes) >= self.limit:
+                del self.codes[next(iter(self.codes))]
+            self.codes[code] = now + self.ttl
+        return code
+
+    def limited(self):
+        with self.lock:
+            now = self.clock()
+            while self.failures and now - self.failures[0] > self.window:
+                self.failures.popleft()
+            return len(self.failures) >= self.max_failures
+
+    def redeem(self, code):
+        with self.lock:
+            now = self.clock()
+            match = None
+            for stored in self.codes:
+                if hmac.compare_digest(stored.encode(), code.encode()):
+                    match = stored
+            expires = self.codes.pop(match, None) if match is not None else None
+            if expires is None or expires <= now:
+                self.failures.append(now)
+                return False
+            return True
+
+
 def validate_portal(data, media_dir):
     validate(data)
     if len(data["devices"]) > 30 or len(data["scenes"]) > 200 or len(data["schedules"]) > 200:
@@ -122,7 +179,7 @@ def validate_portal(data, media_dir):
                     raise ValueError("Use a file uploaded to this server's library")
 
 
-def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None):
+def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None, shell_mode=False, clock=time.monotonic):
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     lock = FileLock(root / "server.lock", timeout=0)
@@ -161,12 +218,21 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     pending_spotify = spotify.PendingAuth()
     app.state.spotify_pending = pending_spotify
     app.state.spotify_session = spotify.requests.Session
+    app.state.launch_codes = LaunchCodes(clock)
+    app.state.quit_event = threading.Event()
+    app.state.open_external = platform_support.open_external
+    extra_hosts = {h.strip().lower() for h in os.getenv("KEEPER_HOSTS", "").split(",") if h.strip()}
 
     @app.middleware("http")
     async def security(request, call_next):
         # The browser returns from accounts.spotify.com without the Bearer header. Only this exact GET is exempt, and the
         # handler itself requires a single-use `state` that an authenticated /api/spotify/connect call issued.
+        if shell_mode and host_name(request.headers.get("host")) not in LOOPBACK_HOSTS | extra_hosts:
+            # DNS rebinding: a page on another origin must not reach the local server under its own hostname.
+            return JSONResponse({"error": "Host not allowed"}, status_code=421)
         public = request.method == "GET" and request.url.path == "/api/spotify/callback"
+        # The shell exchanges its single-use launch code for the token here; exact POST match only.
+        public = public or (shell_mode and request.method == "POST" and request.url.path == "/api/launch")
         if request.url.path.startswith("/api/") and not public:
             supplied = request.headers.get("authorization", "")
             if not hmac.compare_digest(supplied.encode(), ("Bearer " + token).encode()):
@@ -262,12 +328,57 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             return page(502, "Could not connect to Spotify: " + spotify.redact(str(error), query["code"], verifier))
         return page(200, "Spotify connected. You can close this tab and reload Keeper.")
 
+    if shell_mode:
+        @app.post("/api/launch")
+        async def launch(request: Request):
+            denied = JSONResponse({"error": "Invalid or expired launch code"}, status_code=401)
+            if host_name(request.headers.get("host")) not in LOOPBACK_HOSTS:
+                return denied
+            if app.state.launch_codes.limited():
+                return JSONResponse({"error": "Too many attempts"}, status_code=429)
+            try:
+                code = (await json_body(request)).get("code")
+            except (ValueError, HTTPException):
+                code = None
+            if not isinstance(code, str) or not app.state.launch_codes.redeem(code):
+                return denied
+            return {"token": token}
+
+        @app.get("/api/startup")
+        def get_startup():
+            return {"enabled": bool(store.snapshot().get("startup"))}
+
+        @app.post("/api/startup")
+        async def set_startup_route(request: Request):
+            enabled = (await json_body(request)).get("enabled")
+            if not isinstance(enabled, bool):
+                raise ValueError("enabled must be true or false")
+            from .startup import set_startup
+            try:
+                await asyncio.to_thread(set_startup, enabled, store.root)
+            except OSError as error:
+                raise ValueError("Could not change autostart: " + str(error))
+            await asyncio.to_thread(store.change, lambda d: d.update(startup=enabled))
+            return {"enabled": enabled}
+
+        @app.post("/api/open")
+        async def open_folder(request: Request):
+            what = (await json_body(request)).get("what")
+            targets = {"data": store.root, "library": store.media_dir}
+            if what not in targets:
+                raise ValueError("Unknown folder")
+            return {"opened": bool(await asyncio.to_thread(app.state.open_external, targets[what]))}
+
+        @app.post("/api/quit")
+        def quit_keeper():
+            return JSONResponse({"quitting": True}, background=BackgroundTask(app.state.quit_event.set))
+
     @app.get("/api/state")
     def state():
         data = store.snapshot()
         with engine.portal_lock:
             events = list(engine.activity)
-        return {"config": data, "revision": revision(data), "events": events, "version": __version__,
+        return {"config": data, "revision": revision(data), "events": events, "version": __version__, "desktop": shell_mode,
                 "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot()},
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,

@@ -93,4 +93,36 @@ export function backupPage(main) {
       ),
     ),
   );
+  if (ctx.state.desktop) main.append(desktopCard());
+}
+function desktopCard() {
+  const startup = el("input", { type: "checkbox", id: "desktop-startup", disabled: "" });
+  request("/startup").then((v) => { startup.checked = v.enabled; startup.disabled = false; }).catch(() => {});
+  startup.onchange = async () => {
+    try {
+      await request("/startup", "POST", { enabled: startup.checked });
+    } catch (e) {
+      startup.checked = !startup.checked;
+      toast(e.message, true);
+    }
+  };
+  const open = (what) => async () => {
+    const result = await request("/open", "POST", { what });
+    if (!result.opened) toast(t("ui.could_not_open_the_folder"), true);
+  };
+  return card(
+    t("ui.desktop"),
+    el("label", { class: "field check" }, startup, " " + t("ui.start_with_system")),
+    row(
+      button(t("ui.open_data_folder"), open("data")),
+      button(t("ui.open_media_library"), open("library")),
+      button(t("ui.quit_keeper"), async () => {
+        if (!confirm(t("ui.quit_keeper_confirm"))) return;
+        await request("/quit", "POST");
+        sessionStorage.removeItem("keeper-token");
+        ctx.state = null;
+        document.body.replaceChildren(el("p", { class: "hint", style: "padding:2rem" }, t("ui.keeper_has_stopped")));
+      }, "danger"),
+    ),
+  );
 }

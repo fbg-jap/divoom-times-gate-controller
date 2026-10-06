@@ -13,6 +13,28 @@ export function token(value) {
   if (value !== undefined) sessionStorage.setItem("keeper-token", value);
   return sessionStorage.getItem("keeper-token") || "";
 }
+export function launchCode(hash) {
+  const match = /^#launch=([A-Za-z0-9_-]{16,128})$/.exec(hash || "");
+  return match ? match[1] : "";
+}
+// Exchange a one-time launch code (put in the URL fragment by the desktop shell) for the access token.
+export async function redeemLaunch(hash) {
+  const code = launchCode(hash);
+  if (!code) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    const response = await fetch("/api/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!response.ok) return false;
+    token((await response.json()).token);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export async function request(path, method = "GET", data, binary = false) {
   if (adapter) return adapter.request(path, method, data, binary);
   const response = await fetch("/api" + path, {
