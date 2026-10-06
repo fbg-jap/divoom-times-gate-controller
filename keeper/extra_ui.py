@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QDialog, QVBoxLayout, QHBo
     QPushButton, QListWidget, QMessageBox, QDialogButtonBox)
 
 from .config import uid
-from .extensions import METRICS, validate_content
+from .extensions import METRICS, normalize_phase, validate_content
 from .content import assets
 from .widgets import http_url
 
@@ -242,7 +242,7 @@ class AutomationPanel(QWidget):
     def poll(self):
         data = self.window.engine.renderer.providers.extra.pomodoro
         seconds = max(0, int(data["remaining"]))
-        self.status.setText(f"{data['phase']} · {seconds//60:02}:{seconds%60:02} · cycle {data['cycle']} · {'Running' if data['running'] else 'Paused'}")
+        self.status.setText(f"{normalize_phase(data['phase'])} · {seconds//60:02}:{seconds%60:02} · cycle {data['cycle']} · {'Running' if data['running'] else 'Paused'}")
 
 
 class IntegrationPanel(QWidget):

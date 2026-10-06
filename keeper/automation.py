@@ -8,17 +8,24 @@ import time
 import psutil
 
 from .content import composition
-from .extensions import finite
+from .extensions import finite, normalize_phase
 
 
-PHASE_LABELS = {"Preparado": "Ready", "Trabajo": "Work", "Descanso": "Break", "Descanso largo": "Long break"}
 
 class Pomodoro:
     def __init__(self):
-        self.phase, self.remaining, self.total = "Preparado", 1500., 1500.
+        self.phase, self.remaining, self.total = "Ready", 1500., 1500.
         self.running, self.cycle, self.stamp = False, 0, time.monotonic()
         self.settings = {"work": 25, "rest": 5, "long_rest": 15, "cycles": 4}
         self.device_id, self.panel, self.buzzer = None, 0, False
+
+    def restore(self, state):
+        """Load a saved snapshot, migrating legacy Spanish phase names."""
+        self.phase = normalize_phase(state.get("phase", self.phase))
+        for key in ("remaining", "total", "running", "cycle"):
+            if key in state:
+                setattr(self, key, state[key])
+        self.stamp = time.monotonic()
 
     def snapshot(self):
         return {k: getattr(self, k) for k in ("phase", "remaining", "total", "running", "cycle")}
@@ -31,15 +38,15 @@ class Pomodoro:
             self.settings = settings
             self.device_id, self.panel = args["device_id"], int(args.get("panel", 0))
             self.buzzer = bool(args.get("buzzer"))
-            self.phase, self.cycle, self.running = "Trabajo", 1, True
+            self.phase, self.cycle, self.running = "Work", 1, True
             self.total = self.remaining = settings["work"] * 60
         elif operation == "pause":
             self.advance(time.monotonic())
             self.running = False
         elif operation == "resume":
-            self.running = self.phase != "Preparado"
+            self.running = self.phase != "Ready"
         elif operation == "reset":
-            self.running, self.phase, self.cycle = False, "Preparado", 0
+            self.running, self.phase, self.cycle = False, "Ready", 0
             self.total = self.remaining = self.settings["work"] * 60
         elif operation == "skip":
             self._next()
@@ -48,12 +55,12 @@ class Pomodoro:
         self.stamp = time.monotonic()
 
     def _next(self):
-        if self.phase == "Trabajo":
+        if self.phase == "Work":
             long = self.cycle % self.settings["cycles"] == 0
-            self.phase = "Descanso largo" if long else "Descanso"
+            self.phase = "Long break" if long else "Break"
             minutes = self.settings["long_rest" if long else "rest"]
         else:
-            self.phase, self.cycle = "Trabajo", self.cycle + 1
+            self.phase, self.cycle = "Work", self.cycle + 1
             minutes = self.settings["work"]
         self.total = self.remaining = minutes * 60
 
@@ -111,7 +118,7 @@ class Automations:
         self.engine.renderer.providers.extra.pomodoro = self.pomodoro.snapshot()
         self.engine.emit("pomodoro", **self.pomodoro.snapshot())
         if phase and self.pomodoro.device_id:
-            self.enqueue(self.pomodoro.device_id, self.pomodoro.panel, PHASE_LABELS.get(phase, phase), "POMODORO", buzzer=self.pomodoro.buzzer)
+            self.enqueue(self.pomodoro.device_id, self.pomodoro.panel, phase, "POMODORO", buzzer=self.pomodoro.buzzer)
         if now - self.last_check < 5:
             return
         self.last_check = now
