@@ -133,7 +133,7 @@ Privacy: notification text can be sensitive and the Times Gate is visible to any
 
 - It is **off by default**.
 - By default only the **app name and the summary** are sent to the screen; the message body is shown only if you enable *Show the message body*.
-- Use the **allowed apps** list to restrict it to chosen apps, and the **blocked apps** list to exclude apps (the blocked list wins; names are matched case-insensitively against the app name the notification reports).
+- Use the **allowed apps** list to restrict it to chosen apps, and the **blocked apps** list to exclude apps (the blocked list wins; names are matched case-insensitively against the app name the notification reports). These lists match the app name chosen by the sender, so they are not a security boundary, and notification summaries may contain one-time codes that would then be shown on the device.
 - At most *per minute* notices are shown; extra ones are dropped. Control characters and line breaks are removed; titles are cut at 80 and text at 500 characters.
 - Notices go to the active device, on the chosen screen (1-5), for the chosen number of seconds. Nothing is stored or sent anywhere else.
 

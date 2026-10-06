@@ -268,6 +268,41 @@ class LoopbackTests(unittest.TestCase):
         challenge = base64.urlsafe_b64encode(hashlib.sha256(payload["code_verifier"].encode()).digest()).decode().rstrip("=")
         self.assertEqual(challenge, self.seen["code_challenge"])
 
+    def test_stalled_local_connection_does_not_block_flow(self):
+        import socket
+        stalled = []
+        def behaviour(q):
+            stalled.append(socket.create_connection(("127.0.0.1", urlparse(q["redirect_uri"]).port), timeout=3))
+            return ["?code=C1&state=" + q["state"]]
+        session = FakeSession(token=[token("A", refresh="R")])
+        try:
+            started = time.monotonic()
+            with unittest.mock.patch.object(spotify._Callback, "timeout", 1):
+                self.assertEqual(spotify.connect_loopback("cid", self.opener(behaviour), session, timeout=20), "R")
+            self.assertLess(time.monotonic() - started, 15)
+        finally:
+            for s in stalled:
+                s.close()
+        self.assertEqual(spotify._Callback.timeout, 5)  # the production value
+
+    def test_stalled_connection_still_times_out_and_closes(self):
+        import socket
+        ports, stalled = [], []
+        def open_url(url):
+            port = int(urlparse(parse_qs(urlparse(url).query)["redirect_uri"][0]).port)
+            ports.append(port); stalled.append(socket.create_connection(("127.0.0.1", port), timeout=3))
+            return True
+        started = time.monotonic()
+        try:
+            with self.assertRaises(spotify.SpotifyError) as caught:
+                spotify.connect_loopback("cid", open_url, FakeSession(), timeout=1)
+        finally:
+            stalled[0].close()
+        self.assertIn("timed out", str(caught.exception))
+        self.assertLess(time.monotonic() - started, 12)
+        with socket.socket() as probe:
+            self.assertNotEqual(probe.connect_ex(("127.0.0.1", ports[0])), 0)
+
     def test_denied_by_user(self):
         with self.assertRaises(spotify.SpotifyError) as caught:
             spotify.connect_loopback("cid", self.opener(lambda q: ["?error=access_denied&state=" + q["state"]]), FakeSession(), timeout=10)
@@ -401,6 +436,16 @@ class WidgetTests(unittest.TestCase):
             self.assertEqual(providers.extra.spotify_state(), (None, "not connected"))
             self.assertEqual(self.image(providers).size, (128, 128))
         self.assertIsNone(providers.extra.spotify_probe)
+
+    def test_decompression_bomb_art_falls_back_to_no_art(self):
+        providers = Providers()
+        providers.extra.spotify_conf = {"enabled": True, "client_id": "c", "refresh_token": "r"}
+        data = {"title": "T", "artist": "A", "playing": True, "art": base64.b64encode(b"x").decode(),
+                "progress_ms": 1, "duration_ms": 10, "sampled": time.monotonic()}
+        for payload in (data, {**data, "art": base64.b64encode(b"y").decode()}):
+            with unittest.mock.patch.object(providers.extra, "spotify_state", return_value=(payload, "")), \
+                    unittest.mock.patch("keeper.extensions.Image.open", side_effect=Image.DecompressionBombError("bomb")):
+                self.assertEqual(self.image(providers).size, (128, 128))
 
     def test_lazy_start_and_states(self):
         providers = Providers()

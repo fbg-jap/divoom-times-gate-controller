@@ -40,7 +40,7 @@ def _subject(connection, message_id):
     for part in data:
         if isinstance(part, tuple) and len(part) > 1 and isinstance(part[1], (bytes, bytearray)):
             try:
-                value = email.parser.BytesHeaderParser(policy=email.policy.default).parsebytes(bytes(part[1])).get("Subject", "")
+                value = email.parser.BytesHeaderParser(policy=email.policy.default).parsebytes(bytes(part[1])[:4096]).get("Subject", "")
                 return _clean(value) or None
             except Exception:
                 return None

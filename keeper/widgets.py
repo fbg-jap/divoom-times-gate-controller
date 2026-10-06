@@ -91,7 +91,7 @@ class Providers:
 
         def fetch():
             with self.session.get(http_url(base_url).rstrip("/") + "/api/table.json", timeout=8, verify=verify,
-                                  stream=True, params={"content": "sensors", "count": 5000, "apitoken": token,
+                                  stream=True, allow_redirects=False, params={"content": "sensors", "count": 5000, "apitoken": token,
                                                        "columns": "objid,device,sensor,status_raw"}) as response:
                 response.raise_for_status()
                 chunks, size = [], 0

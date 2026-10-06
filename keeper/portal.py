@@ -130,8 +130,8 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     token = token or os.getenv("KEEPER_TOKEN")
     if not token:
         if not token_path.exists():
-            token_path.write_text(secrets.token_urlsafe(32), encoding="utf-8")
-            token_path.chmod(0o600)
+            with os.fdopen(os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as stream:
+                stream.write(secrets.token_urlsafe(32))
         token = token_path.read_text(encoding="utf-8").strip()
     if len(token) < 24:
         raise ValueError("KEEPER_TOKEN must be at least 24 characters")

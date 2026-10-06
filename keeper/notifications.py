@@ -26,8 +26,10 @@ class Unavailable(Exception):
 
 def clean(value, limit):
     """Strip control characters and newlines, collapse spaces, truncate."""
+    if not isinstance(value, str):
+        return ""
     text = "".join(" " if c in "\r\n\t" else ("" if unicodedata.category(c) in ("Cc", "Cf") else c)
-                   for c in str(value or ""))
+                   for c in value[:limit * 4])
     return " ".join(text.split())[:limit]
 
 
@@ -100,7 +102,7 @@ def linux_backend(stop):
             if message.header.fields.get(HeaderFields.member) != "Notify":
                 continue
             body = message.body
-            if len(body) >= 5:
+            if len(body) >= 5 and all(isinstance(body[i], str) for i in (0, 3, 4)):
                 yield body[0], body[3], body[4]   # app_name, summary, body
     finally:
         connection.close()
@@ -214,8 +216,10 @@ class NotificationService:
                 return False
             if not app_allowed(app, cfg.get("allow_apps"), cfg.get("deny_apps")):
                 return False
+            if not self.limiter.allow(cfg.get("per_minute", 6)):
+                return False
             shown = format_notification(app, summary, body, bool(cfg.get("show_body")))
-            if shown is None or not self.limiter.allow(cfg.get("per_minute", 6)):
+            if shown is None:
                 return False
             panel = min(max(int(cfg.get("panel", 1)), 1), 5) - 1
             seconds = min(max(int(cfg.get("seconds", 8)), 5), 60)

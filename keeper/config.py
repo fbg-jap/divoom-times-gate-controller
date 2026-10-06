@@ -104,7 +104,7 @@ class ConfigStore:
     def __init__(self, root: Path | None = None, migrate=True):
         from .platform_support import data_directory
         self.root = root or data_directory()
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.path = self.root / "config.json"
         self.media_dir = self.root / "media"
         self.media_dir.mkdir(exist_ok=True)
@@ -165,12 +165,9 @@ class ConfigStore:
         with self.lock:
             validate(self.data)
             temp = self.path.with_suffix(".tmp")
-            with temp.open("w", encoding="utf-8") as stream:
-                if sys.platform != "win32":
-                    try:
-                        os.chmod(temp, 0o600)  # holds integration secrets
-                    except OSError:
-                        pass
+            temp.unlink(missing_ok=True)  # a stale file could keep its old, looser mode
+            # Created 0600 from the start: the file holds integration secrets (mode is ignored on Windows).
+            with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as stream:
                 json.dump(self.data, stream, ensure_ascii=False, indent=2)
                 stream.flush()
                 os.fsync(stream.fileno())

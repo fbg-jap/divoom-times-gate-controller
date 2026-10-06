@@ -47,6 +47,13 @@ class PureFunctionTests(unittest.TestCase):
         self.assertEqual(clean("a\nb\r\tc\x00\x1b[d", 50), "a b c[d")
         self.assertEqual(len(clean("x" * 900, 500)), 500)
 
+    def test_clean_caps_input_and_ignores_non_strings(self):
+        started = time.monotonic()
+        self.assertEqual(len(nt.clean("a" * 50_000_000, 80)), 80)
+        self.assertLess(time.monotonic() - started, 1)
+        for value in (None, 123, b"abc", ["a"], {"a": 1}):
+            self.assertEqual(nt.clean(value, 80), "")
+
     def test_format_summary_only_by_default(self):
         self.assertEqual(format_notification("Mail", "New message", "secret body"), ("Mail", "New message"))
 
@@ -118,6 +125,15 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(service.handle("A", "2", ""))
         self.assertFalse(service.handle("A", "3", ""))
         self.assertEqual(len(engine.automations.calls), 2)
+
+    def test_limiter_is_consulted_before_formatting(self):
+        engine, service, _ = self.service()
+        service.device_id = "dev1"
+        service.config = data(per_minute=1)["integrations"]["notifications"]
+        self.assertTrue(service.handle("A", "1", ""))
+        with patch.object(nt, "format_notification") as fmt:
+            self.assertFalse(service.handle("A", "2", ""))
+            fmt.assert_not_called()
 
     def test_handle_never_raises(self):
         engine, service, _ = self.service()

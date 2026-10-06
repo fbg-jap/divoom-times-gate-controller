@@ -266,6 +266,8 @@ class SpotifySource:
 
 
 class _Callback(BaseHTTPRequestHandler):
+    timeout = 5  # a local client that connects and stalls must not block the flow's deadline
+
     def log_message(self, *args):
         pass
 

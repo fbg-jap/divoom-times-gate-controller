@@ -367,7 +367,7 @@ def render_extra(s, providers):
             try:
                 with Image.open(io.BytesIO(base64.b64decode(data["art"]))) as art:
                     image.paste(ImageOps.fit(art.convert("RGB"), (52, 52)), (8, 6))
-            except (ValueError, OSError):
+            except Exception:
                 pass
         if not data.get("art"):
             draw.ellipse((9, 7, 57, 55), outline=accent, width=2)
@@ -425,7 +425,7 @@ def render_extra(s, providers):
                 try:
                     with Image.open(io.BytesIO(base64.b64decode(data["art"]))) as art:
                         image.paste(ImageOps.fit(art.convert("RGB"), (52, 52)), (8, 22))
-                except (ValueError, OSError):
+                except Exception:
                     data = {**data, "art": ""}
             if not data.get("art"):
                 draw.ellipse((9, 23, 57, 71), outline=accent, width=2)

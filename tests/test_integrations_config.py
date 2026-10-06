@@ -6,6 +6,7 @@ import stat
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import zipfile
 
 from keeper.config import ConfigStore, defaults, validate
@@ -60,6 +61,32 @@ class IntegrationConfigTests(unittest.TestCase):
     def test_config_file_mode_0600(self):
         self.store.save()
         self.assertEqual(stat.S_IMODE(os.stat(self.store.path).st_mode), 0o600)
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX permissions")
+    def test_save_never_exposes_a_loose_temp_file(self):
+        temp = self.store.path.with_suffix(".tmp")
+        temp.write_text("stale")
+        os.chmod(temp, 0o666)
+        seen = []
+        real = os.replace
+        def spy(src, dst):
+            seen.append(stat.S_IMODE(os.stat(src).st_mode))
+            return real(src, dst)
+        with unittest.mock.patch("keeper.config.os.replace", spy):
+            self.store.save()
+        self.assertEqual(seen, [0o600])
+        self.assertEqual(stat.S_IMODE(os.stat(self.store.path).st_mode), 0o600)
+        self.assertFalse(temp.exists())
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX permissions")
+    def test_new_root_is_private_and_admin_token_is_0600(self):
+        from keeper.portal import create_app
+        with tempfile.TemporaryDirectory() as parent:
+            root = Path(parent) / "new" / "data"
+            ConfigStore(root, migrate=False)
+            self.assertEqual(stat.S_IMODE(os.stat(root).st_mode), 0o700)
+            create_app(root)
+            self.assertEqual(stat.S_IMODE(os.stat(root / "admin.token").st_mode), 0o600)
 
 
 if __name__ == "__main__":

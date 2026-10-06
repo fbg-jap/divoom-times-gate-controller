@@ -145,6 +145,7 @@ class PrtgTests(unittest.TestCase):
         self.assertEqual(args[0], "https://prtg.test/api/table.json")
         self.assertIs(kwargs["verify"], False); self.assertEqual(kwargs["timeout"], 8)
         self.assertEqual(kwargs["params"]["apitoken"], "TOKEN")
+        self.assertIs(kwargs["allow_redirects"], False)
 
     def test_worst_ordering_warning_over_unusual(self):
         p = Providers(); sensors = [{"device": "u", "sensor": "1", "status_raw": 10}, {"device": "w", "sensor": "2", "status_raw": 4}]
@@ -240,6 +241,13 @@ class MailTests(unittest.TestCase):
         long = FakeImap(header=b"Subject: " + b"a" * 300 + b"\r\n\r\n")
         self.assertEqual(len(self.run_fetch(long, show_subject=True)[0]["subject"]), 80)
         self.assertIsNone(self.run_fetch(FakeImap(unseen=0), show_subject=True)[0]["subject"])
+
+    def test_huge_subject_header_is_capped_before_parsing(self):
+        fake = FakeImap(header=b"Subject: " + b"a" * (4 * 1024 * 1024) + b"\r\n\r\n")
+        started = time.monotonic()
+        subject = self.run_fetch(fake, show_subject=True)[0]["subject"]
+        self.assertLess(time.monotonic() - started, 1)
+        self.assertLessEqual(len(subject), 80)
 
     def test_starttls_on_143_and_password_withheld_when_it_fails(self):
         fake = FakeImap()
