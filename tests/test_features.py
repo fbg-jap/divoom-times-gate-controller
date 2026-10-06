@@ -111,6 +111,11 @@ class PlaylistTests(FixtureCase):
         self.engine.tick()
         self.assertEqual(len(self.client.uploads), 1)
 
+    def test_update_fields_accepts_a_device_id_field(self):
+        self.store.update_fields(self.d["id"], name="Desk", device_id=300430547)
+        saved = self.store.get_device()
+        self.assertEqual((saved["name"], saved["device_id"]), ("Desk", 300430547))
+
     def test_notification_restores_active_item_then_restarts_dwell(self):
         self.engine.send_panel(self.d, 0)
         first = self.client.uploads[-1]
