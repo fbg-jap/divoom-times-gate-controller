@@ -19,7 +19,8 @@ EXTRA_KINDS = [("music", "Música en reproducción", "Now playing"), ("rss", "No
                ("custom", "Diseño personalizado", "Custom design"), ("pomodoro", "Pomodoro", "Pomodoro"),
                ("sensor", "Sensor MQTT / hardware", "MQTT / hardware sensor"),
                ("prtg", "Estado de PRTG", "PRTG status"),
-               ("mail", "Correo sin leer", "Unread mail")]
+               ("mail", "Correo sin leer", "Unread mail"),
+               ("spotify", "Spotify", "Spotify")]
 PLAYABLE = {"media", "text", "clock", "pc", "weather", "countdown", "service", "calendar"} | {x[0] for x in EXTRA_KINDS}
 
 

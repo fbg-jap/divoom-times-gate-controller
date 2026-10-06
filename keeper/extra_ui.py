@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import json
 import secrets
+import threading
+import webbrowser
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
@@ -73,6 +75,9 @@ class ContentFields:
         elif kind == "mail":
             form.addRow(hint(self.parent.t("Muestra el número de correos sin leer (IMAP, solo lectura). El servidor y la contraseña se configuran en Integraciones. Se actualiza cada 2 minutos.",
                                       "Shows the number of unread emails (IMAP, read-only). Server and password are set under Integrations. Refreshes every 2 minutes.")))
+        elif kind == "spotify":
+            form.addRow(hint(self.parent.t("Muestra la canción de Spotify (API web, solo lectura). Conecta tu cuenta en Integraciones → Spotify. Se actualiza cada 5 segundos.",
+                                      "Shows the song playing on Spotify (Web API, read-only). Connect your account under Integrations → Spotify. Refreshes every 5 seconds.")))
         elif kind == "pomodoro":
             form.addRow(hint("Shows the Studio work/break session. Start, pause and configure the session under Automations → Pomodoro. Refreshes every 5 seconds."))
 
@@ -304,7 +309,11 @@ class IntegrationPanel(QWidget):
         self.sp_client = QLineEdit(spotify["client_id"]); self.sp_token = spotify["refresh_token"]
         self.sp_status = QLabel()
         form.addRow(self.sp_on); form.addRow("Client ID", self.sp_client); form.addRow(self.sp_status)
-        form.addRow(hint(t("La conexión con Spotify se añadirá más adelante.", "Connecting to Spotify will be added later.")))
+        self.sp_connect = btn(t("Conectar Spotify", "Connect Spotify"), self.spotify_connect)
+        form.addRow(self.sp_connect); form.addRow(btn(t("Desconectar", "Disconnect"), self.spotify_disconnect))
+        form.addRow(hint(t("Crea una app en developer.spotify.com, registra la URI de redirección http://127.0.0.1/callback y pega aquí su Client ID. Solo se guarda el token de actualización.",
+                           "Create an app at developer.spotify.com, register the redirect URI http://127.0.0.1/callback and paste its Client ID here. Only the refresh token is stored.")))
+        self.spotify_opener, self.sp_job = webbrowser.open, None
         tabs.addTab(page, "Spotify")
         page = QWidget(); form = QFormLayout(page)
         self.prtg_on = QCheckBox(t("Activar PRTG", "Enable PRTG")); self.prtg_on.setChecked(prtg["enabled"])
@@ -342,6 +351,50 @@ class IntegrationPanel(QWidget):
     def refresh_spotify_status(self):
         t = self.window.t
         self.sp_status.setText(t("Estado: ", "Status: ") + (t("conectado", "connected") if self.sp_token else t("sin conectar", "not connected")))
+
+    def spotify_connect(self):
+        t = self.window.t
+        client_id = self.sp_client.text().strip()
+        if not client_id or self.sp_job is not None:
+            self.sp_status.setText(t("Estado: introduce el Client ID", "Status: enter the Client ID") if not client_id else self.sp_status.text())
+            return
+        from .spotify import connect_loopback, SpotifyError
+        job = self.sp_job = {"done": False, "token": None, "error": ""}
+        def work():
+            try:
+                job["token"] = connect_loopback(client_id, self.spotify_opener)
+            except SpotifyError as error:
+                job["error"] = str(error)
+            except Exception:
+                job["error"] = "unexpected error"
+            job["done"] = True
+        threading.Thread(target=work, daemon=True, name="keeper-spotify-connect").start()
+        self.sp_status.setText(t("Estado: esperando la autorización en el navegador…", "Status: waiting for authorization in the browser…"))
+        QTimer.singleShot(500, self.spotify_poll)
+
+    def spotify_poll(self):
+        job = self.sp_job
+        if job is None:
+            return
+        if not job["done"]:
+            QTimer.singleShot(500, self.spotify_poll)
+            return
+        self.sp_job = None
+        if job["token"]:
+            self.spotify_store(job["token"])
+        else:
+            self.sp_status.setText(self.window.t("Estado: error · ", "Status: failed · ") + job["error"])
+
+    def spotify_store(self, token):
+        self.sp_token = token
+        try:
+            self.window.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token, client_id=self.sp_client.text().strip()))
+        except Exception as error:
+            QMessageBox.warning(self, "Spotify", str(error))
+        self.refresh_spotify_status()
+
+    def spotify_disconnect(self):
+        self.spotify_store("")
 
     def save(self):
         names = lambda w: [n.strip() for n in w.text().split(",") if n.strip()]

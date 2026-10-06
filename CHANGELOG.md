@@ -4,6 +4,8 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 
 ## Unreleased
 
+- New **Spotify** widget (now playing, read-only) over the Spotify Web API with PKCE; connect from the desktop app (loopback redirect) or the server portal (`/api/spotify/callback`). Only the client ID and refresh token are stored. Tested with a fake session only, not a real account. See [Integrations](docs/INTEGRATIONS.md#spotify).
+- Documented the PRTG widget and alert metrics. See [Integrations](docs/INTEGRATIONS.md#prtg).
 - New **Unread mail** widget and `mail_unread` alert metric over IMAP (read-only, count only unless the subject is enabled; STARTTLS enforced on port 143). Polled every 120 s in the background. Not yet tried against a real IMAP server. See [Integrations](docs/INTEGRATIONS.md#unread-mail-imap).
 - PC notifications on the Times Gate (off by default, app name and summary only unless the body is enabled, allow/deny app lists, per-minute limit). Linux uses D-Bus through the optional `jeepney` package; the Windows listener is unverified. See [Integrations](docs/INTEGRATIONS.md#pc-notifications).
 - Support for hardware revision 402 firmware: the local API on `http://<ip>:9000/divoom_api` replying with `ReturnCode`, plus the device's local token.

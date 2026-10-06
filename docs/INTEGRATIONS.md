@@ -83,6 +83,37 @@ Windows reads metadata and artwork from the current exposed media session; both 
 
 Docker does not automatically have access to the host desktop's media session. Standalone mobile apps do not read other apps' music. See the [platform comparison](MULTIPLATFORM.md#feature-comparison).
 
+## PRTG
+
+The **PRTG status** widget and the `prtg_down` / `prtg_warning` alert metrics read sensor states from a PRTG server. Configure the base URL, API token and TLS option under Integrations → PRTG.
+
+- Create an **API token** in PRTG (Setup → Account Settings → API Keys) and paste it in the Token field. The token is sent only as the `apitoken` query parameter of the request to your server, is never logged, is stored in `config.json` (mode 0600) and is blanked in exports.
+- **Verify TLS certificate** (`verify_tls`, on by default) checks the server certificate. Turn it off only for a self-signed server on a network you trust.
+- The widget counts sensors by state: **up**, **warning**, **down** (down, acknowledged down and partial down), **paused** (paused by user, dependency, schedule, license or until) and **unusual**; it also names the worst sensor (`device · sensor`). Other states (unknown, collecting, no probe) are not counted.
+- `prtg_down` and `prtg_warning` compare the number of sensors in that state with the threshold, like other alert metrics.
+- The server is queried at most every 30 seconds, with an 8 second timeout and a 2 MB response cap; a failure shows "Source unavailable" and is not retried every frame.
+- The API shape was taken from the PRTG documentation and is untested against a live server.
+
+## Spotify
+
+The **Spotify** widget shows the track playing on your Spotify account (title, artist, cover, play/pause and a progress bar). It is read-only: Keeper cannot play, pause or skip. It uses the Spotify Web API with the Authorization Code + PKCE flow, so no client secret exists anywhere.
+
+1. Create an app at <https://developer.spotify.com/dashboard>.
+2. Under **Redirect URIs** register the URI for how you connect (Spotify accepts `https`, or `http` only on a loopback IP literal; `localhost` is rejected):
+   - **Desktop app**: `http://127.0.0.1/callback`. Keeper opens a one-shot server on `127.0.0.1` with a random port and sends that port with the authorization request; Spotify allows leaving the port out of a registered loopback URI. If the Dashboard insists on a port, register `http://127.0.0.1:<port>/callback` for a port of your choice.
+   - **Server portal**: `{portal address}/api/spotify/callback`, where the address is the one in your browser's address bar, for example `http://127.0.0.1:8080/api/spotify/callback` (reach a remote server through an SSH tunnel to its port) or `https://keeper.example.com/api/spotify/callback`. A plain `http://` address that is not `127.0.0.1` / `[::1]` is refused by Keeper and by Spotify. Behind a reverse proxy the portal must see the same scheme and host as your browser.
+3. Copy the app's **Client ID** into Integrations → Spotify and enable it. Do not enter a client secret.
+4. Press **Connect Spotify** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. On the portal, reload the page afterwards.
+5. Add a Spotify widget to a screen.
+
+What is stored: only the **client ID** and the **refresh token** (`integrations.spotify`, in `config.json`, mode 0600; the token is blanked in exports). Access tokens live in memory, authorization codes are never stored, and neither is logged. Spotify refresh tokens last about six months; Keeper stores a replacement if Spotify issues one.
+
+To disconnect press **Disconnect** (this clears the token; on the portal press Save afterwards), and optionally remove Keeper under spotify.com/account/apps.
+
+Behaviour: the player is polled every 5 seconds in the background, only while a Spotify widget is rendered. "Spotify not connected" appears without a token or after Spotify rejects it twice (reconnect), "Nothing playing" when no player is active, "Spotify unavailable" on network errors; `Retry-After` is honoured when Spotify rate-limits. Cover art is fetched once per track from Spotify's CDN (`*.scdn.co`, `*.spotifycdn.com`, 1 MB cap). Podcast episodes show the show name; ads show "Advertisement". Standalone mobile apps cannot connect; the widget shows a placeholder.
+
+Verification status: the OAuth parameters, redirect rules and endpoint were checked against the official documentation; the response field names were written from memory of the documented shape. Everything is tested with a fake HTTP session; it has not been tried with a real Spotify account.
+
 ## Unread mail (IMAP)
 
 The **Unread mail** widget and the `mail_unread` alert metric show how many unread messages a mailbox holds. Configure the server, user, password and mailbox under Integrations → Mail.
@@ -123,5 +154,6 @@ The API token and MQTT password are stored in local user settings. Portable expo
 - [Microsoft: session lock/unlock notifications](https://learn.microsoft.com/en-us/windows/win32/termserv/wm-wtssession-change).
 - [Paho MQTT for Python](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
 - [Home Assistant MQTT](https://www.home-assistant.io/integrations/mqtt/).
+- [Spotify: Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri) and [currently playing](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track).
 
 [README](../README.md) · [Desktop guide](DESKTOP.md)

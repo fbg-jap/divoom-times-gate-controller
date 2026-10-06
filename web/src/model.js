@@ -116,6 +116,7 @@ export const kinds = lazy({
   sensor: "Sensor",
   prtg: "PRTG",
   mail: "ui.mail_unread",
+  spotify: "Spotify",
   native: "model.native_unmanaged",
   pc_native: "model.experimental_native_pc",
 });

@@ -168,6 +168,7 @@ class ExtraSources:
         self.news_cursor = {}
         self.prtg_conf = {}
         self.mail_conf, self.mail_key, self.mail_probe = {}, None, None
+        self.spotify_conf, self.spotify_save, self.spotify_source, self.spotify_probe = {}, None, None, None
 
     def music(self):
         if self.providers.demo:
@@ -232,6 +233,25 @@ class ExtraSources:
 
     def mail(self):
         return self.mail_state()[0]
+
+    def spotify_state(self):
+        """(data, error): data is a track dict or {"idle": True}; error is "", "not connected" or a short reason."""
+        conf = self.spotify_conf or {}
+        if self.providers.demo:
+            return {"title": "Midnight City", "artist": "Demo player", "playing": True, "art": "",
+                    "progress_ms": 95000, "duration_ms": 240000, "sampled": time.monotonic()}, ""
+        if not conf.get("enabled") or not conf.get("client_id") or not conf.get("refresh_token"):
+            return None, "not connected"
+        source = self.spotify_source
+        if (source is None or source.client_id != conf["client_id"]
+                or conf["refresh_token"] not in (source.initial_token, source.refresh_token)):
+            from .spotify import SpotifySource
+            from .windows_sources import AsyncProbe
+            # Started lazily (first render of a Spotify widget) and rebuilt when the client id or a reconnected token changes.
+            source = self.spotify_source = SpotifySource(conf["client_id"], conf["refresh_token"], self.spotify_save)
+            self.spotify_probe = AsyncProbe(source.poll, 5, 30)
+        value, error = self.spotify_probe.read()
+        return value, error or ""
 
     def news(self, url, seconds=15):
         if not url:
@@ -389,6 +409,39 @@ def render_extra(s, providers):
                 draw.text((x, y), str(data[key]), fill=color, font=face)
                 draw.text((x, y + 24), key.upper(), fill=color, font=font(8))
             lines(data["worst"] or "All sensors OK", 92, 10, 3, "white" if data["worst"] else "#4ade80")
+    elif kind == "spotify":
+        data, error = extra.spotify_state()
+        lines(s.get("title") or "Spotify", 7, 11, 1, accent)
+        if data is None and error in {"not connected", "reconnect"}:
+            lines("Spotify not connected", 40, 13, 3, "#ff6b6b")
+        elif data is None and error.startswith("Waiting"):
+            lines("Connecting…", 40, 13, 2, "#9aa4b5")
+        elif data is None:
+            lines("Spotify unavailable", 40, 13, 3, "#ff6b6b")
+        elif data.get("idle"):
+            lines("Nothing playing", 40, 13, 3, "#9aa4b5")
+        else:
+            if data.get("art"):
+                try:
+                    with Image.open(io.BytesIO(base64.b64decode(data["art"]))) as art:
+                        image.paste(ImageOps.fit(art.convert("RGB"), (52, 52)), (8, 22))
+                except (ValueError, OSError):
+                    data = {**data, "art": ""}
+            if not data.get("art"):
+                draw.ellipse((9, 23, 57, 71), outline=accent, width=2)
+                draw.text((25, 29), "♪", fill=accent, font=font(25))
+            draw.text((66, 28), "PLAY" if data.get("playing") else "PAUSE", fill=accent, font=font(10))
+            lines(data.get("title") or "Spotify", 77, 13, 2)
+            lines(data.get("artist", ""), 105, 10, 1, accent)
+            total = int(data.get("duration_ms") or 0)
+            if total > 0:
+                progress = int(data.get("progress_ms") or 0)
+                if data.get("playing"):
+                    progress += int((time.monotonic() - data.get("sampled", time.monotonic())) * 1000)
+                end = 8 + int(111 * max(0, min(1, progress / total)))
+                draw.rectangle((8, 122, 119, 124), fill="#26334b")
+                if end > 8:
+                    draw.rectangle((8, 122, end, 124), fill=accent)
     elif kind == "mail":
         data, error = extra.mail_state()
         lines(s.get("title") or "Unread mail", 7, 11, 1, accent)

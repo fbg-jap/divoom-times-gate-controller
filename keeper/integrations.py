@@ -72,7 +72,9 @@ class Bridge:
         self.engine.renderer.providers.extra.hardware_enabled = bool(config.get("hardware", False))
         self.engine.renderer.providers.extra.prtg_conf = config.get("prtg", {})
         self.engine.renderer.providers.extra.mail_conf = config.get("mail", {})
-        signature = json.dumps(config, sort_keys=True)
+        self.engine.renderer.providers.extra.spotify_conf = config.get("spotify", {})
+        self.engine.renderer.providers.extra.spotify_save = self.save_spotify_token
+        signature = json.dumps({k: v for k, v in config.items() if k != "spotify"}, sort_keys=True)  # a rotated Spotify token must not restart the API/MQTT
         if signature == self.signature:
             self.sync_topics(data)
             return
@@ -95,6 +97,10 @@ class Bridge:
             except Exception as error:
                 self.mqtt_status = type(error).__name__ + ": check the configuration"
                 self.engine.log("MQTT: " + self.mqtt_status, "error")
+
+    def save_spotify_token(self, token):
+        """Persist a rotated refresh token (the only Spotify secret that is stored)."""
+        self.engine.store.change(lambda data: data.setdefault("integrations", {}).setdefault("spotify", {}).update(refresh_token=token))
 
     def start_api(self, config):
         bridge = self

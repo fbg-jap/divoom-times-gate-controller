@@ -12,6 +12,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import tempfile
 import threading
@@ -29,6 +30,7 @@ from .content import all_screens, assets, panorama_canvas
 from .engine import Engine
 from .panorama_media import decode_clip, VIDEO_EXTENSIONS, rgb
 from .protocol import valid_ip
+from . import spotify
 from .widgets import png_bytes
 
 MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ics"}
@@ -156,10 +158,16 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
 
     app = FastAPI(title="Divoom Keeper Portal", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store, app.state.engine = store, engine
+    pending_spotify = spotify.PendingAuth()
+    app.state.spotify_pending = pending_spotify
+    app.state.spotify_session = spotify.requests.Session
 
     @app.middleware("http")
     async def security(request, call_next):
-        if request.url.path.startswith("/api/"):
+        # The browser returns from accounts.spotify.com without the Bearer header. Only this exact GET is exempt, and the
+        # handler itself requires a single-use `state` that an authenticated /api/spotify/connect call issued.
+        public = request.method == "GET" and request.url.path == "/api/spotify/callback"
+        if request.url.path.startswith("/api/") and not public:
             supplied = request.headers.get("authorization", "")
             if not hmac.compare_digest(supplied.encode(), ("Bearer " + token).encode()):
                 return JSONResponse({"error": "Enter the access token"}, status_code=401)
@@ -213,6 +221,46 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     @app.get("/healthz")
     def health():
         return {"ok": engine.is_alive(), "version": __version__}
+
+    def loopback_or_https(url):
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        return parsed.scheme == "https" or (parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1"})
+
+    @app.post("/api/spotify/connect")
+    async def spotify_connect(request: Request):
+        values = await json_body(request)
+        client_id = str(values.get("client_id") or store.snapshot().get("integrations", {}).get("spotify", {}).get("client_id", "")).strip()
+        if not re.fullmatch(r"[A-Za-z0-9]{8,128}", client_id):
+            raise ValueError("Enter the Spotify Client ID first")
+        redirect_uri = str(request.base_url).rstrip("/") + "/api/spotify/callback"
+        if not loopback_or_https(redirect_uri):
+            raise ValueError("Spotify only accepts https or http://127.0.0.1 redirect URIs. Open the portal through "
+                             "http://127.0.0.1:<port> (for example an SSH tunnel) or behind https, then try again.")
+        _, url = pending_spotify.issue(client_id, redirect_uri)
+        return {"url": url, "redirect_uri": redirect_uri}
+
+    @app.get("/api/spotify/callback")
+    async def spotify_callback(request: Request):
+        def page(status, message):
+            blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
+            return Response(blob, status_code=status, media_type="text/html")
+        query = request.query_params
+        pending = pending_spotify.take(query.get("state", ""))
+        if pending is None:
+            return page(400, "This Spotify link is invalid or has expired. Start again from Keeper.")
+        verifier, client_id, redirect_uri = pending
+        if not query.get("code"):
+            return page(400, "Spotify did not authorize Keeper.")
+        try:
+            data = await asyncio.to_thread(lambda: spotify.exchange_code(app.state.spotify_session(), client_id, query["code"], verifier, redirect_uri))
+            if not data["refresh_token"]:
+                raise spotify.SpotifyError("no refresh token")
+            await asyncio.to_thread(store.change, lambda d: d.setdefault("integrations", {}).setdefault("spotify", {}).update(
+                refresh_token=data["refresh_token"], client_id=client_id))
+        except spotify.SpotifyError as error:
+            return page(502, "Could not connect to Spotify: " + spotify.redact(str(error), query["code"], verifier))
+        return page(200, "Spotify connected. You can close this tab and reload Keeper.")
 
     @app.get("/api/state")
     def state():

@@ -1,7 +1,7 @@
 import {ctx} from "../ctx.js";
-import {el,button,card,hint,banner,mark,field,numeric,render} from "../ui.js";
+import {el,button,card,hint,banner,mark,field,numeric,render,toast} from "../ui.js";
 import {t,setLanguage,languages} from "../i18n.js";
-import {token} from "../api.js";
+import {token,request} from "../api.js";
 import {id} from "../model.js";
 const names = (conf, key) => ({
   get list() {
@@ -80,6 +80,26 @@ export function integrationPage(main) {
             ? t("ui.spotify_connected")
             : t("ui.spotify_not_connected"),
         ),
+        ...(ctx.state.capabilities.mode === "server"
+          ? [
+              button(t("ui.spotify_connect"), async () => {
+                try {
+                  const r = await request("/spotify/connect", "POST", {
+                    client_id: ctx.cfg.integrations.spotify.client_id,
+                  });
+                  window.open(r.url, "_blank", "noopener");
+                  toast(t("ui.spotify_redirect_hint", { uri: r.redirect_uri }));
+                } catch (error) {
+                  toast(error.message, true);
+                }
+              }),
+              button(t("ui.spotify_disconnect"), () => {
+                ctx.cfg.integrations.spotify.refresh_token = "";
+                mark();
+                render();
+              }),
+            ]
+          : [hint(t("ui.spotify_desktop_server_only"))]),
       ),
       card(
         "PRTG",
