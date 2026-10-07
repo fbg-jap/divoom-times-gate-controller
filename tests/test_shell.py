@@ -366,8 +366,9 @@ def launch_target(argv):
     """Path of the single file:// argument of a fake browser command line."""
     uris = [a.removeprefix("--app=") for a in argv if a.removeprefix("--app=").startswith("file://")]
     assert len(uris) == 1, argv
-    from urllib.parse import unquote, urlparse
-    return Path(unquote(urlparse(uris[0]).path))
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname   # file:///C:/... on Windows
+    return Path(url2pathname(urlparse(uris[0]).path))
 
 
 @unittest.skipIf(os.name == "nt", "POSIX permissions")
