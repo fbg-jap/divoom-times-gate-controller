@@ -107,3 +107,169 @@ class AsyncProbe:
             with self.lock:
                 self.running = False
             self.first.set()
+
+
+WM_CLOSE, WM_DESTROY, WM_WTSSESSION_CHANGE = 0x0010, 0x0002, 0x02B1
+WTS_SESSION_LOCK, WTS_SESSION_UNLOCK = 0x7, 0x8
+NOTIFY_FOR_THIS_SESSION = 0
+HWND_MESSAGE = -3
+
+
+def session_event_state(wparam):
+    """WM_WTSSESSION_CHANGE wParam -> True (locked), False (unlocked) or None (irrelevant code)."""
+    if wparam == WTS_SESSION_LOCK:
+        return True
+    if wparam == WTS_SESSION_UNLOCK:
+        return False
+    return None
+
+
+class SessionLockWatcher:
+    """Qt-free Windows session lock detection: a daemon thread owns a hidden message-only window registered for
+    WTS session notifications. `locked` stays None until the first lock/unlock event (the initial state is not
+    queried). Failures never raise; they set available=False and `error`."""
+
+    def __init__(self):
+        self.locked = None
+        self.available = False
+        self.error = ""
+        self._thread = None
+        self._hwnd = None
+        self._registered = False
+        self._ready = threading.Event()
+        self._guard = threading.Lock()
+        self._api = None
+        self._refs = []
+
+    def start(self):
+        with self._guard:
+            if self._thread is not None:
+                return
+            self.error = "Starting"
+            self._thread = threading.Thread(target=self._run, daemon=True, name="keeper-session-lock")
+            self._thread.start()
+        self._ready.wait(3)
+
+    def stop(self, timeout=3):
+        with self._guard:
+            thread, hwnd, api = self._thread, self._hwnd, self._api
+        if thread is None:
+            return
+        try:
+            if hwnd and api:
+                api["user32"].PostMessageW(hwnd, WM_CLOSE, 0, 0)
+        except Exception as error:
+            self.error = str(error)
+        thread.join(timeout)
+
+    def _fail(self, message):
+        self.available, self.error = False, message
+        self._ready.set()
+
+    def _run(self):
+        try:
+            self._loop()
+        except Exception as error:
+            self._fail(f"Session lock watcher failed: {error}")
+        finally:
+            self._cleanup()
+            self.available = False
+            self._ready.set()
+
+    def _loop(self):
+        import ctypes
+        from ctypes import wintypes
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return self._fail("Windows API unavailable")
+        user32, wtsapi32, kernel32 = windll.user32, windll.wtsapi32, windll.kernel32
+        self._api = {"user32": user32, "wtsapi32": wtsapi32}
+        lresult = ctypes.c_ssize_t
+        functype = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        wndproc_type = functype(lresult, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+
+        class WNDCLASSW(ctypes.Structure):
+            _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", wndproc_type), ("cbClsExtra", ctypes.c_int),
+                ("cbWndExtra", ctypes.c_int), ("hInstance", wintypes.HANDLE), ("hIcon", wintypes.HANDLE),
+                ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HANDLE),
+                ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+        def set_types(function, argtypes, restype):
+            function.argtypes, function.restype = argtypes, restype
+
+        set_types(user32.DefWindowProcW, [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM], lresult)
+        set_types(user32.RegisterClassW, [ctypes.POINTER(WNDCLASSW)], wintypes.ATOM)
+        set_types(user32.CreateWindowExW, [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HANDLE,
+            wintypes.HANDLE, wintypes.LPVOID], wintypes.HWND)
+        set_types(user32.GetMessageW, [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT], ctypes.c_int)
+        set_types(user32.PostMessageW, [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM], wintypes.BOOL)
+        set_types(user32.DestroyWindow, [wintypes.HWND], wintypes.BOOL)
+        set_types(user32.PostQuitMessage, [ctypes.c_int], None)
+        set_types(wtsapi32.WTSRegisterSessionNotification, [wintypes.HWND, wintypes.DWORD], wintypes.BOOL)
+        set_types(wtsapi32.WTSUnRegisterSessionNotification, [wintypes.HWND], wintypes.BOOL)
+        set_types(kernel32.GetModuleHandleW, [wintypes.LPCWSTR], wintypes.HANDLE)
+
+        def window_proc(hwnd, message, wparam, lparam):
+            try:
+                if message == WM_WTSSESSION_CHANGE:
+                    state = session_event_state(wparam)
+                    if state is not None:
+                        self.locked = state
+                    return 0
+                if message == WM_CLOSE:
+                    user32.DestroyWindow(hwnd)
+                    return 0
+                if message == WM_DESTROY:
+                    self._unregister()
+                    user32.PostQuitMessage(0)
+                    return 0
+            except Exception as error:
+                self.error = str(error)
+            return user32.DefWindowProcW(hwnd, message, wparam, lparam)
+
+        callback = wndproc_type(window_proc)
+        self._refs.append(callback)
+        cls = WNDCLASSW()
+        cls.lpfnWndProc = callback
+        cls.hInstance = kernel32.GetModuleHandleW(None)
+        cls.lpszClassName = "DivoomKeeperSessionWatcher"
+        if not user32.RegisterClassW(ctypes.byref(cls)):
+            return self._fail("RegisterClassW failed")
+        hwnd = user32.CreateWindowExW(0, cls.lpszClassName, "Divoom Keeper session watcher", 0, 0, 0, 0, 0,
+            HWND_MESSAGE, None, cls.hInstance, None)
+        if not hwnd:
+            return self._fail("CreateWindowExW failed")
+        self._hwnd = hwnd
+        if not wtsapi32.WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION):
+            return self._fail("WTSRegisterSessionNotification failed")
+        self._registered = True
+        self.available, self.error = True, ""
+        self._ready.set()
+        msg = wintypes.MSG()
+        while True:
+            result = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+            if result == 0:
+                break
+            if result < 0:
+                self.error = "GetMessageW failed"
+                break
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+    def _unregister(self):
+        if self._registered and self._api:
+            self._registered = False
+            try:
+                self._api["wtsapi32"].WTSUnRegisterSessionNotification(self._hwnd)
+            except Exception as error:
+                self.error = str(error)
+
+    def _cleanup(self):
+        self._unregister()
+        hwnd, self._hwnd = self._hwnd, None
+        if hwnd and self._api:
+            try:
+                self._api["user32"].DestroyWindow(hwnd)
+            except Exception:
+                pass

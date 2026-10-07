@@ -87,6 +87,7 @@ Native tools that replace content **pause resending for that device**. Applying 
 - Content fingerprints avoid identical uploads on every update; recovery resends use a configurable interval, defaulting to 60 minutes.
 - Connection checks every 30 seconds for devices with automatic updates or saved RGB restoration enabled. Reconnection invalidates the content cache and restores managed content unless paused or powered off; lighting restoration is independent.
 - Failed transfers never select a different Divoom automatically. If an IP changes, select or correct the device explicitly.
+- The profile **locked** trigger also works in the browser shell on Windows: a Qt-free watcher listens for session lock/unlock events, starts only when a locked profile exists and knows the state only after the first lock or unlock. Unverified on real Windows (tested with a fake Windows API).
 - A single communication queue avoids overlapping transfers within the app. Network requests run outside the UI thread.
 
 ## Backups and migration

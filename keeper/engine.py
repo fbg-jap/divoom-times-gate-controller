@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import queue
+import sys
 import threading
 import time
 
@@ -15,6 +16,11 @@ from .content import PlaylistCursor, composition, empty_playlists
 from .protocol import Client, discover, media_frames
 from .timesync import timesource
 from .widgets import Renderer, png_bytes
+
+
+def uses_session_watcher(demo):
+    """Windows session lock comes from a Qt-free message-only window watcher (see windows_sources)."""
+    return sys.platform == "win32" and not demo
 
 
 class Engine(threading.Thread):
@@ -33,6 +39,10 @@ class Engine(threading.Thread):
             from .windows_sources import AsyncProbe
             from .platform_support import linux_locked
             self.session_probe = AsyncProbe(linux_locked, 5)
+        self.session_watcher = None
+        if uses_session_watcher(demo):
+            from .windows_sources import SessionLockWatcher
+            self.session_watcher = SessionLockWatcher()
         from .automation import Automations
         from .integrations import Bridge
         self.automations = Automations(self)
@@ -410,6 +420,10 @@ class Engine(threading.Thread):
             locked, _ = self.session_probe.read()
             if locked is not None:
                 self.automations.locked = bool(locked)
+        if self.session_watcher and any(r.get("trigger") == "locked" for r in data.get("profiles", [])):
+            self.session_watcher.start()
+            if self.session_watcher.locked is not None:
+                self.automations.locked = bool(self.session_watcher.locked)
         self.automations.update(data, now)
         for d in data["devices"]:
             device_id = d["id"]
@@ -490,6 +504,8 @@ class Engine(threading.Thread):
 
         self.bridge.close()
         timesource.stop()
+        if self.session_watcher:
+            self.session_watcher.stop()
 
     def stop(self):
         self.stop_event.set()
