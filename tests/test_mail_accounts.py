@@ -391,7 +391,7 @@ class MailStateTests(unittest.TestCase):
         self.assertIsNone(data); self.assertTrue(error.startswith("Waiting"))
         budgeted = waits[4:]  # the first four reads only start the samplers; the next four wait for their first sample
         self.assertEqual(len(budgeted), 4)
-        self.assertLessEqual(sum(budgeted), 0.4 + 1e-6, budgeted)  # one shared budget, not 4 x 0.4 s
+        self.assertLessEqual(sum(budgeted), 0.4 + 0.05, budgeted)  # one shared budget, not 4 x 0.4 s (+ slack: Windows clock ticks ~15.6 ms)
 
     def test_legacy_flat_conf_still_works_in_the_sampler(self):
         self.extra.mail_conf = {"enabled": True, "host": "imap.test", "port": 993, "user": "u", "password": "p", "mailbox": "INBOX", "show_subject": False}
