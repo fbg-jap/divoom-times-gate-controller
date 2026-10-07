@@ -145,6 +145,7 @@ export function defaults() {
     theme: "dark",
     startup: false,
     resend_on_startup: true,
+    auto_find_device: true,
     active_device: d.id,
     devices: [d],
     scenes: [],
@@ -397,6 +398,15 @@ export function sensorGroups(sensors, current, missingLabel) {
   return result;
 }
 // Splits the notification listener status ("Running", "Disabled", "Starting", "Unavailable (reason)").
+// Why a device is offline and for how long, from runtime.connection[id] = {since (unix s), reason}.
+export function offlineDetail(info, nowSeconds = Date.now() / 1000) {
+  if (!info) return null;
+  const reason = ["api_down", "api_busy"].includes(info.reason) ? info.reason : "unreachable";
+  const since = info.since == null || !Number.isFinite(+info.since) ? nowSeconds : +info.since;
+  const seconds = Math.max(0, Math.round(nowSeconds - since));
+  const duration = seconds < 90 ? `${seconds} s` : seconds < 5400 ? `${Math.round(seconds / 60)} min` : `${Math.round(seconds / 3600)} h`;
+  return { reason, duration };
+}
 export function listenerStatus(raw) {
   const text = String(raw ?? "Disabled");
   const unavailable = /^Unavailable \((.*)\)$/s.exec(text);

@@ -34,7 +34,7 @@ def device(ip="", name="Times Gate", **kwargs):
 def defaults():
     d = device()
     return {"version": 2, "language": "en", "theme": "dark", "startup": False,
-            "resend_on_startup": True, "active_device": d["id"], "devices": [d],
+            "resend_on_startup": True, "auto_find_device": True, "active_device": d["id"], "devices": [d],
             "scenes": [], "schedules": [], "alerts": [], "reminders": [], "profiles": [],
             "integrations": {"api": {"enabled": False, "host": "127.0.0.1", "port": 8787, "token": ""},
                              "mqtt": {"enabled": False, "host": "", "port": 1883, "prefix": "keeper", "username": "", "password": "", "tls": False},

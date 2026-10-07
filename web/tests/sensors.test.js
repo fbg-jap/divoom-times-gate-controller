@@ -57,3 +57,11 @@ test("the new sensor and notification texts exist in both languages", () => {
   setLanguage("es");
   assert.match(t("ui.notif_unavailable", ["x"]), /no disponible \(x\)/);
 });
+
+import { offlineDetail } from "../src/model.js";
+test("offlineDetail names the reason and a readable duration", () => {
+  assert.equal(offlineDetail(null), null);
+  assert.deepEqual(offlineDetail({ since: 1000, reason: "api_down" }, 1030), { reason: "api_down", duration: "30 s" });
+  assert.deepEqual(offlineDetail({ since: 1000, reason: "weird" }, 1000 + 600), { reason: "unreachable", duration: "10 min" });
+  assert.equal(offlineDetail({ since: 0, reason: "api_busy" }, 7200).duration, "2 h");
+});

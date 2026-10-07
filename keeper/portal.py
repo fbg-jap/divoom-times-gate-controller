@@ -577,7 +577,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         with notice_lock:
             notice, store.migration_note = store.migration_note, ""
         return {"config": data, "revision": revision(data), "notice": notice, "events": events, "version": __version__, "desktop": shell_mode,
-                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status(),
+                "runtime": {"online": dict(engine.online), "connection": {k: dict(v) for k, v in engine.offline_info.items()}, "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status(),
                             "notifications": engine.bridge.notifications.status},
                 "hardware_sensors": hardware_sensors(data),
                 "notification_apps": engine.bridge.notifications.known_apps(),

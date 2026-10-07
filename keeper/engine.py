@@ -11,9 +11,11 @@ import sys
 import threading
 import time
 
+import requests
+
 from .config import slot
 from .content import PlaylistCursor, composition, empty_playlists
-from .protocol import Client, discover, media_frames
+from .protocol import Client, discover, locate, media_frames, probe
 from .timesync import timesource
 from .widgets import Renderer, png_bytes
 
@@ -21,6 +23,11 @@ from .widgets import Renderer, png_bytes
 def uses_session_watcher(demo):
     """Windows session lock comes from a Qt-free message-only window watcher (see windows_sources)."""
     return sys.platform == "win32" and not demo
+
+
+PROBE_DELAYS = (2, 5, 15, 30, 60)   # seconds between health probes of an offline device; 30 s while it is online
+RELOCATE_AFTER = 60                 # offline this long: look the device up again by its MAC / device id
+RELOCATE_EVERY = 300
 
 
 class Engine(threading.Thread):
@@ -54,6 +61,11 @@ class Engine(threading.Thread):
         self.clients = {}
         self.last_health = {}
         self.online = {}
+        self.fail_count = {}       # consecutive sends that could not reach the device
+        self.offline_probes = {}   # failed health probes since it went offline (index into PROBE_DELAYS)
+        self.offline_info = {}     # device id -> {"since": unix time, "reason": "unreachable" | "api_down" | "api_busy"}
+        self.relocating = set()
+        self.last_relocate = {}
         self.lighting_restored = set()
         self.paused = {d["id"] for d in store.snapshot()["devices"] if d.get("suspended")}
         self.power_off = {d["id"] for d in store.snapshot()["devices"] if d.get("screens_off")}
@@ -99,6 +111,75 @@ class Engine(threading.Thread):
             self.clients[key] = self.client_factory(device["ip"], **options)
         return self.clients[key]
 
+    def probe_command(self, d, payload):
+        """Like command(), but a device already known to be offline gets one quick attempt instead of the retries."""
+        try:
+            client = None if self.demo else self.client(d)
+        except Exception:
+            client = None   # an unusable address: command() reports it
+        retries = getattr(client, "retries", None)
+        if retries is not None and self.online.get(d["id"]) is False:
+            client.retries = 0
+        try:
+            return self.command(d, payload)
+        finally:
+            if retries is not None:
+                client.retries = retries
+
+    @staticmethod
+    def connection_reason(error):
+        """Why a device did not answer: 'api_busy' (connected, no reply), 'api_down' (refused), else 'unreachable'."""
+        if isinstance(error, requests.ReadTimeout):
+            return "api_busy"
+        if isinstance(error, requests.ConnectionError) and "refused" in str(error).lower():
+            return "api_down"
+        return "unreachable"
+
+    def note_unreachable(self, d, error):
+        """Count a failed contact; the second one in a row takes the device offline so nothing else waits on it."""
+        if not isinstance(error, (requests.ConnectionError, requests.Timeout)):
+            return
+        count = self.fail_count[d["id"]] = self.fail_count.get(d["id"], 0) + 1
+        if count >= 2 and self.online.get(d["id"]) is not False:
+            self.mark_offline(d, error)
+
+    def mark_offline(self, d, error):
+        self.online[d["id"]] = False
+        self.offline_probes[d["id"]] = 0
+        self.last_health[d["id"]] = time.monotonic()   # the first probe follows after PROBE_DELAYS[0]
+        self.lighting_restored.discard((d["id"], d["ip"]))
+        self.offline_info.setdefault(d["id"], {"since": time.time(), "reason": self.connection_reason(error)})
+        self.emit("health", device_id=d["id"], online=False, body={"error": str(error)})
+        self.log(f"{d['name']} · connection lost ({self.offline_info[d['id']]['reason'].replace('_', ' ')}); trying again shortly", "warning")
+
+    def maybe_relocate(self, d):
+        """A device offline for a while may simply have a new DHCP address: ask Divoom's cloud where it is now."""
+        device_id, now = d["id"], time.monotonic()
+        since = self.offline_info.get(device_id, {}).get("since", time.time())
+        if (self.demo or self.store.snapshot().get("auto_find_device") is False or device_id in self.relocating
+                or time.time() - since < RELOCATE_AFTER or now - self.last_relocate.get(device_id, -1e12) < RELOCATE_EVERY
+                or not (d.get("mac") or d.get("device_id"))):
+            return
+        self.last_relocate[device_id] = now
+        self.relocating.add(device_id)
+
+        def run():
+            try:
+                ip = locate(d)
+                if not ip or ip == d["ip"]:
+                    return
+                if probe(ip, timeout=2, port=d.get("port", 0), token=d.get("local_token", "")) is None:
+                    return   # the cloud's address does not answer either: change nothing
+                self.store.change(lambda cfg: next(x for x in cfg["devices"] if x["id"] == device_id).update(ip=ip))
+                self.log(f"{d['name']} · found again at {ip} (was {d['ip']}); the address was updated")
+                self.invalidate(device_id)
+                self.last_health[device_id] = -1e12   # probe it on the next tick
+            except Exception as error:
+                self.log(f"{d['name']} · could not look the device up: {type(error).__name__}", "warning")
+            finally:
+                self.relocating.discard(device_id)
+        threading.Thread(target=run, name="keeper-relocate", daemon=True).start()
+
     def command(self, d, payload):
         if self.demo:
             return {"error_code": 0, "Brightness": 65, "LightSwitch": 1, "demo": True}
@@ -114,7 +195,7 @@ class Engine(threading.Thread):
         """Drop every runtime entry of a removed device. Runs on the engine thread."""
         self.invalidate(device_id)
         for mapping in [self.overrides, self.rotation_at, self.rotation_index, self.clients, self.last_health, self.online,
-                        self.automations.profile_ids]:
+                        self.automations.profile_ids, self.fail_count, self.offline_probes, self.offline_info, self.last_relocate]:
             for key in list(mapping):
                 if key == device_id or (isinstance(key, tuple) and key[0] == device_id):
                     mapping.pop(key, None)
@@ -226,11 +307,13 @@ class Engine(threading.Thread):
                 self.emit("playing", device_id=d["id"], panel=panel, index=playlist_index,
                           count=len(d["playlists"][panel]["items"]))
             self.emit("preview", device_id=d["id"], panel=panel, png=png_bytes(frames[0]))
+            self.fail_count[d["id"]] = 0
             self.emit("status", device_id=d["id"], text="Send accepted · " + datetime.now().strftime("%H:%M:%S"))
             self.log(f"{d['name']} · screen {panel + 1} · {kind} sent")
         except Exception as error:
             self.log(f"{d['name']} · screen {panel + 1}: {type(error).__name__}: {error}", "error")
             self.emit("status", device_id=d["id"], text="Send error · see Activity")
+            self.note_unreachable(d, error)
             if force:
                 raise
 
@@ -244,6 +327,8 @@ class Engine(threading.Thread):
                     self.send_panel(d, i, force)
                 except Exception as error:
                     failures.append(f"{i+1}: {error}")
+                    if self.online.get(d["id"]) is False:   # the device just dropped: do not wait on its other screens
+                        break
         if failures:
             raise RuntimeError("Screens with errors: " + "; ".join(failures))
 
@@ -405,17 +490,26 @@ class Engine(threading.Thread):
     def health(self, d):
         self.last_health[d["id"]] = time.monotonic()
         try:
-            body = self.command(d, {"Command": "Channel/GetAllConf"})
+            body = self.probe_command(d, {"Command": "Channel/GetAllConf"})
             if self.online.get(d["id"]) is False:
                 self.lighting_restored.discard((d['id'], d['ip']))
                 self.invalidate(d["id"])
                 self.log(f"{d['name']} · connection recovered; its content will be restored")
             self.online[d["id"]] = True
+            self.fail_count[d["id"]] = 0
+            self.offline_probes.pop(d["id"], None)
+            self.offline_info.pop(d["id"], None)
             self.emit("health", device_id=d["id"], online=True, body=body)
         except Exception as error:
+            was_online = self.online.get(d["id"]) is not False
             self.online[d["id"]] = False
+            self.offline_probes[d["id"]] = self.offline_probes.get(d["id"], -1) + 1
+            self.offline_info.setdefault(d["id"], {"since": time.time(), "reason": ""})["reason"] = self.connection_reason(error)
             self.lighting_restored.discard((d['id'], d['ip']))
             self.emit("health", device_id=d["id"], online=False, body={"error": str(error)})
+            if was_online:
+                self.log(f"{d['name']} · connection lost ({self.offline_info[d['id']]['reason'].replace('_', ' ')}); trying again shortly", "warning")
+            self.maybe_relocate(d)
             return
         key = (d['id'], d['ip'])
         if d.get('lighting') and d.get('lighting_restore', True) and key not in self.lighting_restored:
@@ -476,7 +570,8 @@ class Engine(threading.Thread):
                             self.overrides[key] = time.monotonic() + 5
             if not d.get("ip"):
                 continue
-            if (d.get('enabled') or (d.get('lighting') and d.get('lighting_restore', True))) and now - self.last_health.get(device_id, -1e12) > 30:
+            interval = 30 if self.online.get(device_id) is not False else PROBE_DELAYS[min(self.offline_probes.get(device_id, 0), len(PROBE_DELAYS) - 1)]
+            if (d.get('enabled') or (d.get('lighting') and d.get('lighting_restore', True))) and now - self.last_health.get(device_id, -1e12) > interval:
                 self.health(d)
             if not d.get('enabled'):
                 continue

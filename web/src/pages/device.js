@@ -1,7 +1,7 @@
 import {ctx} from "../ctx.js";
 import {el,button,row,card,hint,toast,mark,field,numeric,d,load,save,action,saveAndSend,render} from "../ui.js";
 import {t} from "../i18n.js";
-import {device,removeDevice} from "../model.js";
+import {device,removeDevice,offlineDetail} from "../model.js";
 function removeWithConfirm(dev) {
   if (ctx.cfg.devices.length <= 1) throw Error(t("ui.keep_at_least_one_device"));
   if (!confirm(t("ui.remove_device_confirm").replace("{name}", dev.name || dev.ip || dev.id)))
@@ -11,8 +11,10 @@ function removeWithConfirm(dev) {
   mark();
   render();
 }
+const offlineText = ({ reason, duration }) => t("ui.conn_" + reason, { duration });
 function devicesCard() {
   const online = ctx.state?.runtime?.online;
+  const connection = ctx.state?.runtime?.connection;
   return card(
     t("ui.devices_list"),
     el(
@@ -29,6 +31,9 @@ function devicesCard() {
             { class: "devinfo" },
             el("strong", {}, dev.name || t("ui.unnamed_device")),
             el("span", { class: dev.ip ? "" : "muted" }, dev.ip || t("ui.no_ip_set")),
+            status === false && offlineDetail(connection?.[dev.id])
+              ? el("span", { class: "muted" }, offlineText(offlineDetail(connection[dev.id])))
+              : null,
           ),
           el(
             "div",
@@ -122,6 +127,7 @@ export function devicePage(main) {
       ),
       field(value, "suspended", t("ui.pause_sending"), "checkbox"),
       field(ctx.cfg, "resend_on_startup", t("ui.resend_on_startup"), "checkbox"),
+      field(ctx.cfg, "auto_find_device", t("ui.auto_find_device"), "checkbox"),
       row(
         button(
           t("ui.resume_and_resend"),

@@ -40,8 +40,12 @@ def reply_ok(body):
     return code in (0, "0")
 
 
+CONNECT_TIMEOUT = 2          # seconds to establish the TCP connection; a device that is up accepts at once
+RETRY_BACKOFF = (0.3, 1.0)   # waits before the 1st and 2nd retry of a command that did not connect or answer
+
+
 class Client:
-    def __init__(self, ip, session=None, timeout=10, port=0, token=""):
+    def __init__(self, ip, session=None, timeout=10, port=0, token="", retries=len(RETRY_BACKOFF), sleep=time.sleep):
         self.ip = valid_ip(ip)
         self.candidates = endpoint_candidates(port)
         self.token = str(token or "").strip()
@@ -49,6 +53,8 @@ class Client:
         # Device acceptance alone does not guarantee that a frame was displayed.
         self.session = session if session is not None else requests
         self.timeout = timeout
+        self.retries = max(0, int(retries))
+        self.sleep = sleep
         self.last_pic_id = 0
 
     def command(self, payload):
@@ -65,12 +71,24 @@ class Client:
         return body
 
     def _post(self, payload):
+        # A command that neither connects nor answers is repeated (every command here is safe to repeat: a frame
+        # upload carries its own PicID and offset), waiting a little longer each time.
+        for attempt in range(self.retries + 1):
+            try:
+                return self._post_once(payload)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt >= self.retries:
+                    raise
+                self.sleep(RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)])
+
+    def _post_once(self, payload):
         # Try each endpoint until one connects; remember it for later commands.
         last_error = None
+        timeout = (min(CONNECT_TIMEOUT, self.timeout), self.timeout)
         for index, (port, path) in enumerate(self.candidates):
             try:
                 host = self.ip if port == 80 else f"{self.ip}:{port}"
-                response = self.session.post(f"http://{host}{path}", json=payload, timeout=self.timeout)
+                response = self.session.post(f"http://{host}{path}", json=payload, timeout=timeout)
                 response.raise_for_status()
                 body = response.json()
             except (requests.ConnectionError, requests.Timeout) as error:
@@ -132,9 +150,28 @@ def media_frames(path, fit="contain", frame_step=1):
     return frames
 
 
+def _mac(value):
+    return "".join(c for c in str(value or "").lower() if c in "0123456789abcdef")
+
+
+def locate(device):
+    """Current LAN address of a known device according to Divoom's cloud list (matched by MAC, else device id), or ''."""
+    mac, device_id = _mac(device.get("mac")), int(device.get("device_id") or 0)
+    if not mac and not device_id:
+        return ""
+    for item in discover(cloud=True):
+        same = (mac and _mac(item.get("mac")) == mac) or (device_id and int(item.get("device_id") or 0) == device_id)
+        if same:
+            try:
+                return valid_ip(item.get("ip", ""))
+            except ValueError:
+                return ""
+    return ""
+
+
 def probe(ip, timeout=.5, port=0, token=""):
     try:
-        return Client(ip, timeout=timeout, port=port, token=token).command({"Command": "Channel/GetAllConf"})
+        return Client(ip, timeout=timeout, port=port, token=token, retries=0).command({"Command": "Channel/GetAllConf"})
     except Exception:
         return None
 

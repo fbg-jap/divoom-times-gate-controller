@@ -32,7 +32,9 @@ class LegacyTransportTests(unittest.TestCase):
                             pauses = sleep.call_args_list[:]
                             post.reset_mock(); sleep.reset_mock()
                             Client("192.168.1.10").send_frames(media_frames(path, "stretch"), panel, 85, 100)
-                            self.assertEqual(post.call_args_list, expected)
+                            wire = lambda calls: [(c.args, {k: v for k, v in c.kwargs.items() if k != "timeout"}) for c in calls]
+                            self.assertEqual(wire(post.call_args_list), wire(expected))   # same URLs and bodies as the legacy sender
+                            self.assertTrue(all(c.kwargs["timeout"] == (2, 10) for c in post.call_args_list))   # short connect, 10 s read
                             self.assertEqual(sleep.call_args_list, pauses)
 
     def test_worker_paces_still_image_and_last_frame(self):
