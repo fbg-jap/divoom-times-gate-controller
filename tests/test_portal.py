@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -8,7 +9,10 @@ import zipfile
 
 from PIL import Image
 from fastapi.testclient import TestClient
+from unittest import mock
+
 from keeper.config import slot
+from keeper.mail import new_account
 from keeper.portal import create_app, validate_command
 
 
@@ -151,3 +155,93 @@ class PortalTests(unittest.TestCase):
         result = self.job(self.client.post("/api/panorama", json={"path": file["path"], "start": 999, "duration": 1, "fps": 5}))
         self.assertEqual(result["status"], "error")
         self.assertEqual(self.app.state.store.snapshot(), before)
+
+    # --- refresh tokens belong to the server -------------------------------------------------------------------------
+    def put(self, state):
+        return self.job(self.client.put("/api/config", json=state))
+
+    def with_tokens(self, spotify="S0", mail="M0"):
+        def apply(data):
+            data["integrations"]["spotify"].update(refresh_token=spotify, client_id="abcdef1234567890")
+            data["integrations"]["mail"]["accounts"] = [new_account(id="ms1", provider="microsoft", client_id="cid", refresh_token=mail)]
+        self.app.state.store.change(apply)
+
+    def stored_tokens(self):
+        data = self.app.state.store.snapshot()["integrations"]
+        return data["spotify"]["refresh_token"], data["mail"]["accounts"][0]["refresh_token"]
+
+    def test_rotation_between_load_and_save_does_not_conflict_or_clobber(self):
+        self.with_tokens()
+        state = self.client.get("/api/state").json()
+        self.app.state.store.change(lambda d: (d["integrations"]["spotify"].update(refresh_token="S1"),
+                                               d["integrations"]["mail"]["accounts"][0].update(refresh_token="M1")))
+        self.assertEqual(self.client.get("/api/state").json()["revision"], state["revision"])
+        state["config"]["integrations"]["prtg"]["enabled"] = False
+        state["config"]["theme"] = "light"
+        self.assertEqual(self.put(state)["status"], "done")
+        self.assertEqual(self.stored_tokens(), ("S1", "M1"))
+        self.assertEqual(self.app.state.store.snapshot()["theme"], "light")
+
+    def test_disconnect_with_an_empty_token_clears_it(self):
+        self.with_tokens()
+        state = self.client.get("/api/state").json()
+        state["config"]["integrations"]["spotify"]["refresh_token"] = ""
+        state["config"]["integrations"]["mail"]["accounts"][0]["refresh_token"] = ""
+        self.assertEqual(self.put(state)["status"], "done")
+        self.assertEqual(self.stored_tokens(), ("", ""))
+
+    def test_a_forged_token_is_ignored_for_known_and_new_accounts(self):
+        self.with_tokens()
+        state = self.client.get("/api/state").json()
+        accounts = state["config"]["integrations"]["mail"]["accounts"]
+        state["config"]["integrations"]["spotify"]["refresh_token"] = "FORGED"
+        accounts[0]["refresh_token"] = "FORGED"
+        accounts.append(new_account(id="new1", provider="microsoft", client_id="cid2", refresh_token="FORGED"))
+        self.assertEqual(self.put(state)["status"], "done")
+        saved = self.app.state.store.snapshot()["integrations"]
+        self.assertEqual(self.stored_tokens(), ("S0", "M0"))
+        self.assertEqual([a["refresh_token"] for a in saved["mail"]["accounts"]], ["M0", ""])
+
+    def test_other_edits_still_conflict_check(self):
+        self.with_tokens()
+        state = self.client.get("/api/state").json()
+        self.app.state.store.change(lambda d: d.update(theme="light"))
+        state["config"]["integrations"]["prtg"]["enabled"] = False
+        result = self.put(state)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("Reload before saving", result["error"])
+        self.assertEqual(self.stored_tokens(), ("S0", "M0"))
+
+    def test_revision_ignores_only_refresh_tokens(self):
+        from keeper.portal import revision
+        self.with_tokens()
+        before = revision(self.app.state.store.snapshot())
+        self.app.state.store.change(lambda d: d["integrations"]["spotify"].update(refresh_token="OTHER"))
+        self.assertEqual(revision(self.app.state.store.snapshot()), before)
+        self.app.state.store.change(lambda d: d["integrations"]["spotify"].update(client_id="zzzzzzzzzzzz"))
+        self.assertNotEqual(revision(self.app.state.store.snapshot()), before)
+
+    def test_legacy_spotify_routes_are_gone(self):
+        self.assertEqual(self.client.post("/api/spotify/connect", json={}).status_code, 405)
+        self.assertEqual(self.client.get("/api/spotify/callback?code=c&state=x", headers={"Authorization": ""}).status_code, 401)
+
+    # --- migration of the original app's profiles --------------------------------------------------------------------
+    def test_state_reports_the_migration_note_once(self):
+        self.assertEqual(self.client.get("/api/state").json()["notice"], "")
+        self.app.state.store.migration_note = "Profiles imported."
+        self.assertEqual(self.client.get("/api/state").json()["notice"], "Profiles imported.")
+        self.assertEqual(self.client.get("/api/state").json()["notice"], "")
+
+    def test_create_app_imports_a_legacy_profile_only_when_asked(self):
+        with tempfile.TemporaryDirectory() as appdata:
+            legacy = Path(appdata) / "DivoomKeeper"
+            legacy.mkdir()
+            (legacy / "config.json").write_text(json.dumps({"device_ip": "192.168.1.50", "ui_lang": "es", "screens": []}))
+            for migrate, expected in ((False, ""), (True, "192.168.1.50")):
+                with tempfile.TemporaryDirectory() as temp, mock.patch.dict(os.environ, {"APPDATA": appdata}):
+                    app = create_app(Path(temp), token="unit-test-token-at-least-24-characters", demo=True, migrate=migrate)
+                    with TestClient(app) as client:
+                        state = client.get("/api/state", headers={"Authorization": "Bearer unit-test-token-at-least-24-characters"}).json()
+                    self.assertEqual(state["config"]["devices"][0]["ip"], expected)
+                    self.assertEqual(bool(state["notice"]), migrate)
+                    self.assertEqual(state["config"]["language"], "es" if migrate else "en")

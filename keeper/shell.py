@@ -121,6 +121,13 @@ QT_REMOVED = ("The Qt interface was removed; the web UI is the interface. "
               "Use tag qt-ui-last to get the old app.")
 
 
+def ensure_std_streams():
+    """A windowed (console-less) Windows build has sys.stdout/sys.stderr = None: give them a null sink so nothing crashes."""
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
+
 def parse_args(argv=None):
     """The single argument parser (app.py and shell_main.py both use it)."""
     parser = argparse.ArgumentParser(description="Divoom Keeper Studio")
@@ -130,6 +137,7 @@ def parse_args(argv=None):
     parser.add_argument("--no-tray", action="store_true", help="Do not show the tray icon")
     parser.add_argument("--ui", choices=("web", "qt"), default="web", help=argparse.SUPPRESS)  # web: kept for old autostart entries
     parser.add_argument("--port", type=int, help="Local port (default 8765, KEEPER_SHELL_PORT)")
+    parser.add_argument("--self-test", action="store_true", help="Check the bundled libraries (calendar, video, GIF, ...) and exit")
     parser.add_argument("--print-launch-url", action="store_true", help="DEBUG ONLY: print the one-time login URL")
     parser.add_argument("--screenshot-dir", type=Path, help=argparse.SUPPRESS)  # removed with the Qt interface
     args = parser.parse_args(argv)
@@ -206,7 +214,9 @@ def wait_healthy(port, timeout=30, clock=time.monotonic, fetch=None):
 
 def start_server(app, sock):
     import uvicorn
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", proxy_headers=False, lifespan="on"))
+    # log_config=None: uvicorn's default logging config needs a real stdout/stderr; the shell logs to studio.log through
+    # the root logger, which uvicorn's (handler-less, propagating) loggers reach at WARNING.
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", log_config=None, proxy_headers=False, lifespan="on"))
     thread = threading.Thread(target=lambda: server.run(sockets=[sock]), name="portal-server", daemon=True)
     thread.start()
     return server, thread
@@ -229,12 +239,48 @@ def resolve_root(args):
     return platform_support.data_directory(), None
 
 
+def show_error(text):
+    """Tell the user about a startup failure when there is no console (best effort, never raises)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, text, "Divoom Keeper Studio", 0x10)
+        else:
+            notifier = shutil.which("notify-send")
+            if notifier:
+                subprocess.Popen([notifier, "Divoom Keeper Studio", text], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as error:
+        log.warning("Could not show the error message: %s", error)
+
+
+def config_failure(root, error):
+    """Log, print and show a startup failure caused by the settings; returns the exit code."""
+    log.error("The settings file could not be loaded", exc_info=error)
+    if isinstance(error, (json.JSONDecodeError, UnicodeDecodeError)):
+        reason = "the file is not valid JSON"
+    elif isinstance(error, (ValueError, KeyError, TypeError)):
+        reason = "a setting is invalid"
+    elif isinstance(error, OSError):
+        reason = "the file could not be read"
+    else:
+        reason = "unexpected error"
+    text = f"The settings file could not be loaded: {reason}. Nothing was modified. Data folder: {root}"
+    print(text, file=sys.stderr)
+    show_error(text)
+    return 1
+
+
 def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_loader=load_tray, quit_event=None):
     """Run the shell until quit. Returns the process exit code.
 
     A second instance only opens the browser on the running one; the page then asks for the access token as the
     plain web portal does (the launch code is in-process only, so a second process cannot obtain one).
     """
+    ensure_std_streams()
+    if getattr(args, "self_test", False):
+        from .selftest import run_self_test
+        return run_self_test()
     from .startup import set_ui_args
     set_ui_args(["--ui", "web"])  # autostart relaunches this same mode
     root, temp = resolve_root(args)
@@ -256,13 +302,26 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
         return 0
     remove_stale_launch_pages(root)
     handler = PrivateRotatingFileHandler(root / "studio.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
-    logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(asctime)s [%(levelname)s] %(message)s")
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)  # not basicConfig: a handler left by an earlier run() in this process must not win
+    root_logger.setLevel(logging.INFO)
     quit_event = quit_event or threading.Event()
     sock = server = thread = tray = pages = None
     code = 0
     try:
         from .portal import create_app
-        app = create_app(root, demo=args.demo, shell_mode=True)
+        try:
+            app = create_app(root, demo=args.demo, shell_mode=True, migrate=not args.demo)
+        except Exception as error:
+            return config_failure(root, error)
+        if not args.demo and app.state.store.snapshot().get("startup"):
+            # Keep an enabled autostart entry pointing at this release (AppImage / unpacked exe paths change per version).
+            from .startup import set_startup
+            try:
+                set_startup(True, root)
+            except OSError as error:
+                log.warning("Could not update autostart: %s", error)
         app.state.quit_event = quit_event
         wanted = args.port or int(os.getenv("KEEPER_SHELL_PORT", DEFAULT_PORT))
         sock = pick_socket(wanted)
@@ -287,7 +346,7 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
         if args.print_launch_url:
             # A live code on a captured stdout is readable by whoever reads the pipe/log. Print it only to a terminal.
             # KEEPER_ALLOW_PIPED_LAUNCH_URL=1 is a TEST-ONLY opt-in (tools/smoke_shell.py must set it to read the URL).
-            if sys.stdout.isatty() or os.getenv("KEEPER_ALLOW_PIPED_LAUNCH_URL") == "1":
+            if getattr(sys.stdout, "isatty", lambda: False)() or os.getenv("KEEPER_ALLOW_PIPED_LAUNCH_URL") == "1":
                 launch_url = base + "#launch=" + app.state.launch_codes.issue()
                 print(launch_url, flush=True)
                 # TEST-ONLY: a windowed (console-less) Windows build has no stdout, so the smoke test can read the URL
@@ -319,7 +378,8 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
         if not args.minimized:
             open_browser()
         elif not tray:
-            log.info("Started minimized without a tray; open %s", base)
+            log.info("Started minimized without a tray; opening %s so the app is not invisible", base)
+            open_browser()
         if threading.current_thread() is threading.main_thread():
             with suppress(ValueError):
                 signal.signal(signal.SIGTERM, lambda *_: quit_event.set())
@@ -346,6 +406,7 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
             pages.close()
         (root / "shell.json").unlink(missing_ok=True)
         lock.release()
+        root_logger.removeHandler(handler)
         handler.close()
         if temp:
             temp.cleanup()

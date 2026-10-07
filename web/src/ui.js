@@ -99,6 +99,7 @@ export async function load() {
   setLanguage(ctx.cfg.language);
   ctx.revision = ctx.state.revision;
   ctx.dirty = false;
+  if (ctx.state.notice) toast(ctx.state.notice); // one-time server note (e.g. imported profiles); delivered by the first state request only
 }
 export async function save() {
   const result = await request("/config", "PUT", { config: ctx.cfg, revision: ctx.revision });

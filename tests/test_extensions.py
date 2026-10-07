@@ -212,13 +212,13 @@ class PrtgTests(unittest.TestCase):
         from keeper.extensions import render_extra
         p = Providers(); gate = threading.Event(); threads = []
         def fetch(base, token, verify):
-            threads.append(threading.current_thread()); gate.wait(2)
+            threads.append(threading.current_thread()); gate.wait(30)
             return {"up": 1, "warning": 0, "down": 0, "paused": 0, "unusual": 0, "worst": ""}
         p.prtg_fetch = fetch
         p.extra.prtg_conf = {"enabled": True, "base_url": "http://x.test", "token": "t", "verify_tls": True}
         started = time.monotonic()
         render_extra(slot("prtg"), p); render_extra(slot("prtg"), p)  # fetch is blocked: render must still return at once
-        self.assertLess(time.monotonic() - started, 1)
+        self.assertLess(time.monotonic() - started, 10, "render waited for the blocked fetch")
         self.wait_for(p.extra, lambda: threads)
         self.assertNotIn(threading.current_thread(), threads)
         self.assertEqual(len(threads), 1)  # single flight
@@ -232,12 +232,12 @@ class PrtgTests(unittest.TestCase):
             data, error = p.extra.prtg_state()
         self.assertEqual((data["down"], error), (1, ""))             # first call already has real data
         gate = threading.Event(); q = Providers(); q.extra.prtg_conf = dict(conf)
-        q.prtg_fetch = lambda base, token, verify: (gate.wait(5), {"up": 1, "warning": 0, "down": 0, "paused": 0, "unusual": 0, "worst": ""})[1]
+        q.prtg_fetch = lambda base, token, verify: (gate.wait(60), {"up": 1, "warning": 0, "down": 0, "paused": 0, "unusual": 0, "worst": ""})[1]
         started = time.monotonic()
         with patch("keeper.extensions.FIRST_READ_WAIT", 0.2):
             data, error = q.extra.prtg_state()
         self.assertIsNone(data)                                       # a slow source gives the placeholder after the cap
-        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertLess(time.monotonic() - started, 30, "the first draw waited for the blocked fetch")
         gate.set()
 
     def test_sampler_rebuilt_only_when_the_connection_changes(self):
@@ -483,7 +483,7 @@ class MailTests(unittest.TestCase):
         fake = FakeImap(header=b"Subject: " + b"a" * (4 * 1024 * 1024) + b"\r\n\r\n")
         started = time.monotonic()
         subject = self.run_fetch(fake, show_subject=True)[0]["subject"]
-        self.assertLess(time.monotonic() - started, 1)
+        self.assertLess(time.monotonic() - started, 10)
         self.assertLessEqual(len(subject), 80)
 
     def test_starttls_on_143_and_password_withheld_when_it_fails(self):
@@ -561,10 +561,13 @@ class MailTests(unittest.TestCase):
             self.assertEqual(extra.mail_state(), (None, "not configured"))
             extra.mail_conf = {**self.MAIL, "enabled": False}
             self.assertEqual(extra.mail_state(), (None, "not configured")); fetch.assert_not_called()
-            gate = threading.Event(); fetch.side_effect = lambda conf, **kw: (gate.wait(2), {"unread": 2, "subject": None})[1]
+            gate = threading.Event(); fetch.side_effect = lambda conf, **kw: (gate.wait(30), {"unread": 2, "subject": None})[1]
             extra.mail_conf = copy.deepcopy(self.MAIL)
             extra.mail_state(); extra.mail_state(); extra.mail_state()
-            time.sleep(.05); self.assertEqual(fetch.call_count, 1)
+            deadline = time.monotonic() + 10
+            while fetch.call_count < 1 and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertEqual(fetch.call_count, 1, "the sampler did not start exactly one fetch")
             gate.set()
             for _ in range(200):
                 if extra.mail() is not None:

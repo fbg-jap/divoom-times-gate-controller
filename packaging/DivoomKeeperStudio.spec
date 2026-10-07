@@ -32,7 +32,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "icalendar.tests", "recurring_ical_events.test"],
+    excludes=["tkinter", "PySide6", "shiboken6", "PyQt5", "PyQt6", "icalendar.tests", "recurring_ical_events.test"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

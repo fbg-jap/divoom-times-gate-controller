@@ -475,15 +475,19 @@ class LifecycleTests(unittest.TestCase):
             self.assertFalse((root / "shell.json").exists())
             FileLock(root / "studio.lock", timeout=0).acquire()  # released
 
-    def test_minimized_does_not_open_a_browser_and_missing_tray_is_fine(self):
-        with tempfile.TemporaryDirectory() as temp:
-            urls = []
-            quit_event = threading.Event()
-            quit_event.set()
-            serve = lambda app, sock: (FakeServer(), types.SimpleNamespace(is_alive=lambda: True, join=lambda t=None: None))
-            self.assertEqual(shell.run(args_for(Path(temp), minimized=True), serve=serve, healthy=lambda p: True,
-                                       opener=urls.append, tray_loader=lambda: None, quit_event=quit_event), 0)
-            self.assertEqual(urls, [])
+    def test_minimized_with_a_tray_does_not_open_a_browser_but_without_one_it_must(self):
+        serve = lambda app, sock: (FakeServer(), types.SimpleNamespace(is_alive=lambda: True, join=lambda t=None: None))
+        class Tray:
+            def stop(self):
+                pass
+        for tray_loader, expected in ((lambda: (lambda callbacks: Tray()), 0), (lambda: None, 1)):
+            with tempfile.TemporaryDirectory() as temp:
+                urls = []
+                quit_event = threading.Event()
+                quit_event.set()
+                self.assertEqual(shell.run(args_for(Path(temp), minimized=True), serve=serve, healthy=lambda p: True,
+                                           opener=urls.append, tray_loader=tray_loader, quit_event=quit_event), 0)
+                self.assertEqual(len(urls), expected)  # the user must never end up with an invisible app
 
     def test_unhealthy_portal_returns_an_error_and_cleans_up(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -630,6 +634,201 @@ class HardeningTests(unittest.TestCase):
         self.assertIn("launch URL suppressed", err)
         out, _ = self.print_url(False, {"KEEPER_ALLOW_PIPED_LAUNCH_URL": "1"})
         self.assertRegex(out, r"#launch=[\w-]{16,}")
+
+
+def quiet_run(root, args=None, **kwargs):
+    quit_event = threading.Event()
+    quit_event.set()
+    serve = lambda app, sock: (FakeServer(), types.SimpleNamespace(is_alive=lambda: True, join=lambda t=None: None))
+    kwargs.setdefault("opener", lambda url: True)
+    kwargs.setdefault("tray_loader", lambda: None)
+    return shell.run(args or args_for(root), serve=serve, healthy=lambda p: True, quit_event=quit_event, **kwargs)
+
+
+class NoConsoleTests(unittest.TestCase):
+    """A windowed PyInstaller build has sys.stdout = sys.stderr = None."""
+
+    def test_ensure_std_streams_replaces_none_only(self):
+        with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None):
+            shell.ensure_std_streams()
+            sys.stdout.write("x")
+            sys.stderr.write("y")
+            self.assertFalse(sys.stdout.isatty())
+            sys.stdout.close()
+            sys.stderr.close()
+        with mock.patch.object(sys, "stdout", io.StringIO()) as kept:
+            shell.ensure_std_streams()
+            self.assertIs(sys.stdout, kept)
+
+    def test_the_default_uvicorn_logging_config_is_what_crashed(self):
+        import uvicorn
+        with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None):
+            with self.assertRaises(ValueError):
+                uvicorn.Config(lambda *a: None, log_level="warning")
+
+    def test_start_server_builds_its_config_without_console_streams_and_uvicorn_still_logs_to_the_root_handler(self):
+        import logging
+        import uvicorn
+        configs = []
+        class FakeUvicornServer:
+            def __init__(self, config):
+                configs.append(config)
+                self.should_exit = False
+            def run(self, sockets=None):
+                pass
+        records = []
+        class Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+        capture = Capture(level=logging.WARNING)
+        root = logging.getLogger()
+        root.addHandler(capture)
+        try:
+            with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None), \
+                    mock.patch.object(uvicorn, "Server", FakeUvicornServer):
+                server, thread = shell.start_server(lambda *a: None, None)
+                thread.join(5)
+            self.assertIsNone(configs[0].log_config)
+            for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+                self.assertEqual(logging.getLogger(name).handlers, [], name)
+            logging.getLogger("uvicorn.error").warning("portal trouble")
+            logging.getLogger("uvicorn.error").info("chatter")
+        finally:
+            root.removeHandler(capture)
+        self.assertEqual(records, ["portal trouble"])
+
+    def test_run_survives_missing_streams_and_writes_the_launch_url_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            url_file = Path(temp) / "launch.txt"
+            env = {"KEEPER_ALLOW_PIPED_LAUNCH_URL": "1", "KEEPER_LAUNCH_URL_FILE": str(url_file)}
+            with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None), mock.patch.dict(os.environ, env):
+                code = quiet_run(Path(temp) / "data", args_for(Path(temp) / "data", print_launch_url=True))
+                self.assertIsNotNone(sys.stdout)
+                sys.stdout.close()
+                sys.stderr.close()
+            self.assertEqual(code, 0)
+            self.assertRegex(url_file.read_text(), r"^http://127\.0\.0\.1:\d+/#launch=[\w-]{16,}\n$")
+
+    def test_print_launch_url_without_stdout_and_without_the_opt_in_prints_nothing_and_does_not_raise(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None), \
+                    mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("KEEPER_ALLOW_PIPED_LAUNCH_URL", None)
+                self.assertEqual(quiet_run(Path(temp), args_for(Path(temp), print_launch_url=True)), 0)
+                sys.stdout.close()
+                sys.stderr.close()
+
+    def test_entry_points_replace_missing_streams_before_anything_else(self):
+        for module in ("app", "shell_main"):
+            code = ("import sys; sys.stdout = sys.stderr = None\n"
+                    f"import {module}\n"
+                    f"{module}.shell.run = lambda args: 0 if sys.stdout is not None and sys.stderr is not None else 7\n"
+                    f"raise SystemExit({module}.main([]))")
+            result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class AutostartRefreshTests(unittest.TestCase):
+    def run_with(self, startup, demo=False, error=None):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as appdata, \
+                mock.patch.dict(os.environ, {"APPDATA": appdata}), mock.patch("keeper.startup.set_startup", side_effect=error) as patched:
+            root = Path(temp)
+            from keeper.config import ConfigStore
+            store = ConfigStore(root, migrate=False)
+            store.change(lambda data: data.update(startup=startup))
+            code = quiet_run(root, args_for(root, demo=demo))
+            return code, patched.call_args_list, (root / "studio.log").read_text()
+
+    def test_an_enabled_preference_is_re_registered_once_on_launch(self):
+        code, calls, _ = self.run_with(True)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][0], True)
+
+    def test_not_in_demo_mode_and_not_when_disabled(self):
+        self.assertEqual(self.run_with(True, demo=True)[1], [])
+        self.assertEqual(self.run_with(False)[1], [])
+
+    def test_a_failing_update_does_not_stop_the_startup(self):
+        code, calls, log = self.run_with(True, error=OSError("read-only"))
+        self.assertEqual((code, len(calls)), (0, 1))
+        self.assertIn("Could not update autostart", log)
+
+
+class BadConfigTests(unittest.TestCase):
+    def run_broken(self, writer):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "data"
+            root.mkdir()
+            writer(root / "config.json")
+            before = (root / "config.json").read_bytes()
+            messages = []
+            with mock.patch.object(shell, "show_error", messages.append), contextlib.redirect_stderr(io.StringIO()) as err:
+                code = shell.run(args_for(root, demo=False), serve=lambda *a: self.fail("must not start"),
+                                 healthy=lambda p: True, opener=lambda u: True, tray_loader=lambda: None)
+            log = (root / "studio.log").read_text()
+            self.assertEqual((root / "config.json").read_bytes(), before)  # nothing was modified
+            self.assertFalse((root / "shell.json").exists())
+            FileLock(root / "studio.lock", timeout=0).acquire()  # the instance lock was released
+            return code, messages, err.getvalue(), log, root
+
+    def check(self, code, messages, stderr, log, root, reason):
+        self.assertEqual(code, 1)
+        expected = f"The settings file could not be loaded: {reason}. Nothing was modified. Data folder: {root}"
+        self.assertEqual(messages, [expected])
+        self.assertIn(expected, stderr)
+        self.assertIn("The settings file could not be loaded", log)
+        self.assertIn("Traceback", log)
+
+    def test_corrupt_json(self):
+        self.check(*self.run_broken(lambda path: path.write_text("{ not json")), "the file is not valid JSON")
+
+    def test_validation_error_such_as_an_invalid_mail_account(self):
+        from keeper.config import defaults
+        def write(path):
+            data = defaults()
+            data["integrations"]["mail"]["accounts"] = [{"id": "a1", "user": "x" * 1000}]
+            path.write_text(json.dumps(data))
+        result = self.run_broken(write)
+        self.check(*result, "a setting is invalid")
+        self.assertNotIn("xxxx", result[1][0] + result[2])
+
+    def test_unreadable_file(self):
+        def write(path):
+            path.write_bytes(b"\xff\xfe\x00bad")
+        code, messages, stderr, log, root = self.run_broken(write)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(messages), 1)
+
+    def test_show_error_uses_notify_send_on_linux_and_a_message_box_on_windows(self):
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(shell.shutil, "which", return_value="/usr/bin/notify-send"), \
+                mock.patch.object(shell.subprocess, "Popen") as popen:
+            shell.show_error("boom")
+            self.assertEqual(popen.call_args[0][0], ["/usr/bin/notify-send", "Divoom Keeper Studio", "boom"])
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(shell.shutil, "which", return_value=None), \
+                mock.patch.object(shell.subprocess, "Popen") as popen:
+            shell.show_error("boom")
+            popen.assert_not_called()
+        box = mock.Mock(return_value=1)
+        windll = types.SimpleNamespace(user32=types.SimpleNamespace(MessageBoxW=box))
+        import ctypes
+        with mock.patch.object(sys, "platform", "win32"), mock.patch.object(ctypes, "windll", windll, create=True):
+            shell.show_error("boom")
+        box.assert_called_once_with(0, "boom", "Divoom Keeper Studio", 0x10)
+        with mock.patch.object(sys, "platform", "win32"), mock.patch.object(ctypes, "windll", None, create=True):
+            shell.show_error("boom")  # never raises
+
+
+class SelfTestFlagTests(unittest.TestCase):
+    def test_flag_is_parsed_and_run_does_nothing_else(self):
+        self.assertTrue(shell.parse_args(["--self-test"]).self_test)
+        self.assertFalse(shell.parse_args([]).self_test)
+        with tempfile.TemporaryDirectory() as temp:
+            args = args_for(Path(temp) / "data", self_test=True)
+            with mock.patch("keeper.selftest.run_self_test", return_value=0) as patched:
+                self.assertEqual(shell.run(args, serve=lambda *a: self.fail("no server")), 0)
+            patched.assert_called_once_with()
+            self.assertFalse((Path(temp) / "data").exists())  # no data folder, no lock
 
 
 class ParseArgsTests(unittest.TestCase):

@@ -35,7 +35,6 @@ No real Google or Microsoft account has been used; the code is exercised with fa
 from __future__ import annotations
 
 import hmac
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import re
 import secrets
 import threading
@@ -194,70 +193,10 @@ class MailTokenSource:
         return self.access_token
 
 
-class _Callback(BaseHTTPRequestHandler):
-    timeout = 5  # a local client that connects and stalls must not block the flow's deadline
-
-    def log_message(self, *args):
-        pass
-
-    def do_GET(self):
-        url = urlparse(self.path)
-        if url.path != "/callback":
-            return self._reply(404, "Not found")
-        query = {k: v[0] for k, v in parse_qs(url.query).items()}
-        if self.server.outcome is not None or not hmac.compare_digest(query.get("state", "").encode(), self.server.state.encode()):
-            return self._reply(400, "Invalid state. Return to Keeper and try again.")
-        self.server.outcome = (query.get("code", ""), query.get("error", ""))
-        self._reply(200, "Signed in. You can close this tab and return to Keeper." if query.get("code")
-                    else "Sign-in was not authorized. You can close this tab.")
-
-    def _reply(self, status, message):
-        blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(blob)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(blob)
-
-
 def _need_refresh(data):
     if not data["refresh_token"]:
         raise OAuthError("the provider returned no refresh token")
     return data["refresh_token"]
-
-
-def connect_loopback(provider, account, opener, session=None, timeout=180, on_ready=None):
-    """Desktop flow: one-shot server on 127.0.0.1 (random port), browser opened through `opener(url)`. Returns the refresh token."""
-    session = session or requests.Session()
-    verifier, challenge = make_pkce_pair()
-    state = secrets.token_urlsafe(24)
-    server = HTTPServer(("127.0.0.1", 0), _Callback)
-    server.state, server.outcome, server.timeout = state, None, 0.5
-    try:
-        redirect_uri = f"http://127.0.0.1:{server.server_address[1]}/callback"
-        if on_ready:
-            on_ready(redirect_uri)
-        if not opener(build_authorize_url(provider, account, redirect_uri, state, challenge)):
-            raise OAuthError("could not open the browser")
-        deadline = time.monotonic() + timeout
-        while server.outcome is None and time.monotonic() < deadline:
-            server.handle_request()
-        if server.outcome is None:
-            raise OAuthError("timed out waiting for the sign-in")
-        code, error = server.outcome
-        if not code:
-            raise OAuthError("sign-in was not authorized" + (": " + error[:40] if re.fullmatch(r"[a-z_]{1,40}", error) else ""))
-        return _need_refresh(exchange_code(session, provider, account, code, verifier, redirect_uri))
-    finally:
-        server.server_close()
-
-
-def begin_manual(provider, account, redirect_uri):
-    """Paste-back flow (https redirect URI), step 1: (authorize_url, verifier, state). The caller keeps verifier and state in memory."""
-    verifier, challenge = make_pkce_pair()
-    state = secrets.token_urlsafe(24)
-    return build_authorize_url(provider, account, redirect_uri, state, challenge), verifier, state
 
 
 def finish_manual(session, provider, account, redirect_uri, verifier, state, pasted):

@@ -66,6 +66,15 @@ export function applyMailProvider(account, provider) {
   } else if (Object.values(MAIL_HOSTS).includes(account.host)) account.host = "";
   return account;
 }
+// Removing an account: alerts that watched it fall back to the combined total ("all"), else the server refuses the save.
+export function removeMailAccount(cfg, accountId) {
+  const accounts = cfg.integrations.mail.accounts;
+  const index = accounts.findIndex((a) => a.id === accountId);
+  if (index < 0) return -1;
+  accounts.splice(index, 1);
+  for (const rule of cfg.alerts || []) if (rule.metric === "mail_unread" && rule.source === accountId) rule.source = "all";
+  return index;
+}
 export const isOAuthMail = (account) => account?.provider in MAIL_HOSTS;
 // <select> options for a mail account choice: "all" first, then every account, then an unknown saved id kept as "(missing) id".
 export function mailAccountOptions(mail, selected, allLabel) {

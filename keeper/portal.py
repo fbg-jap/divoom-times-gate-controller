@@ -42,8 +42,42 @@ MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | {".png", ".jpg", ".jpeg", ".webp", ".bmp",
 LIMIT = 100 * 1024**2
 
 
+def refresh_token_holders(data):
+    """The dicts that hold a refresh token: the Spotify section and every mail account."""
+    integrations = data.get("integrations") if isinstance(data, dict) else None
+    if not isinstance(integrations, dict):
+        return
+    if isinstance(integrations.get("spotify"), dict):
+        yield "spotify", integrations["spotify"]
+    mail = integrations.get("mail")
+    for account in mail.get("accounts", []) if isinstance(mail, dict) and isinstance(mail.get("accounts"), list) else []:
+        if isinstance(account, dict):
+            yield ("mail", account.get("id")), account
+
+
 def revision(data):
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    """Hash of the configuration WITHOUT refresh tokens: the server rotates them in the background (and owns them), so a
+    rotation must not make an open editor stale."""
+    clean = copy.deepcopy(data)
+    for _, holder in refresh_token_holders(clean):
+        holder.pop("refresh_token", None)
+    return hashlib.sha256(json.dumps(clean, sort_keys=True).encode()).hexdigest()
+
+
+def keep_stored_refresh_tokens(incoming, stored):
+    """The server owns refresh tokens (sign-ins go through /api/oauth/*): an incoming value is honoured only as the empty string
+    (Disconnect); otherwise the stored token stays. A new account (id not stored) can only start without a token."""
+    from .mail import migrate_conf
+    integrations = incoming.get("integrations")
+    if isinstance(integrations, dict) and isinstance(integrations.get("mail"), dict) and "accounts" not in integrations["mail"]:
+        integrations["mail"] = migrate_conf(integrations["mail"])
+    stored = copy.deepcopy(stored)
+    if isinstance(stored.get("integrations"), dict) and isinstance(stored["integrations"].get("mail"), dict):
+        stored["integrations"]["mail"] = migrate_conf(stored["integrations"]["mail"])
+    known = dict(refresh_token_holders(stored))
+    for key, holder in refresh_token_holders(incoming):
+        if holder.get("refresh_token") != "":
+            holder["refresh_token"] = known.get(key, {}).get("refresh_token", "")
 
 
 class PortalEngine(Engine):
@@ -187,7 +221,7 @@ def validate_portal(data, media_dir):
                     raise ValueError("Use a file uploaded to this server's library")
 
 
-def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None, shell_mode=False, clock=time.monotonic):
+def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_root=None, shell_mode=False, clock=time.monotonic, migrate=False):
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     lock = FileLock(root / "server.lock", timeout=0)
@@ -201,7 +235,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     if len(token) < 24:
         raise ValueError("KEEPER_TOKEN must be at least 24 characters")
     with lock:
-        store = ConfigStore(root, migrate=False)
+        store = ConfigStore(root, migrate=migrate)
     engine = engine_factory(store, demo=demo)
     converter = ThreadPoolExecutor(max_workers=1, thread_name_prefix="portal-converter")
     conversion_slots = threading.BoundedSemaphore(2)
@@ -223,9 +257,6 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
 
     app = FastAPI(title="Divoom Keeper Portal", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store, app.state.engine = store, engine
-    pending_spotify = spotify.PendingAuth()
-    app.state.spotify_pending = pending_spotify
-    app.state.spotify_session = spotify.requests.Session
     app.state.oauth_pending = pending_oauth = oauth.PendingOAuth(clock)
     app.state.oauth_session = spotify.requests.Session
     # Separate budgets (monotonic times of failures): the public callback only counts failures after a VALID state (a forged
@@ -238,13 +269,13 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
 
     @app.middleware("http")
     async def security(request, call_next):
-        # The browser returns from accounts.spotify.com / Google / Microsoft without the Bearer header. Only these two exact
-        # GETs are exempt, and the handlers themselves require a single-use `state` that an authenticated start call issued.
+        # The browser returns from accounts.spotify.com / Google / Microsoft without the Bearer header. Only this exact
+        # GET is exempt, and the handler itself require a single-use `state` that an authenticated start call issued.
         hosts = request.headers.getlist("host")
         if shell_mode and (len(hosts) != 1 or host_name(hosts[0]) not in LOOPBACK_HOSTS | extra_hosts):
             # DNS rebinding: a page on another origin must not reach the local server under its own hostname.
             return JSONResponse({"error": "Host not allowed"}, status_code=421)
-        public = request.method == "GET" and request.url.path in {"/api/spotify/callback", "/api/oauth/callback"}
+        public = request.method == "GET" and request.url.path == "/api/oauth/callback"
         # The shell exchanges its single-use launch code for the token here; exact POST match only.
         public = public or (shell_mode and request.method == "POST" and request.url.path == "/api/launch")
         if request.url.path.startswith("/api/") and not public:
@@ -306,41 +337,6 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         from urllib.parse import urlparse
         parsed = urlparse(url)
         return parsed.scheme == "https" or (parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1"})
-
-    @app.post("/api/spotify/connect")
-    async def spotify_connect(request: Request):
-        values = await json_body(request)
-        client_id = str(values.get("client_id") or store.snapshot().get("integrations", {}).get("spotify", {}).get("client_id", "")).strip()
-        if not re.fullmatch(r"[A-Za-z0-9]{8,128}", client_id):
-            raise ValueError("Enter the Spotify Client ID first")
-        redirect_uri = str(request.base_url).rstrip("/") + "/api/spotify/callback"
-        if not loopback_or_https(redirect_uri):
-            raise ValueError("Spotify only accepts https or http://127.0.0.1 redirect URIs. Open the portal through "
-                             "http://127.0.0.1:<port> (for example an SSH tunnel) or behind https, then try again.")
-        _, url = pending_spotify.issue(client_id, redirect_uri)
-        return {"url": url, "redirect_uri": redirect_uri}
-
-    @app.get("/api/spotify/callback")
-    async def spotify_callback(request: Request):
-        def page(status, message):
-            blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
-            return Response(blob, status_code=status, media_type="text/html")
-        query = request.query_params
-        pending = pending_spotify.take(query.get("state", ""))
-        if pending is None:
-            return page(400, "This Spotify link is invalid or has expired. Start again from Keeper.")
-        verifier, client_id, redirect_uri = pending
-        if not query.get("code"):
-            return page(400, "Spotify did not authorize Keeper.")
-        try:
-            data = await asyncio.to_thread(lambda: spotify.exchange_code(app.state.spotify_session(), client_id, query["code"], verifier, redirect_uri))
-            if not data["refresh_token"]:
-                raise spotify.SpotifyError("no refresh token")
-            await asyncio.to_thread(store.change, lambda d: d.setdefault("integrations", {}).setdefault("spotify", {}).update(
-                refresh_token=data["refresh_token"], client_id=client_id))
-        except spotify.SpotifyError as error:
-            return page(502, "Could not connect to Spotify: " + spotify.redact(str(error), query["code"], verifier))
-        return page(200, "Spotify connected. You can close this tab and reload Keeper.")
 
     OAUTH_INVALID = "This sign-in link is invalid or has expired. Start again from Keeper."
     OAUTH_FAILED = "Could not complete the connection. Check the client settings and try again."
@@ -544,12 +540,16 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         def quit_keeper():
             return JSONResponse({"quitting": True}, background=BackgroundTask(app.state.quit_event.set))
 
+    notice_lock = threading.Lock()
+
     @app.get("/api/state")
     def state():
         data = store.snapshot()
         with engine.portal_lock:
             events = list(engine.activity)
-        return {"config": data, "revision": revision(data), "events": events, "version": __version__, "desktop": shell_mode,
+        with notice_lock:
+            notice, store.migration_note = store.migration_note, ""
+        return {"config": data, "revision": revision(data), "notice": notice, "events": events, "version": __version__, "desktop": shell_mode,
                 "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status()},
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
@@ -564,6 +564,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             with store.lock:
                 if values.get("revision") != revision(store.data):
                     raise ValueError("The configuration changed. Reload before saving to avoid overwriting changes.")
+                keep_stored_refresh_tokens(data, store.data)
                 previous = {d["id"] for d in store.data["devices"]}
                 store.change(lambda current: (current.clear(), current.update(copy.deepcopy(data))))
             for gone in previous - {d["id"] for d in data["devices"]}:

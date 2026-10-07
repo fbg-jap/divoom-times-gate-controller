@@ -39,3 +39,31 @@ class ReadUrlFileTests(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("http://127.0.0.1:8123/#launch=" + "a" * 32 + "\n")
             self.assertEqual(smoke_shell.read_url_file(path), (8123, "a" * 32))
+
+
+class SelfTestStepTests(unittest.TestCase):
+    def script(self, folder, body):
+        import os
+        path = os.path.join(folder, "fake.py")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(body)
+        return [sys.executable, path]
+
+    def test_passes_and_reads_the_report_file_or_stdout(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            to_file = self.script(folder, "import os\nopen(os.environ['KEEPER_SELFTEST_FILE'], 'w').write('ok a\\n')\n")
+            self.assertEqual(smoke_shell.self_test(to_file), "ok a\n")
+            to_stdout = self.script(folder, "print('ok b')\n")
+            self.assertEqual(smoke_shell.self_test(to_stdout).strip(), "ok b")
+
+    def test_a_failing_check_fails_the_smoke_run_with_the_report(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            failing = self.script(folder, "import os, sys\nopen(os.environ['KEEPER_SELFTEST_FILE'], 'w').write('ok a\\nFAIL video: boom\\n')\nsys.exit(1)\n")
+            with self.assertRaises(smoke_shell.SmokeError) as caught:
+                smoke_shell.self_test(failing)
+            self.assertIn("FAIL video: boom", str(caught.exception))
+            silent = self.script(folder, "import sys\nsys.exit(0)\n")  # exits 0 but reports nothing: not trusted
+            with self.assertRaises(smoke_shell.SmokeError):
+                smoke_shell.self_test(silent)

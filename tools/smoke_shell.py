@@ -4,7 +4,8 @@
     tools/smoke_shell.py dist/DivoomKeeperStudioWeb-3.1.1-x86_64.AppImage --appimage-extract-and-run
     tools/smoke_shell.py python app.py
 
-The command is started with --demo --minimized --config-dir <tmp> --port <free> --print-launch-url; the script
+First `<command> --self-test` checks the bundled libraries (calendar, GIF, video, psutil, tzdata, platform modules).
+The command is then started with --demo --minimized --config-dir <tmp> --port <free> --print-launch-url; the script
 reads the one-time launch URL, redeems it, checks the portal and quits the app through /api/quit.
 """
 import argparse
@@ -46,6 +47,28 @@ def free_port():
 def check(condition, message):
     if not condition:
         raise SmokeError(message)
+
+
+def self_test(command, timeout=180):
+    """Run `<command> --self-test` (the bundled libraries still work); SmokeError with the report when a check fails.
+
+    The report is read from the KEEPER_SELFTEST_FILE (console-less Windows builds have no stdout), else from stdout."""
+    with tempfile.TemporaryDirectory(prefix="keeper-selftest-") as folder:
+        report = os.path.join(folder, "selftest.txt")
+        env = {**os.environ, "KEEPER_SELFTEST_FILE": report}
+        try:
+            result = subprocess.run([*command, "--self-test"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise SmokeError(f"--self-test did not finish within {timeout} s")
+        try:
+            with open(report, encoding="utf-8") as handle:
+                text = handle.read()
+        except OSError:
+            text = result.stdout
+    check(result.returncode == 0 and text.strip() and "FAIL" not in text,
+          f"--self-test failed (exit code {result.returncode})\n--- self-test report ---\n{text[-2000:] or result.stdout[-2000:]}")
+    return text
 
 
 def run(command, startup_timeout=60, quit_timeout=15):
@@ -144,6 +167,7 @@ def main(argv=None):
     if not command:
         parser.error("give the binary path (or `python app.py`) to test")
     try:
+        self_test(command)
         run(command, args.startup_timeout)
     except SmokeError as error:
         print(f"SMOKE FAIL: {error}", file=sys.stderr)

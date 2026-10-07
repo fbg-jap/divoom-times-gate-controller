@@ -126,7 +126,6 @@ class ConfigStore:
         self.media_dir.mkdir(exist_ok=True)
         self.lock = threading.RLock()
         self.migration_note = ""
-        self.language_notice = False
         self.data = defaults()
         if self.path.exists():
             # Never overwrite a damaged config with defaults.
@@ -138,15 +137,11 @@ class ConfigStore:
             self.data["integrations"] = {
                 key: {**value, **raw.get("integrations", {}).get(key, {})} if isinstance(value, dict) else raw.get("integrations", {}).get(key, value)
                 for key, value in defaults()["integrations"].items()}
-            # Configs written before the flag existed get a one-time language notice.
-            self.language_notice = not raw.get("language_notice_shown", False)
         elif migrate:
             old = Path(os.getenv("APPDATA", str(Path.home()))) / "DivoomKeeper" / "config.json"
             if old.exists():
                 shutil.copy2(old, self.root / "legacy-config.original.json")
                 self._migrate(json.loads(old.read_text(encoding="utf-8-sig")))
-        if not self.path.exists():
-            self.data["language_notice_shown"] = True
         self.save()
 
     def _migrate(self, raw):

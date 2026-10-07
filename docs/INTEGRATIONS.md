@@ -104,17 +104,15 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
 
 1. Create an app at <https://developer.spotify.com/dashboard>.
 2. Under **Redirect URIs** register the URI for how you connect (Spotify accepts `https`, or `http` only on a loopback IP literal; `localhost` is rejected):
-   - **Desktop app (Qt)**: `http://127.0.0.1/callback`. Keeper opens a one-shot server on `127.0.0.1` with a random port and sends that port with the authorization request; Spotify allows leaving the port out of a registered loopback URI. If the Dashboard insists on a port, register `http://127.0.0.1:<port>/callback` for a port of your choice.
    - **Web UI (browser shell or server portal), automatic**: `{portal address}/api/oauth/callback`, where the address is the one in your browser's address bar, for example `http://127.0.0.1:8080/api/oauth/callback` (reach a remote server through an SSH tunnel to its port) or `https://keeper.example.com/api/oauth/callback`. A plain `http://` address that is not `127.0.0.1` / `[::1]` is refused by Keeper and by Spotify. Behind a reverse proxy the portal must see the same scheme and host as your browser. Keeper shows the exact address it used when you press Connect.
    - **Web UI, paste-back** (when the Dashboard rejects `http` loopback): enter an `https` address you registered (even a placeholder such as `https://example.org/callback`) in *Redirect URI* and press Save. See "Connect from the web UI" below.
-   - The older `{portal address}/api/spotify/callback` keeps working for the old connect route.
 3. Copy the app's **Client ID** into Integrations → Spotify and enable it. Do not enter a client secret.
 4. Press **Connect** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. In the web UI the page notices the connection by itself (automatic mode) or asks you to paste the address back (https mode).
 5. Add a Spotify widget to a screen.
 
 **Display option.** Each Spotify screen has a *Display* setting (`spotify_display`): `both` (default: cover, play state, title and artist), `art` (the cover fills the screen, with a small PLAY/PAUSE label and a thin progress bar) or `text` (large title and artist, no cover). Screens without the setting use `both`. The not-connected, connecting and nothing-playing messages ignore it. Mobile does not render this widget.
 
-**Two ways to connect from the desktop app.** Spotify's documentation permits `http` redirect URIs on loopback IP literals (`127.0.0.1`, `[::1]`; the port may be omitted), but some Dashboards demand `https` anyway. Keeper therefore has a *Redirect URI* setting (`integrations.spotify.redirect_uri`, empty by default, not a secret):
+**Two ways to connect from the web UI.** Spotify's documentation permits `http` redirect URIs on loopback IP literals (`127.0.0.1`, `[::1]`; the port may be omitted), but some Dashboards demand `https` anyway. Keeper therefore has a *Redirect URI* setting (`integrations.spotify.redirect_uri`, empty by default, not a secret):
 
 - **Empty or `http://127.0.0.1...`**: the loopback flow above; Keeper runs a one-shot local server and nothing needs pasting.
 - **Any `https` address** (one you control, or even a placeholder such as `https://example.org/callback`): the paste-back flow, with no local server:
@@ -124,7 +122,7 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
   4. Approve. Spotify redirects to your address; the page itself may show an error or not load at all, which is fine.
   5. Copy the **full address from the browser's address bar** (it looks like `https://example.org/callback?code=...&state=...`) and paste it into the dialog Keeper shows. A bare `code=...&state=...` query string also works; the `state` is always required and checked.
 
-  The code is exchanged immediately with the PKCE verifier kept in memory; the pasted address is never stored or logged. Pasted text is limited to 2048 characters. The old `/api/spotify/connect` portal route ignores this setting and derives its address from the request; the web UI uses `/api/oauth/start`, which honours it.
+  The code is exchanged immediately with the PKCE verifier kept in memory; the pasted address is never stored or logged. Pasted text is limited to 2048 characters. The web UI starts the sign-in through `/api/oauth/start`, which honours this setting.
 
 What is stored: only the **client ID** and the **refresh token** (`integrations.spotify`, in `config.json`, mode 0600; the token is blanked in exports). Access tokens live in memory, authorization codes are never stored, and neither is logged. Spotify refresh tokens last about six months; Keeper stores a replacement if Spotify issues one.
 
@@ -139,7 +137,7 @@ Verification status: the OAuth parameters, redirect rules and endpoint were chec
 The **Unread mail** widget and the `mail_unread` alert metric show how many unread messages your mailboxes hold. Configure the accounts under Integrations → Mail. Keeper supports **up to 10 accounts** (`integrations.mail.accounts`), each one either a plain IMAP login with a password or a **Google** / **Microsoft** sign-in (OAuth 2.0, XOAUTH2 over IMAP) that never stores a password.
 
 - A **Mail** screen shows one account or *All accounts* (the sum of the reachable accounts; no subject). Its `mail_account` field is `all` or an account id; an id that no longer exists is shown as *(missing) id* and the widget reports "account missing". A `mail_unread` alert rule has the same choice in its `source` field (`all`/empty = combined, or an account id); the alert source is the account id.
-- Configurations written before multiple accounts (flat `host`, `port`, `user`, `password`, `mailbox`, `show_subject`) are migrated on load to a single account with id `main` (same enabled state); the web editor, the desktop app and the backend all apply the same rule, and an alert pointing at an unknown account is reset to *All accounts*.
+- Configurations written before multiple accounts (flat `host`, `port`, `user`, `password`, `mailbox`, `show_subject`) are migrated on load to a single account with id `main` (same enabled state); the web editor and the backend apply the same rule, and an alert pointing at an unknown account is reset to *All accounts*.
 - Port 993 uses TLS from the start; port 143 uses STARTTLS and Keeper never sends the password (or an OAuth token; OAuth accounts refuse port 143) unless STARTTLS succeeded. Certificates are always verified; there is no option to disable it.
 - Privacy: only the unread count is read by default (`STATUS ... (UNSEEN)` on a read-only `EXAMINE`d mailbox). Keeper never marks mail as read and never downloads message bodies. With **Show the subject** on, it also fetches only the Subject header of the newest unread message (`BODY.PEEK`), shown on the widget; it is off by default.
 - Each mailbox is polled every 120 seconds in the background, never on the display loop; a reading older than 10 minutes is treated as unavailable and the alert does not fire. Errors are shown as a short reason (authentication failed, cannot connect, timeout, protocol error, authorization expired (reconnect), not signed in) that never includes your credentials.

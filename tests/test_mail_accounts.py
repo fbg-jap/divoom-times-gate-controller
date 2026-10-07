@@ -248,55 +248,12 @@ class XOAuth2ImapTests(unittest.TestCase):
             mail.fetch_unread({**IMAP, "password": ""}, connector=lambda *a: fake)
 
 
-class LoopbackAndManualTests(unittest.TestCase):
-    def test_loopback_flow_with_a_browser_that_follows_the_redirect(self):
-        seen = {}
-        def opener(url):
-            q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
-            seen["q"] = q
-            def visit():
-                requests.get(q["redirect_uri"], params={"code": "CODE-1", "state": q["state"]}, timeout=5)
-            threading.Thread(target=visit, daemon=True).start()
-            return True
-        session = FakeSession(FakeResponse(200, {"access_token": "A", "expires_in": 3600, "refresh_token": "RT-NEW"}))
-        token = oauth.connect_loopback("microsoft", MICROSOFT, opener, session, timeout=10)
-        self.assertEqual(token, "RT-NEW")
-        self.assertTrue(seen["q"]["redirect_uri"].startswith("http://127.0.0.1:"))
-        post = session.posts[0][1]
-        self.assertEqual((post["code"], post["redirect_uri"]), ("CODE-1", seen["q"]["redirect_uri"]))
-        import hashlib
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(post["code_verifier"].encode()).digest()).rstrip(b"=").decode()
-        self.assertEqual(challenge, seen["q"]["code_challenge"])  # PKCE: the verifier belongs to the challenge that was sent
-
-    def test_wrong_state_is_rejected_and_the_flow_times_out_without_exchanging(self):
-        seen = []
-        def opener(url):
-            q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
-            def visit():
-                seen.append(requests.get(q["redirect_uri"], params={"code": "EVIL", "state": "WRONG"}, timeout=5).status_code)
-            threading.Thread(target=visit, daemon=True).start()
-            return True
-        session = FakeSession()
-        with self.assertRaises(oauth.OAuthError) as caught:
-            oauth.connect_loopback("google", GOOGLE, opener, session, timeout=1)
-        self.assertEqual(str(caught.exception), "timed out waiting for the sign-in")
-        self.assertEqual((session.posts, seen), ([], [400]))
-
-    def test_provider_error_and_browser_failure_have_fixed_messages(self):
-        def deny(url):
-            q = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
-            threading.Thread(target=lambda: requests.get(q["redirect_uri"], params={"error": "access_denied", "state": q["state"]}, timeout=5), daemon=True).start()
-            return True
-        with self.assertRaises(oauth.OAuthError) as caught:
-            oauth.connect_loopback("google", GOOGLE, deny, FakeSession(), timeout=10)
-        self.assertEqual(str(caught.exception), "sign-in was not authorized: access_denied")
-        with self.assertRaises(oauth.OAuthError) as caught:
-            oauth.connect_loopback("google", GOOGLE, lambda url: False, FakeSession(), timeout=10)
-        self.assertEqual(str(caught.exception), "could not open the browser")
-
+class ManualTests(unittest.TestCase):
     def test_paste_back_flow(self):
         redirect = "https://login.microsoftonline.com/common/oauth2/nativeclient"
-        url, verifier, state = oauth.begin_manual("microsoft", MICROSOFT, redirect)
+        verifier, challenge = oauth.make_pkce_pair()
+        state = "state-" + verifier[:10]
+        url = oauth.build_authorize_url("microsoft", MICROSOFT, redirect, state, challenge)
         self.assertEqual(parse_qs(urlparse(url).query)["redirect_uri"], [redirect])
         ok = {"access_token": "A", "expires_in": 1, "refresh_token": "RT-PASTE"}
         for pasted in (f"{redirect}?code=C1&state={state}", f"{redirect}#code=C1&state={state}", f"code=C1&state={state}"):
@@ -388,8 +345,10 @@ class MailStateTests(unittest.TestCase):
             self.assertEqual(calls, [])  # nothing sampled before the first read
             for _ in range(5):
                 self.extra.mail_state("all")
-            time.sleep(0.1)
-            self.assertEqual(sorted(calls), ["i1", "i2"])  # one in-flight fetch per account
+            deadline = time.monotonic() + 10
+            while len(calls) < 2 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(sorted(calls), ["i1", "i2"], "both samplers should have started")  # one in-flight fetch per account
             gate.set()
             self.settle("all")
             before = {k: v["probe"] for k, v in self.extra.mail_probes.items()}
@@ -418,15 +377,21 @@ class MailStateTests(unittest.TestCase):
             self.assertEqual(self.extra.mail_probes["g1"]["source"].initial_token, "RT-RECONNECT")
 
     def test_first_read_of_several_accounts_shares_one_budget(self):
+        from keeper.windows_sources import AsyncProbe
         release = threading.Event()
         self.addCleanup(release.set)
         self.configure(*[{**IMAP, "id": f"a{n}"} for n in range(4)])
-        with patch("keeper.extensions.FIRST_READ_WAIT", 0.4), patch("keeper.mail.fetch_unread", lambda conf, **kw: (release.wait(5), {"unread": 1, "subject": None})[1]):
-            started = time.monotonic()
+        waits, real_read = [], AsyncProbe.read
+        def spy(probe, wait=0.0):
+            waits.append(wait)
+            return real_read(probe, wait)
+        with patch("keeper.extensions.FIRST_READ_WAIT", 0.4), patch.object(AsyncProbe, "read", spy), \
+                patch("keeper.mail.fetch_unread", lambda conf, **kw: (release.wait(30), {"unread": 1, "subject": None})[1]):
             data, error = self.extra.mail_state("all")
-            elapsed = time.monotonic() - started
         self.assertIsNone(data); self.assertTrue(error.startswith("Waiting"))
-        self.assertLess(elapsed, 0.9)  # 4 accounts x 0.4 s would be 1.6 s
+        budgeted = waits[4:]  # the first four reads only start the samplers; the next four wait for their first sample
+        self.assertEqual(len(budgeted), 4)
+        self.assertLessEqual(sum(budgeted), 0.4 + 1e-6, budgeted)  # one shared budget, not 4 x 0.4 s
 
     def test_legacy_flat_conf_still_works_in_the_sampler(self):
         self.extra.mail_conf = {"enabled": True, "host": "imap.test", "port": 993, "user": "u", "password": "p", "mailbox": "INBOX", "show_subject": False}

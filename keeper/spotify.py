@@ -25,10 +25,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import re
 import secrets
-import threading
 import time
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -279,73 +277,7 @@ class SpotifySource:
         return self.last
 
 
-class _Callback(BaseHTTPRequestHandler):
-    timeout = 5  # a local client that connects and stalls must not block the flow's deadline
-
-    def log_message(self, *args):
-        pass
-
-    def do_GET(self):
-        url = urlparse(self.path)
-        if url.path != "/callback":
-            return self._reply(404, "Not found")
-        query = {k: v[0] for k, v in parse_qs(url.query).items()}
-        if not hmac.compare_digest(query.get("state", "").encode(), self.server.state.encode()):
-            return self._reply(400, "Invalid state. Return to Keeper and try again.")
-        self.server.outcome = (query.get("code", ""), query.get("error", ""))
-        self._reply(200, "Spotify connected. You can close this tab and return to Keeper." if query.get("code")
-                    else "Spotify did not authorize Keeper. You can close this tab.")
-
-    def _reply(self, status, message):
-        blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(blob)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(blob)
-
-
-def connect_loopback(client_id, opener, session=None, timeout=180, on_ready=None):
-    """Desktop flow: one-shot server on 127.0.0.1 (random port), browser opened through `opener(url)`.
-
-    Returns the refresh token. Always closes the server. `on_ready(redirect_uri)` is called once the port is known.
-    """
-    session = session or requests.Session()
-    verifier, challenge = make_pkce_pair()
-    state = secrets.token_urlsafe(24)
-    server = HTTPServer(("127.0.0.1", 0), _Callback)
-    server.state, server.outcome, server.timeout = state, None, 0.5
-    try:
-        redirect_uri = f"http://127.0.0.1:{server.server_address[1]}/callback"
-        if on_ready:
-            on_ready(redirect_uri)
-        if not opener(build_authorize_url(client_id, redirect_uri, state, challenge)):
-            raise SpotifyError("could not open the browser")
-        deadline = time.monotonic() + timeout
-        while server.outcome is None and time.monotonic() < deadline:
-            server.handle_request()
-        if server.outcome is None:
-            raise SpotifyError("timed out waiting for Spotify")
-        code, error = server.outcome
-        if not code:
-            raise SpotifyError("Spotify did not authorize Keeper" + (": " + error[:40] if re.fullmatch(r"[a-z_]{1,40}", error) else ""))
-        data = exchange_code(session, client_id, code, verifier, redirect_uri)
-        if not data["refresh_token"]:
-            raise SpotifyError("Spotify returned no refresh token")
-        return data["refresh_token"]
-    finally:
-        server.server_close()
-
-
 PASTE_LIMIT = 2048
-
-
-def begin_manual(client_id, redirect_uri):
-    """Paste-back flow, step 1: (authorize_url, verifier, state). The caller keeps verifier and state in memory."""
-    verifier, challenge = make_pkce_pair()
-    state = secrets.token_urlsafe(24)
-    return build_authorize_url(client_id, redirect_uri, state, challenge), verifier, state
 
 
 def finish_manual(session, client_id, redirect_uri, verifier, state, pasted):
@@ -367,30 +299,3 @@ def finish_manual(session, client_id, redirect_uri, verifier, state, pasted):
     if not data["refresh_token"]:
         raise SpotifyError("Spotify returned no refresh token")
     return data["refresh_token"]
-
-
-class PendingAuth:
-    """Server mode: PKCE verifiers keyed by single-use `state`, valid for 5 minutes, bounded."""
-    TTL, LIMIT = 300, 20
-
-    def __init__(self, clock=time.monotonic):
-        self.clock, self.items, self.lock = clock, {}, threading.Lock()
-
-    def issue(self, client_id, redirect_uri):
-        verifier, challenge = make_pkce_pair()
-        state = secrets.token_urlsafe(24)
-        now = self.clock()
-        with self.lock:
-            self.items = {k: v for k, v in self.items.items() if v[3] > now}
-            while len(self.items) >= self.LIMIT:
-                self.items.pop(next(iter(self.items)))
-            self.items[state] = (verifier, client_id, redirect_uri, now + self.TTL)
-        return state, build_authorize_url(client_id, redirect_uri, state, challenge)
-
-    def take(self, state):
-        """(verifier, client_id, redirect_uri) or None; always consumes the state."""
-        with self.lock:
-            item = self.items.pop(state, None)
-        if item is None or item[3] <= self.clock():
-            return None
-        return item[:3]

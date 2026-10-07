@@ -2,7 +2,7 @@ import {ctx} from "../ctx.js";
 import {el,button,card,hint,banner,mark,field,numeric,render,toast,save,load} from "../ui.js";
 import {t,setLanguage,languages} from "../i18n.js";
 import {token,request} from "../api.js";
-import {id,MAX_MAIL_ACCOUNTS,newMailAccount,applyMailProvider,isOAuthMail} from "../model.js";
+import {id,MAX_MAIL_ACCOUNTS,newMailAccount,applyMailProvider,isOAuthMail,removeMailAccount} from "../model.js";
 import {startOAuth,waitConnected,completeOAuth,storedToken} from "../oauth.js";
 const names = (conf, key) => ({
   get list() {
@@ -140,7 +140,7 @@ function mailCard() {
         ? button(
             t("ui.mail_remove_account"),
             () => {
-              accounts.splice(index, 1);
+              removeMailAccount(ctx.cfg, a.id);
               ctx.mailAccount = accounts[Math.min(index, accounts.length - 1)]?.id;
               mark();
               render();

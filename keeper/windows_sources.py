@@ -113,6 +113,7 @@ WM_CLOSE, WM_DESTROY, WM_WTSSESSION_CHANGE = 0x0010, 0x0002, 0x02B1
 WTS_SESSION_LOCK, WTS_SESSION_UNLOCK = 0x7, 0x8
 NOTIFY_FOR_THIS_SESSION = 0
 HWND_MESSAGE = -3
+ERROR_CLASS_ALREADY_EXISTS = 1410
 
 
 def session_event_state(wparam):
@@ -144,7 +145,11 @@ class SessionLockWatcher:
     def start(self):
         with self._guard:
             if self._thread is not None:
-                return
+                if self._thread.is_alive():
+                    return
+                self._thread = None  # a stopped (or failed) watcher can be started again
+            self._ready.clear()
+            self._hwnd, self._registered, self.locked, self.available = None, False, None, False
             self.error = "Starting"
             self._thread = threading.Thread(target=self._run, daemon=True, name="keeper-session-lock")
             self._thread.start()
@@ -152,15 +157,22 @@ class SessionLockWatcher:
 
     def stop(self, timeout=3):
         with self._guard:
-            thread, hwnd, api = self._thread, self._hwnd, self._api
+            thread = self._thread
         if thread is None:
             return
+        self._ready.wait(timeout)  # the window may not exist yet; _ready is set once it does (or once the thread gave up)
+        with self._guard:
+            hwnd, api = self._hwnd, self._api
         try:
             if hwnd and api:
                 api["user32"].PostMessageW(hwnd, WM_CLOSE, 0, 0)
         except Exception as error:
             self.error = str(error)
         thread.join(timeout)
+        if not thread.is_alive():
+            with self._guard:
+                if self._thread is thread:
+                    self._thread = None
 
     def _fail(self, message):
         self.available, self.error = False, message
@@ -203,6 +215,9 @@ class SessionLockWatcher:
             ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HANDLE,
             wintypes.HANDLE, wintypes.LPVOID], wintypes.HWND)
         set_types(user32.GetMessageW, [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT], ctypes.c_int)
+        set_types(user32.TranslateMessage, [ctypes.POINTER(wintypes.MSG)], wintypes.BOOL)
+        set_types(user32.DispatchMessageW, [ctypes.POINTER(wintypes.MSG)], lresult)
+        set_types(kernel32.GetLastError, [], wintypes.DWORD)
         set_types(user32.PostMessageW, [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM], wintypes.BOOL)
         set_types(user32.DestroyWindow, [wintypes.HWND], wintypes.BOOL)
         set_types(user32.PostQuitMessage, [ctypes.c_int], None)
@@ -234,8 +249,8 @@ class SessionLockWatcher:
         cls.lpfnWndProc = callback
         cls.hInstance = kernel32.GetModuleHandleW(None)
         cls.lpszClassName = "DivoomKeeperSessionWatcher"
-        if not user32.RegisterClassW(ctypes.byref(cls)):
-            return self._fail("RegisterClassW failed")
+        if not user32.RegisterClassW(ctypes.byref(cls)) and kernel32.GetLastError() != ERROR_CLASS_ALREADY_EXISTS:
+            return self._fail("RegisterClassW failed")  # an already registered class (a restart) is fine
         hwnd = user32.CreateWindowExW(0, cls.lpszClassName, "Divoom Keeper session watcher", 0, 0, 0, 0, 0,
             HWND_MESSAGE, None, cls.hInstance, None)
         if not hwnd:

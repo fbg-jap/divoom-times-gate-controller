@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   defaults, normalize, migrateMail, newMailAccount, applyMailProvider, isOAuthMail, mailAccountOptions,
-  mailAccountDefaults, MAIL_HOSTS, MAX_MAIL_ACCOUNTS,
+  mailAccountDefaults, MAIL_HOSTS, MAX_MAIL_ACCOUNTS, removeMailAccount,
 } from "../src/model.js";
 import { setLanguage } from "../src/i18n.js";
 
@@ -102,4 +102,20 @@ test("allow_custom_host defaults to false for new and migrated accounts", () => 
   assert.equal(newMailAccount("google").allow_custom_host, false);
   assert.equal(migrateMail({ enabled: true, accounts: [{ id: "a1", provider: "google" }] }).accounts[0].allow_custom_host, false);
   assert.equal(migrateMail({ enabled: true, accounts: [{ id: "a1", provider: "google", allow_custom_host: true }] }).accounts[0].allow_custom_host, true);
+});
+
+test("removing an account resets the alerts that watched it to the combined total", () => {
+  const cfg = {
+    integrations: { mail: { accounts: [{ id: "a" }, { id: "b" }, { id: "c" }] } },
+    alerts: [
+      { metric: "mail_unread", source: "b" },
+      { metric: "mail_unread", source: "c" },
+      { metric: "mail_unread", source: "all" },
+      { metric: "cpu", source: "b" },
+    ],
+  };
+  assert.equal(removeMailAccount(cfg, "b"), 1);
+  assert.deepEqual(cfg.integrations.mail.accounts.map((a) => a.id), ["a", "c"]);
+  assert.deepEqual(cfg.alerts.map((r) => r.source), ["all", "c", "all", "b"]);
+  assert.equal(removeMailAccount(cfg, "zzz"), -1);
 });

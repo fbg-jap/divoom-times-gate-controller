@@ -1,6 +1,7 @@
 import ctypes
 import sys
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -23,7 +24,7 @@ class Fn:
 
 class FakeWin:
     """Fake ctypes.windll: records calls; GetMessageW blocks until PostMessageW (stop) then returns 0."""
-    def __init__(self, register=1, create=0x1234, wts=1):
+    def __init__(self, register=1, create=0x1234, wts=1, last_error=0):
         self.quit = threading.Event()
         self.wndproc = None
         self.user32 = type("U", (), {})()
@@ -42,6 +43,7 @@ class FakeWin:
         self.wtsapi32.WTSRegisterSessionNotification = Fn(wts)
         self.wtsapi32.WTSUnRegisterSessionNotification = Fn(1)
         self.kernel32.GetModuleHandleW = Fn(1)
+        self.kernel32.GetLastError = Fn(last_error)
 
 
 def patched(win):
@@ -107,6 +109,49 @@ class Watcher(unittest.TestCase):
             watcher.start(); watcher.start()
             watcher.stop()
         self.assertEqual(len(win.user32.RegisterClassW.calls), 1)
+
+    def test_class_already_exists_is_success_and_start_after_stop_works(self):
+        win = FakeWin(register=0, last_error=1410)
+        with patched(win):
+            watcher = SessionLockWatcher()
+            watcher.start()
+            self.assertTrue(watcher.available, watcher.error)
+            watcher.stop()
+            self.assertFalse(watcher.available)
+            win.quit.clear()
+            watcher.start()
+            self.assertTrue(watcher.available, watcher.error)
+            self.assertTrue(watcher._thread.is_alive())
+            watcher.stop()
+        self.assertEqual(len(win.user32.CreateWindowExW.calls), 2)
+        self.assertEqual(len(win.wtsapi32.WTSRegisterSessionNotification.calls), 2)
+
+    def test_message_pump_functions_get_argtypes(self):
+        win = FakeWin()
+        with patched(win):
+            watcher = SessionLockWatcher()
+            watcher.start()
+            watcher.stop()
+        for name in ("TranslateMessage", "DispatchMessageW"):
+            self.assertTrue(getattr(win.user32, name).argtypes, name)
+            self.assertIsNotNone(getattr(win.user32, name).restype, name)
+
+    def test_stop_right_after_start_waits_for_the_window(self):
+        win = FakeWin()
+        release = threading.Event()
+        win.user32.CreateWindowExW = Fn(on_call=lambda *a: (release.wait(5), 0x1234)[1])
+        with patched(win):
+            watcher = SessionLockWatcher()
+            thread = threading.Thread(target=watcher.start, daemon=True)
+            thread.start()
+            deadline = time.monotonic() + 5
+            while watcher._thread is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            threading.Timer(.2, release.set).start()
+            watcher.stop()  # called before the hwnd exists
+            thread.join(5)
+            self.assertEqual(win.user32.PostMessageW.calls, [(0x1234, WM_CLOSE, 0, 0)])
+            self.assertIsNone(watcher._thread)
 
     def failing(self, win, message):
         with patched(win):

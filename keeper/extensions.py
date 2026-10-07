@@ -100,7 +100,8 @@ def validate_extensions(data):
                         from .mail import migrate_conf
                         known = {a.get("id") for a in migrate_conf(data.get("integrations", {}).get("mail", {})).get("accounts", []) if isinstance(a, dict)}
                         if r["source"] not in known:
-                            raise ValueError("An alert uses a mail account that does not exist")
+                            label = str(r.get("name") or r.get("text") or "").strip()[:40]
+                            raise ValueError(f"An alert ({label}) uses a mail account that does not exist")
     integrations = data.get("integrations", {})
     for name in ("api", "mqtt"):
         conf = integrations.get(name, {})

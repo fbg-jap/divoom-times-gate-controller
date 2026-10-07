@@ -30,6 +30,15 @@ class IntegrationConfigTests(unittest.TestCase):
         self.assertEqual(loaded.data["integrations"]["mail"], {"enabled": False, "accounts": []})
         self.assertEqual(loaded.data["integrations"]["api"]["port"], 9000)
 
+    def test_configs_with_the_retired_language_notice_flag_still_load(self):
+        raw = copy.deepcopy(self.store.data)
+        raw["language_notice_shown"] = False
+        self.store.path.write_text(json.dumps(raw))
+        loaded = ConfigStore(self.root / "store", migrate=False)
+        self.assertIs(loaded.data["language_notice_shown"], False)  # kept untouched
+        self.assertEqual(loaded.data["version"], 2)
+        validate(loaded.snapshot())
+
     def test_old_notifications_config_gets_teams_defaults(self):
         raw = copy.deepcopy(self.store.data)
         raw["integrations"]["notifications"].pop("teams")
@@ -181,9 +190,10 @@ class IntegrationConfigTests(unittest.TestCase):
         for source in ("", "all", "acct1"):
             data["alerts"] = [rule(source)]
             validate(data)
-        data["alerts"] = [rule("gone")]
-        with self.assertRaises(ValueError):
+        data["alerts"] = [{**rule("gone"), "text": "Inbox is full"}]
+        with self.assertRaises(ValueError) as caught:
             validate(data)
+        self.assertEqual(str(caught.exception), "An alert (Inbox is full) uses a mail account that does not exist")
 
     @unittest.skipIf(sys.platform == "win32", "POSIX permissions")
     def test_config_file_mode_0600(self):

@@ -6,6 +6,7 @@ from keeper import shell
 
 
 def main(argv=None):
+    shell.ensure_std_streams()
     return shell.run(shell.parse_args(argv))
 
 

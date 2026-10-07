@@ -400,19 +400,5 @@ class ManualCompleteTests(OAuthPortalCase):
         self.assertEqual(self.session.calls, [])
 
 
-class StateEndpointTests(OAuthPortalCase):
-    def test_legacy_spotify_routes_still_work_next_to_the_new_ones(self):
-        self.app.state.spotify_session = lambda: self.session
-        r = self.client.post("/api/spotify/connect", json={"client_id": "abcdef1234567890"}, headers=self.auth)
-        self.assertEqual(r.status_code, 200)
-        state = parse_qs(urlparse(r.json()["url"]).query)["state"][0]
-        self.assertEqual(self.client.get(f"/api/spotify/callback?code={CODE}&state={state}").status_code, 200)
-        self.assertEqual(self.store.snapshot()["integrations"]["spotify"]["refresh_token"], REFRESH)
-        # a legacy state is not valid on the new callback and vice versa
-        legacy = self.client.post("/api/spotify/connect", json={"client_id": "abcdef1234567890"}, headers=self.auth)
-        legacy_state = parse_qs(urlparse(legacy.json()["url"]).query)["state"][0]
-        self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={legacy_state}").status_code, 400)
-
-
 if __name__ == "__main__":
     unittest.main()
