@@ -100,11 +100,15 @@ class Automations:
             return {**d, **composition(scene)}
         return d
 
-    def enqueue(self, device_id, panel, text, title, seconds=15, buzzer=False, color=None):
+    def enqueue(self, device_id, panel, text, title, seconds=15, buzzer=False, color=None, border=False, blink=False):
         if len(self.notice_queue) < 20:
             args = {"panel": panel, "text": text, "title": title, "seconds": seconds, "buzzer": buzzer}
             if color:
                 args["color"] = color
+                if border:
+                    args["border"] = True
+                if blink:
+                    args["blink"] = True
             self.notice_queue.append((time.monotonic() + 120, device_id, args))
 
     def update(self, config, now):

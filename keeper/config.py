@@ -41,11 +41,11 @@ def defaults():
                              "spotify": {"enabled": False, "client_id": "", "refresh_token": "", "redirect_uri": ""},
                              "prtg": {"enabled": False, "base_url": "", "token": "", "verify_tls": True},
                              "mail": {"enabled": False, "accounts": []},
-                             "notifications": {"enabled": False, "panel": 1, "seconds": 8, "allow_apps": [],
+                             "notifications": {"enabled": False, "panel": 1, "seconds": 8, "color": "#ff7a3d", "border": True, "blink": True, "allow_apps": [],
                                                "deny_apps": [], "show_body": False, "per_minute": 6,
                                                "teams": {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"],
                                                          "show_preview": False, "chats": True, "mentions": True, "calls": True, "panel": 0,
-                                                         "seconds": 0, "call_seconds": 20, "buzzer_on_call": False}},
+                                                         "seconds": 0, "call_seconds": 20, "buzzer_on_call": False, "color": "#6264a7"}},
                              "timesync": {"enabled": False, "source": "ntp", "servers": ["pool.ntp.org"], "https_url": "https://www.cloudflare.com/",
                                           "interval_minutes": 60, "fallback_https": True, "sync_device": False},
                              "hardware": False}}

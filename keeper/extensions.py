@@ -213,6 +213,8 @@ def validate_new_integrations(integrations):
         else:
             _bounded(conf, "panel", 1, 5, 1); _bounded(conf, "seconds", 5, 60, 8); _bounded(conf, "per_minute", 1, 60, 6)
             _names(conf, "allow_apps"); _names(conf, "deny_apps")
+            for key in ("border", "blink"):
+                _flag(conf, key)
             teams = conf.get("teams", {})
             if not isinstance(teams, dict):
                 raise ValueError("Invalid teams settings")
@@ -221,6 +223,9 @@ def validate_new_integrations(integrations):
             _bounded(teams, "panel", 0, 5, 0); _bounded(teams, "call_seconds", 5, 60, 20)
             if teams.get("seconds", 0) != 0:
                 _bounded(teams, "seconds", 5, 60, 0)
+            for owner in (conf, teams):
+                if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(owner.get("color", "#000000"))):
+                    raise ValueError("Invalid notice color")
             patterns = teams.get("patterns", [])
             if not isinstance(patterns, list) or len(patterns) > 20 or any(not isinstance(v, str) or not 1 <= len(v) <= 64 for v in patterns):
                 raise ValueError("Invalid patterns")

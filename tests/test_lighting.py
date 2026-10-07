@@ -112,3 +112,46 @@ class LightingTests(unittest.TestCase):
                 self.assertEqual(send.call_args.args[1]['Command'], 'Channel/GetAllConf')
                 engine.process('command', d['id'], {'payload': payload(defaults())})
                 self.assertTrue(target.get_device()['lighting_restore'])
+
+
+class NoticeBlinkTests(unittest.TestCase):
+    def make(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        return Engine(ConfigStore(Path(folder.name)), demo=True)
+
+    def test_blink_flashes_in_the_color_then_restores_the_saved_lighting(self):
+        engine = self.make()
+        sent = []
+        saved = defaults()
+        d = {'id': 'x', 'ip': '10.0.0.5', 'name': 'Gate', 'lighting': {**saved, 'color': '#112233'}}
+        with patch.object(engine, 'command', side_effect=lambda dev, p: sent.append(p)), patch('keeper.engine.time.sleep'):
+            engine.blink_lights(d, '#ff0000', 2)
+            for thread in __import__('threading').enumerate():
+                if thread.name == 'keeper-blink':
+                    thread.join(5)
+        self.assertTrue(sent)
+        self.assertEqual({p['Color'] for p in sent[:-1]}, {'#ff0000'})
+        self.assertEqual({p['OnOff'] for p in sent[:-1]}, {0, 1})
+        self.assertEqual(sent[-1]['Color'], '#112233')
+
+    def test_blink_without_saved_lighting_ends_dark_and_bad_color_does_nothing(self):
+        engine = self.make()
+        sent = []
+        d = {'id': 'x', 'ip': '10.0.0.5', 'name': 'Gate'}
+        with patch.object(engine, 'command', side_effect=lambda dev, p: sent.append(p)), patch('keeper.engine.time.sleep'):
+            engine.blink_lights(d, 'red', 2)
+            self.assertEqual(sent, [])
+            engine.blink_lights(d, '#00ff00', 2)
+            for thread in __import__('threading').enumerate():
+                if thread.name == 'keeper-blink':
+                    thread.join(5)
+        self.assertEqual(sent[-1]['OnOff'], 0)
+
+    def test_text_notice_border_is_drawn_in_the_color(self):
+        from keeper.widgets import Renderer
+        renderer = Renderer(demo=True)
+        bordered = renderer.render(slot('text', text='Hi', color='#00ff00', border=True))
+        plain = renderer.render(slot('text', text='Hi', color='#00ff00'))
+        self.assertEqual(bordered.getpixel((1, 60)), (0, 255, 0))
+        self.assertNotEqual(plain.getpixel((1, 60)), (0, 255, 0))

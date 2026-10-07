@@ -718,6 +718,8 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             validate_command(args.get("payload", {}))
         if operation == "notification" and (not 5 <= int(args.get("seconds", 15)) <= 300 or len(str(args.get("text", ""))) > 500):
             raise ValueError("Invalid notice")
+        if operation == "notification" and args.get("color") and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(args["color"])):
+            raise ValueError("Invalid notice color")
         if operation == "discover" and args.get("seed"):
             valid_ip(args["seed"])
         return engine.enqueue(operation, lambda: engine.process(operation, device_id, copy.deepcopy(args)))

@@ -29,7 +29,10 @@ export function notificationStatusText() {
 async function sendTestNotice() {
   const conf = ctx.cfg.integrations.notifications;
   const panel = Math.min(Math.max(Math.round(+conf.panel || 1), 1), 5);
-  await action("notification", d().id, { panel: panel - 1, title: "Keeper", text: "Test notification", seconds: 8 });
+  await action("notification", d().id, {
+    panel: panel - 1, title: "Keeper", text: "Test notification", seconds: 8,
+    color: conf.color, border: conf.border !== false, blink: conf.blink !== false,
+  });
   toast(t("ui.notif_test_sent", [panel]));
 }
 function timeCard() {
@@ -292,6 +295,9 @@ export function integrationPage(main) {
         field(names(ctx.cfg.integrations.notifications, "allow_apps"), "list", t("ui.allowed_apps")),
         field(names(ctx.cfg.integrations.notifications, "deny_apps"), "list", t("ui.blocked_apps")),
         field(ctx.cfg.integrations.notifications, "show_body", t("ui.show_body"), "checkbox"),
+        field(ctx.cfg.integrations.notifications, "color", t("ui.notice_color"), "color"),
+        field(ctx.cfg.integrations.notifications, "border", t("ui.notice_border"), "checkbox"),
+        field(ctx.cfg.integrations.notifications, "blink", t("ui.notice_blink"), "checkbox"),
         el("h3", {}, "Microsoft Teams"),
         field(ctx.cfg.integrations.notifications.teams, "enabled", t("ui.teams_enable"), "checkbox"),
         field(ctx.cfg.integrations.notifications.teams, "chats", t("ui.teams_chats"), "checkbox"),
@@ -305,6 +311,7 @@ export function integrationPage(main) {
           numeric(ctx.cfg.integrations.notifications.teams, "call_seconds", t("ui.teams_call_seconds"), 5, 60),
         ),
         field(ctx.cfg.integrations.notifications.teams, "buzzer_on_call", t("ui.teams_buzzer"), "checkbox"),
+        field(ctx.cfg.integrations.notifications.teams, "color", t("ui.teams_color"), "color"),
         field(names(ctx.cfg.integrations.notifications.teams, "patterns"), "list", t("ui.teams_patterns")),
         hint(t("ui.teams_alone_hint")),
         hint(t("ui.teams_hint")),

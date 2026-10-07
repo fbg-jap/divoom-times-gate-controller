@@ -170,7 +170,7 @@ def open_ui(url, find=find_app_browser, popen=subprocess.Popen, fallback=platfor
     if browser:
         try:
             log.info("Opening the UI in %s (app mode)", Path(browser).name)
-            popen([browser, "--app=" + url], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
+            popen([browser, "--app=" + url, "--window-size=1280,800"], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
             return True
         except OSError as error:

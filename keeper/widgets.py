@@ -404,6 +404,8 @@ class Renderer:
                 lines = wrap_text(draw, slot.get("text", ""), f, 112)
             for i, line in enumerate(lines[:85 // (size + 2)]):
                 draw.text((8, 35 + i * (size + 2)), line, font=f, fill="white")
+            if slot.get("border"):
+                draw.rectangle((0, 0, 127, 127), outline=accent, width=4)
         elif kind in {"pc", "pc_native"}:
             values = self.providers.pc()
             view = slot.get("pc_view", "usage")

@@ -116,7 +116,17 @@ class ServiceTests(unittest.TestCase):
         service.device_id = "dev1"
         service.config = data(panel=3, seconds=12)["integrations"]["notifications"]
         self.assertTrue(service.handle("Mail", "Hello", "body"))
-        self.assertEqual(engine.automations.calls, [("dev1", 2, "Hello", "Mail", 12, False)])
+        self.assertEqual(engine.automations.calls, [("dev1", 2, "Hello", "Mail", 12, False, "#ff7a3d", True, True)])
+
+    def test_custom_color_border_and_blink_switches(self):
+        engine, service, _ = self.service()
+        service.device_id = "dev1"
+        service.config = data(color="#00ff88", border=False, blink=False)["integrations"]["notifications"]
+        self.assertTrue(service.handle("Mail", "Hello", ""))
+        self.assertEqual(engine.automations.calls[-1][6:], ("#00ff88", False, False))
+        service.config = data(color="red")["integrations"]["notifications"]   # an invalid color falls back to the default
+        self.assertTrue(service.handle("Mail", "Again", ""))
+        self.assertEqual(engine.automations.calls[-1][6], "#ff7a3d")
 
     def test_handle_filters_and_rate_limits(self):
         engine, service, _ = self.service()
@@ -249,7 +259,7 @@ class TeamsServiceTests(unittest.TestCase):
         self.configure()
         self.assertTrue(self.service.handle("Microsoft Teams", "Ana in General", "secret text"))
         self.assertEqual(self.engine.automations.calls,
-                         [("dev1", 2, "New message", "Teams · Ana", 8, False, "#6264a7")])
+                         [("dev1", 2, "New message", "Teams · Ana", 8, False, "#6264a7", True, True)])
 
     def test_show_preview_is_capped(self):
         self.configure({"show_preview": True})
@@ -273,7 +283,7 @@ class TeamsServiceTests(unittest.TestCase):
     def test_call_seconds_and_buzzer(self):
         self.configure({"call_seconds": 30, "buzzer_on_call": True, "seconds": 10})
         self.service.handle("Microsoft Teams", "Ana is calling you", "")
-        self.assertEqual(self.engine.automations.calls[0], ("dev1", 2, "Incoming call", "Teams · Ana", 30, True, "#6264a7"))
+        self.assertEqual(self.engine.automations.calls[0], ("dev1", 2, "Incoming call", "Teams · Ana", 30, True, "#6264a7", True, True))
         self.service.handle("Microsoft Teams", "Ana", "")
         self.assertEqual(self.engine.automations.calls[1][4:6], (10, False))
 
@@ -301,14 +311,14 @@ class TeamsServiceTests(unittest.TestCase):
     def test_non_teams_path_is_unchanged_with_teams_enabled(self):
         self.configure()
         self.assertTrue(self.service.handle("Mail", "Hello", "body"))
-        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Hello", "Mail", 8, False)])
+        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Hello", "Mail", 8, False, "#ff7a3d", True, True)])
 
     def test_teams_disabled_or_missing_uses_old_path(self):
         self.service.config = data(teams={"enabled": False})["integrations"]["notifications"]
         self.service.handle("Microsoft Teams", "Ana", "")
         self.service.config = data()["integrations"]["notifications"]   # old config without teams
         self.service.handle("Microsoft Teams", "Ana", "")
-        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Ana", "Microsoft Teams", 8, False)] * 2)
+        self.assertEqual(self.engine.automations.calls, [("dev1", 2, "Ana", "Microsoft Teams", 8, False, "#ff7a3d", True, True)] * 2)
 
     def test_partial_teams_config_gets_defaults(self):
         self.configure({"enabled": True})

@@ -187,6 +187,8 @@ The server keeps at most 20 pending sign-ins for 5 minutes each, every one bound
 
 Keeper can show desktop notifications as notices on a Times Gate screen (**Integrations > Notifications**). Notices reuse the normal notice queue: they wait for a free moment, expire after two minutes, and the previous content is restored afterwards. The screen must show restorable content (an image or widget); otherwise the notice is dropped.
 
+**Color.** Each notice gets a border in the chosen **notice color** (Teams has its own color) and, if enabled, the device lights blink in that color for a few seconds (up to 10) before the saved lighting comes back. If no lighting was saved from Keeper, the lights are switched off afterwards. Both can be turned off separately.
+
 Privacy: notification text can be sensitive and the Times Gate is visible to anyone in the room.
 
 - It is **off by default**.

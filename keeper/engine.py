@@ -351,8 +351,10 @@ class Engine(threading.Thread):
             if current["kind"] in {"empty", "native", "pc_native"}:
                 raise ValueError("The notice needs a screen with restorable content (image or widget)")
             self.send_panel(d, panel, True, slot("text", title=args.get("title", "NOTICE"), text=args["text"],
-                                                **({"color": args["color"]} if args.get("color") else {})))
+                                                **({"color": args["color"], "border": bool(args.get("border"))} if args.get("color") else {})))
             self.overrides[(d["id"], panel)] = time.monotonic() + args.get("seconds", 15)
+            if args.get("blink") and args.get("color"):
+                self.blink_lights(d, args["color"], args.get("seconds", 15))
             if args.get("buzzer"):
                 self.command(d, {"Command": "Device/PlayBuzzer", "ActiveTimeInCycle": 150,
                                  "OffTimeInCycle": 150, "PlayTotalTime": 600})
@@ -368,6 +370,37 @@ class Engine(threading.Thread):
             self.emit("response", command="Get5LcdInfoV2", body=body)
         elif action == "invalidate":
             self.invalidate(d["id"], args.get("panel"))
+
+    def blink_lights(self, d, color, seconds):
+        """Flash the device lights in `color` for a few seconds, then put the saved lighting back (or switch them off)."""
+        from .lighting import SOLID_EFFECT, payload
+        settings = dict(color=color, brightness=100, effect=SOLID_EFFECT, zone=2, on=True, cycle=False, keys=True)
+        try:
+            lit, dark = payload(settings), payload({**settings, "on": False})
+        except ValueError:
+            return
+        previous = d.get("lighting")
+        try:
+            rest = payload(previous) if previous else dark
+        except ValueError:
+            rest = dark
+        key = (d["id"], d["ip"])
+
+        def run():
+            end = time.monotonic() + min(max(float(seconds), 2), 10)
+            on = True
+            try:
+                while time.monotonic() < end:
+                    self.command(d, lit if on else dark)
+                    on = not on
+                    time.sleep(.5)
+            except Exception as error:
+                self.log(f"{d['name']} · notice lights: {error}", "warning")
+            try:
+                self.command(d, rest)
+            except Exception:
+                self.lighting_restored.discard(key)   # the next health check puts the saved lighting back
+        threading.Thread(target=run, name="keeper-blink", daemon=True).start()
 
     def health(self, d):
         self.last_health[d["id"]] = time.monotonic()

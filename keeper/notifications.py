@@ -44,6 +44,10 @@ def format_notification(app, summary, body, show_body=False):
     return (title, text) if text else None
 
 
+def color_of(value, fallback):
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) else fallback
+
+
 def app_allowed(app, allow, deny):
     """Case-insensitive; deny wins; an empty allow list allows every app."""
     name = str(app or "").casefold()
@@ -56,7 +60,8 @@ def app_allowed(app, allow, deny):
 TEAMS_DEFAULTS = {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com",
                                                   "teams.cloud.microsoft", "teams.live.com"],
                   "show_preview": False, "chats": True, "mentions": True, "calls": True, "panel": 0, "seconds": 0,
-                  "call_seconds": 20, "buzzer_on_call": False}
+                  "call_seconds": 20, "buzzer_on_call": False, "color": "#6264a7"}
+NOTICE_COLOR = "#ff7a3d"
 TEAMS_COLOR = "#6264a7"
 CALL_WORDS = ("calling", "incoming call", "is calling", "meeting started", "joined the meeting", "ringer", "llamando", "ruft an")
 MENTION_WORDS = ("mentioned", "nævnte", "mencionó", "erwähnt")
@@ -296,12 +301,16 @@ class NotificationService:
                 elif teams["seconds"]:
                     seconds = min(max(int(teams["seconds"]), 5), 60)
                 self.engine.automations.enqueue(self.device_id, panel, text, clean("Teams · " + found["sender"], TITLE_MAX),
-                                                seconds, kind == "call" and bool(teams["buzzer_on_call"]), TEAMS_COLOR)
+                                                seconds, kind == "call" and bool(teams["buzzer_on_call"]),
+                                                color_of(teams.get("color"), TEAMS_COLOR), cfg.get("border", True) is not False,
+                                                cfg.get("blink", True) is not False)
                 return True
             shown = format_notification(app, summary, body, bool(cfg.get("show_body")))
             if shown is None:
                 return False
-            self.engine.automations.enqueue(self.device_id, panel, shown[1], shown[0], seconds, False)
+            self.engine.automations.enqueue(self.device_id, panel, shown[1], shown[0], seconds, False,
+                                            color_of(cfg.get("color"), NOTICE_COLOR), cfg.get("border", True) is not False,
+                                            cfg.get("blink", True) is not False)
             return True
         except Exception as error:
             try:

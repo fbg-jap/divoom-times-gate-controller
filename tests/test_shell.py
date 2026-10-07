@@ -347,7 +347,7 @@ class BrowserTests(unittest.TestCase):
             self.assertTrue(shell.open_ui("http://127.0.0.1:1/#launch=x", find=lambda: "/usr/bin/brave", popen=popen))
         environment.assert_called_once_with()
         args, kwargs = popen.call_args
-        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x"])
+        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x", "--window-size=1280,800"])
         self.assertEqual(kwargs["env"], {"CLEAN": "1"})
         self.assertIs(kwargs["start_new_session"], os.name != "nt")   # Windows detaches differently
         self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
@@ -546,7 +546,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         for session in cases:
             self.argvs.clear()
             self.reopen(session)
-            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/"]])
+            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800"]])
             self.assertEqual(list(self.root.glob("open-*.html")), [])
         self.assertEqual(self.sleeps, [])
         self.assertIn("could not log in automatically", " ".join(self.logs))
@@ -557,7 +557,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         session = FakeSession(FakeResponse(200, {"code": self.CODE}))
         self.reopen(session)
         self.assertEqual(session.calls, [])
-        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/"]])
+        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800"]])
 
     def test_run_uses_it_when_the_lock_is_held_and_logs_to_studio_log(self):
         (self.root / "shell.json").write_text(json.dumps({"port": 4321, "pid": 1}))
