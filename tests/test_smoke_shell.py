@@ -23,3 +23,19 @@ class SmokeHelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadUrlFileTests(unittest.TestCase):
+    def test_reads_the_launch_url_from_a_file_and_tolerates_missing_or_garbage(self):
+        import os
+        import tempfile
+        from tools import smoke_shell
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "launch-url.txt")
+            self.assertIsNone(smoke_shell.read_url_file(path))             # not written yet
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("not a url\n")
+            self.assertIsNone(smoke_shell.read_url_file(path))
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("http://127.0.0.1:8123/#launch=" + "a" * 32 + "\n")
+            self.assertEqual(smoke_shell.read_url_file(path), (8123, "a" * 32))

@@ -288,7 +288,16 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
             # A live code on a captured stdout is readable by whoever reads the pipe/log. Print it only to a terminal.
             # KEEPER_ALLOW_PIPED_LAUNCH_URL=1 is a TEST-ONLY opt-in (tools/smoke_shell.py must set it to read the URL).
             if sys.stdout.isatty() or os.getenv("KEEPER_ALLOW_PIPED_LAUNCH_URL") == "1":
-                print(base + "#launch=" + app.state.launch_codes.issue(), flush=True)
+                launch_url = base + "#launch=" + app.state.launch_codes.issue()
+                print(launch_url, flush=True)
+                # TEST-ONLY: a windowed (console-less) Windows build has no stdout, so the smoke test can read the URL
+                # from a file instead. Only honoured together with the opt-in above; written owner-only.
+                url_file = os.getenv("KEEPER_LAUNCH_URL_FILE")
+                if url_file and os.getenv("KEEPER_ALLOW_PIPED_LAUNCH_URL") == "1":
+                    try:
+                        write_private(url_file, launch_url + "\n")
+                    except OSError:
+                        log.warning("Could not write the launch URL file")
             else:
                 print(base, flush=True)
                 print("launch URL suppressed (stdout is not a terminal); use the data-dir login", file=sys.stderr)

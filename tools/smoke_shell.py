@@ -52,7 +52,8 @@ def run(command, startup_timeout=60, quit_timeout=15):
     with tempfile.TemporaryDirectory(prefix="keeper-smoke-") as config_dir:
         port = free_port()
         # The shell only prints a live launch URL to a pipe when this test-only variable is set.
-        env = {**os.environ, "KEEPER_ALLOW_PIPED_LAUNCH_URL": "1"}
+        url_file = os.path.join(config_dir, "launch-url.txt")
+        env = {**os.environ, "KEEPER_ALLOW_PIPED_LAUNCH_URL": "1", "KEEPER_LAUNCH_URL_FILE": url_file}
         proc = subprocess.Popen(build_command(command, config_dir, port), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, env=env)
         lines = queue.Queue()
@@ -66,7 +67,7 @@ def run(command, startup_timeout=60, quit_timeout=15):
 
         threading.Thread(target=pump, daemon=True).start()
         try:
-            return exercise(proc, lines, port, startup_timeout, quit_timeout)
+            return exercise(proc, lines, port, startup_timeout, quit_timeout, url_file)
         except SmokeError as error:
             raise SmokeError(f"{error}\n--- process output ---\n{''.join(seen)[-2000:]}")
         finally:
@@ -75,16 +76,33 @@ def run(command, startup_timeout=60, quit_timeout=15):
             proc.wait()
 
 
-def exercise(proc, lines, port, startup_timeout, quit_timeout):
+def read_url_file(path):
+    """(port, code) from the launch URL file written by a console-less build, else None."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return parse_launch_url(handle.read())
+    except OSError:
+        return None
+
+
+def exercise(proc, lines, port, startup_timeout, quit_timeout, url_file=None):
     deadline = time.monotonic() + startup_timeout
     found = None
     while found is None:
+        found = read_url_file(url_file) if url_file else None   # windowed Windows builds have no stdout
+        if found:
+            break
         try:
-            line = lines.get(timeout=max(0.1, deadline - time.monotonic()))
+            line = lines.get(timeout=min(0.25, max(0.1, deadline - time.monotonic())))
         except queue.Empty:
             line = ""
-        check(line is not None, f"the app exited before printing a launch URL (code {proc.poll()})")
+        if line is None:                      # stdout closed: a console-less build; keep polling the URL file
+            line = ""
+            time.sleep(0.1)
         found = parse_launch_url(line) if line else None
+        if found is None and url_file:
+            found = read_url_file(url_file)
+        check(found or proc.poll() is None, f"the app exited before providing a launch URL (code {proc.poll()})")
         check(found or time.monotonic() < deadline, f"no launch URL within {startup_timeout} s")
     printed_port, code = found
     check(printed_port == port, f"launch URL uses port {printed_port}, expected {port}")
