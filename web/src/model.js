@@ -369,3 +369,34 @@ export function validate(cfg) {
         throw Error(t("model.invalid_alert"));
     }
 }
+// Units for hardware sensor types (LibreHardwareMonitor names; psutil on Linux only reports Temperature).
+const SENSOR_UNITS = { Temperature: "°C", Voltage: "V", Power: "W", Fan: "RPM", Load: "%", Control: "%", Level: "%", Clock: "MHz", Current: "A", Frequency: "Hz", Data: "GB", SmallData: "MB", Factor: "", Throughput: "B/s" };
+export const sensorUnit = (type) => SENSOR_UNITS[type] || "";
+// Option text: "<name> — <value> <unit>", only the name when there is no reading.
+export function sensorText(sensor) {
+  const unit = sensorUnit(sensor.type);
+  const value = typeof sensor.value === "number" ? ` — ${sensor.value}${unit ? " " + unit : ""}` : "";
+  return `${sensor.name || sensor.id}${value}`;
+}
+// Groups sensors by type (types in alphabetical order, sensors in the given order) as [{type, items: [{id, text}]}].
+// A saved key that is not in the list is kept as an option "(missing) <id>" so the form does not silently drop it.
+export function sensorGroups(sensors, current, missingLabel) {
+  const groups = new Map();
+  for (const sensor of Array.isArray(sensors) ? sensors : []) {
+    const type = sensor.type || "";
+    if (!groups.has(type)) groups.set(type, []);
+    groups.get(type).push({ id: sensor.id, text: sensorText(sensor) });
+  }
+  const result = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([type, items]) => ({ type, items }));
+  if (current && !(sensors || []).some((sensor) => sensor.id === current))
+    result.unshift({ type: "", items: [{ id: current, text: missingLabel.replace("{0}", current) }] });
+  return result;
+}
+// Splits the notification listener status ("Running", "Disabled", "Starting", "Unavailable (reason)").
+export function listenerStatus(raw) {
+  const text = String(raw ?? "Disabled");
+  const unavailable = /^Unavailable \((.*)\)$/s.exec(text);
+  if (unavailable) return { state: "unavailable", reason: unavailable[1] };
+  const state = text.toLowerCase();
+  return { state: ["running", "starting"].includes(state) ? state : "disabled", reason: "" };
+}

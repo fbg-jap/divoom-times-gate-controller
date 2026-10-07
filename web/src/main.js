@@ -10,7 +10,7 @@ import {devicePage} from "./pages/device.js";
 import {lightingPage} from "./pages/lighting.js";
 import {toolPage} from "./pages/tools.js";
 import {automationPage} from "./pages/automation.js";
-import {integrationPage} from "./pages/integrations.js";
+import {integrationPage,notificationStatusText} from "./pages/integrations.js";
 import {backupPage} from "./pages/backup.js";
 import {activityPage,eventText} from "./pages/activity.js";
 import {pomoText} from "./pages/automation.js";
@@ -183,6 +183,10 @@ setInterval(async () => {
     const fresh = await request("/state");
     ctx.state.events = fresh.events;
     ctx.state.runtime = fresh.runtime;
+    const sensorsAppeared = !ctx.state.hardware_sensors?.length && fresh.hardware_sensors?.length;
+    ctx.state.hardware_sensors = fresh.hardware_sensors;
+    if ($("#notif-status")) $("#notif-status").textContent = notificationStatusText();
+    if (sensorsAppeared && $("#sensor-picker") && !$("#sensor-picker").matches(":focus")) render(); // the first probe finished
     if ($("#activity")) $("#activity").textContent = eventText();
     if ($("#pomodoro-state")) $("#pomodoro-state").textContent = pomoText();
   } catch {}

@@ -576,6 +576,9 @@ def render_extra(s, providers):
         end = 8 + int(111 * (1 - seconds / max(1, data["total"])))
         if end > 8:
             draw.rectangle((8, 117, end, 120), fill=accent)
+    elif kind == "sensor" and s.get("sensor_source") == "hardware" and not str(s.get("sensor_key", "")).strip():
+        lines(s.get("title") or "SENSOR", 8, 12, 1, accent)
+        lines("Choose a sensor", 46, 15, 2, "#9aa4b5")
     elif kind == "sensor":
         value = extra.sensor(s.get("sensor_source", "mqtt"), s.get("sensor_key", ""), s.get("sensor_field", ""), int(s.get("sensor_stale", 300)))
         lines(s.get("title") or "SENSOR", 8, 12, 1, accent)

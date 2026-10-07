@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -548,6 +549,26 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
 
     notice_lock = threading.Lock()
 
+    def hardware_sensors(data):
+        """Sensors the machine exposes, for the screen editor's picker. Reads the cached probe; never blocks."""
+        if not (data.get("integrations") or {}).get("hardware"):
+            return []
+        try:
+            readings = engine.renderer.providers.extra.hardware()
+        except Exception:
+            return []
+        cut = lambda value: str(value if value is not None else "")[:80]
+        result = []
+        for item in readings if isinstance(readings, list) else []:
+            if len(result) >= 300:
+                break
+            if not isinstance(item, dict) or not item.get("Identifier"):
+                continue
+            value = item.get("Value")
+            result.append({"id": cut(item["Identifier"]), "name": cut(item.get("Name")), "type": cut(item.get("SensorType")),
+                           "value": round(value, 1) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None})
+        return result
+
     @app.get("/api/state")
     def state():
         data = store.snapshot()
@@ -556,7 +577,9 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         with notice_lock:
             notice, store.migration_note = store.migration_note, ""
         return {"config": data, "revision": revision(data), "notice": notice, "events": events, "version": __version__, "desktop": shell_mode,
-                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status()},
+                "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status(),
+                            "notifications": engine.bridge.notifications.status},
+                "hardware_sensors": hardware_sensors(data),
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
                     "metrics_label": "Metrics of the machine running the server; in Docker, of the container"}}

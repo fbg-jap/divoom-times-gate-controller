@@ -2,7 +2,32 @@ import {ctx} from "../ctx.js";
 import {$,el,button,row,card,hint,banner,mark,field,numeric,d,saveAndSend,showImage,preview,fileField,render} from "../ui.js";
 import {t} from "../i18n.js";
 import {native} from "../api.js";
-import {id,copy,screen,kinds,metrics,mailAccountOptions} from "../model.js";
+import {id,copy,screen,kinds,metrics,mailAccountOptions,sensorGroups,sensorUnit} from "../model.js";
+// Picker for a hardware sensor: the machine's sensors grouped by type; picking one fills an empty unit.
+function hardwareSensorField(s) {
+  const sensors = ctx.state.hardware_sensors || [];
+  const select = el("select", { id: "sensor-picker" }, el("option", { value: "" }, t("ui.sensor_choose")));
+  for (const group of sensorGroups(sensors, s.sensor_key, t("ui.sensor_missing"))) {
+    const parent = group.type ? el("optgroup", { label: group.type }) : select;
+    for (const item of group.items) parent.append(el("option", { value: item.id }, item.text));
+    if (group.type) select.append(parent);
+  }
+  select.value = s.sensor_key ?? "";
+  select.addEventListener("input", () => {
+    s.sensor_key = select.value;
+    const type = sensors.find((x) => x.id === select.value)?.type;
+    if (type && !s.sensor_unit && sensorUnit(type)) {
+      s.sensor_unit = sensorUnit(type);
+      mark();
+      return render();
+    }
+    mark();
+  });
+  return [
+    el("label", { class: "field" }, el("span", {}, t("ui.sensor")), select),
+    ...(sensors.length ? [] : [hint(t("ui.sensor_none"))]),
+  ];
+}
 export function screenPage(main) {
   const panels = el("div", { class: "panels" });
   d().screens.forEach((s, i) => {
@@ -255,17 +280,24 @@ export function contentForm(s, inList = false) {
   if (s.kind === "sensor") {
     s.sensor_source ??= ctx.state.capabilities.mode === "mobile" ? "http" : "mqtt";
     s.sensor_stale ??= 300;
+    const source = field(
+      s,
+      "sensor_source",
+      t("ui.source"),
+      "select",
+      ctx.state.capabilities.mode === "mobile"
+        ? { http: "HTTP JSON", mqtt: "MQTT WebSocket" }
+        : { mqtt: "MQTT", hardware: "Hardware" },
+    );
+    source.querySelector("select").addEventListener("input", () => render()); // the key field depends on the source
     form.append(
-      field(
-        s,
-        "sensor_source",
-        t("ui.source"),
-        "select",
-        ctx.state.capabilities.mode === "mobile"
-          ? { http: "HTTP JSON", mqtt: "MQTT WebSocket" }
-          : { mqtt: "MQTT", hardware: "Hardware" },
-      ),
-      field(s, "sensor_key", t("ui.http_url_mqtt_topic_or")),
+      source,
+      ...(s.sensor_source === "hardware"
+        ? hardwareSensorField(s)
+        : [
+            field(s, "sensor_key", t("ui.http_url_mqtt_topic_or")),
+            ...(s.sensor_source === "mqtt" && ctx.cfg.integrations.mqtt?.enabled === false ? [hint(t("ui.mqtt_disabled_hint"))] : []),
+          ]),
       field(s, "sensor_field", t("ui.json_path_e_g_cpu")),
       field(s, "sensor_unit", t("ui.unit")),
       numeric(s, "sensor_stale", t("ui.expiry_seconds"), 10, 86400),

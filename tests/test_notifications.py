@@ -384,3 +384,80 @@ class TeamsMentionRuleTests(unittest.TestCase):
         self.assertEqual(self.kind("mail me at ana@example.com"), "chat")
         self.assertEqual(self.kind("price is 5 @ 10 each"), "chat")
         self.assertEqual(self.kind("lone @"), "chat")
+
+
+class TeamsOnlyAndStatusLogTests(unittest.TestCase):
+    def make(self, backend=None):
+        engine = FakeEngine()
+        service = NotificationService(engine, backend or (lambda stop: iter(())))
+        service.device_id = "dev1"
+        return engine, service
+
+    def only_teams(self, service, **teams):
+        service.config = data(enabled=False, teams={"enabled": True, **teams})["integrations"]["notifications"]
+
+    def test_teams_only_passes_teams_and_drops_the_rest(self):
+        engine, service = self.make()
+        self.only_teams(service)
+        self.assertTrue(service.handle("Microsoft Teams", "Ana in General", "hi"))
+        self.assertFalse(service.handle("Mail", "New message", "secret"))
+        self.assertEqual(len(engine.automations.calls), 1)
+        self.assertEqual(engine.automations.calls[0][3], "Teams · Ana")
+
+    def test_teams_only_does_not_spend_the_rate_limit_on_other_apps(self):
+        engine, service = self.make()
+        self.only_teams(service, per_minute=1)
+        service.config["per_minute"] = 1
+        for _ in range(5):
+            service.handle("Mail", "x", "")
+        self.assertTrue(service.handle("Microsoft Teams", "Ana", "hi"))
+
+    def test_general_on_still_shows_non_teams(self):
+        engine, service = self.make()
+        service.config = data(teams={"enabled": True})["integrations"]["notifications"]
+        self.assertTrue(service.handle("Mail", "Hello", ""))
+        self.assertTrue(service.handle("Microsoft Teams", "Ana", "hi"))
+        self.assertEqual(len(engine.automations.calls), 2)
+
+    def test_both_off_drops_everything(self):
+        engine, service = self.make()
+        service.config = data(enabled=False, teams={"enabled": False})["integrations"]["notifications"]
+        self.assertFalse(service.handle("Microsoft Teams", "Ana", "hi"))
+        self.assertFalse(service.handle("Mail", "x", ""))
+
+    def test_tick_starts_for_teams_only_and_not_when_both_off(self):
+        gate = threading.Event()
+        engine, service = self.make(lambda stop: (gate.wait(3), iter(()))[1])
+        service.tick(data(enabled=False, teams={"enabled": False}))
+        self.assertIsNone(service.thread)
+        service.tick(data(enabled=False, teams={"enabled": True}))
+        self.assertIsNotNone(service.thread)
+        service.tick(data(enabled=False, teams={"enabled": False}))
+        self.assertIsNone(service.thread)
+        gate.set()
+
+    def test_status_changes_are_logged_once_without_content(self):
+        def backend(stop):
+            yield ("Mail", "TOPSECRET summary", "TOPSECRET body")
+            stop.wait(3)
+        engine, service = self.make(backend)
+        service.tick(data(show_body=True), now=1.)
+        self.assertTrue(wait_for(lambda: engine.automations.calls))
+        service.tick(data(), now=2.)
+        service.tick(data(), now=2.5)
+        service.tick(data(enabled=False), now=3.)
+        service.tick(data(enabled=False), now=4.)
+        self.assertEqual([m for _, m in engine.logs],
+                         ["Notification listener: Running", "Notification listener: Disabled"])
+        self.assertNotIn("TOPSECRET", " ".join(m for _, m in engine.logs))
+
+    def test_unavailable_is_a_warning_logged_once_across_retries(self):
+        engine, service = self.make(lambda stop: (_ for _ in ()).throw(Unavailable("no session D-Bus: OSError")))
+        service.tick(data(), now=100.)
+        self.assertTrue(wait_for(lambda: service.status.startswith("Unavailable")))
+        service.thread.join(2)
+        service.tick(data(), now=101.)
+        service.tick(data(), now=100. + nt.RETRY_SECONDS + 1)
+        self.assertTrue(wait_for(lambda: not service.thread.is_alive()))
+        service.tick(data(), now=100. + nt.RETRY_SECONDS + 2)
+        self.assertEqual(engine.logs, [("warning", "Notification listener: Unavailable (no session D-Bus: OSError)")])

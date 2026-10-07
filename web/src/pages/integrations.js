@@ -1,8 +1,8 @@
 import {ctx} from "../ctx.js";
-import {el,button,card,hint,banner,mark,field,numeric,render,toast,save,load} from "../ui.js";
+import {el,button,card,hint,banner,mark,field,numeric,render,toast,save,load,action,d} from "../ui.js";
 import {t,setLanguage,languages} from "../i18n.js";
 import {token,request} from "../api.js";
-import {id,MAX_MAIL_ACCOUNTS,newMailAccount,applyMailProvider,isOAuthMail,removeMailAccount} from "../model.js";
+import {id,MAX_MAIL_ACCOUNTS,newMailAccount,applyMailProvider,isOAuthMail,removeMailAccount,listenerStatus} from "../model.js";
 import {startOAuth,waitConnected,completeOAuth,storedToken} from "../oauth.js";
 const names = (conf, key) => ({
   get list() {
@@ -21,6 +21,16 @@ function timeStatus() {
     ...(s.stale ? [t("ui.timesync_stale")] : []),
     ...(s.error ? [t("ui.timesync_error", { error: s.error })] : []),
   ].join(" · ");
+}
+export function notificationStatusText() {
+  const { state, reason } = listenerStatus(ctx.state?.runtime?.notifications);
+  return state === "unavailable" ? t("ui.notif_unavailable", [reason]) : t("ui.notif_" + state);
+}
+async function sendTestNotice() {
+  const conf = ctx.cfg.integrations.notifications;
+  const panel = Math.min(Math.max(Math.round(+conf.panel || 1), 1), 5);
+  await action("notification", d().id, { panel: panel - 1, title: "Keeper", text: "Test notification", seconds: 8 });
+  toast(t("ui.notif_test_sent", [panel]));
 }
 function timeCard() {
   const conf = ctx.cfg.integrations.timesync;
@@ -270,6 +280,8 @@ export function integrationPage(main) {
       card(
         t("ui.pc_notifications"),
         field(ctx.cfg.integrations.notifications, "enabled", t("ui.enable_pc_notifications"), "checkbox"),
+        el("p", { class: "hint", id: "notif-status" }, notificationStatusText()),
+        button(t("ui.notif_test"), sendTestNotice),
         el(
           "div",
           { class: "grid" },
@@ -294,6 +306,7 @@ export function integrationPage(main) {
         ),
         field(ctx.cfg.integrations.notifications.teams, "buzzer_on_call", t("ui.teams_buzzer"), "checkbox"),
         field(names(ctx.cfg.integrations.notifications.teams, "patterns"), "list", t("ui.teams_patterns")),
+        hint(t("ui.teams_alone_hint")),
         hint(t("ui.teams_hint")),
       ),
       timeCard(),

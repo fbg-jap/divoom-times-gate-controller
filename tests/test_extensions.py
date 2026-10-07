@@ -767,3 +767,30 @@ class MqttTests(FixtureCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HardwareSensorPlaceholderTests(unittest.TestCase):
+    def drawn(self, screen):
+        from PIL import ImageDraw
+        from keeper.extensions import render_extra
+        texts, original = [], ImageDraw.ImageDraw.text
+        def spy(self_, xy, text, *args, **kwargs):
+            texts.append(text)
+            return original(self_, xy, text, *args, **kwargs)
+        with patch.object(ImageDraw.ImageDraw, "text", spy):
+            render_extra(screen, Providers())
+        return " ".join(texts)
+
+    def test_hardware_sensor_without_a_key_says_to_choose_one(self):
+        for key in ("", "   "):
+            screen = {**slot("sensor"), "sensor_source": "hardware", "sensor_key": key}
+            texts = self.drawn(screen)
+            self.assertIn("Choose a sensor", texts)
+            self.assertNotIn("N/A", texts)
+
+    def test_a_missing_key_or_other_source_keeps_the_old_text(self):
+        for screen in ({**slot("sensor"), "sensor_source": "hardware", "sensor_key": "/x/temperature/0"},
+                       {**slot("sensor"), "sensor_source": "mqtt", "sensor_key": ""}):
+            texts = self.drawn(screen)
+            self.assertNotIn("Choose a sensor", texts)
+            self.assertIn("N/A", texts)

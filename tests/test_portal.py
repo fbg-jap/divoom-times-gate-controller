@@ -246,3 +246,61 @@ class PortalTests(unittest.TestCase):
                     self.assertEqual(state["config"]["devices"][0]["ip"], expected)
                     self.assertEqual(bool(state["notice"]), migrate)
                     self.assertEqual(state["config"]["language"], "es" if migrate else "en")
+
+
+class StateRuntimeTests(unittest.TestCase):
+    TOKEN = "unit-test-token-at-least-24-characters"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.app = create_app(Path(self.temp.name), token=self.TOKEN, demo=True)
+        self.client = TestClient(self.app).__enter__()
+        self.client.headers["Authorization"] = "Bearer " + self.TOKEN
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        self.temp.cleanup()
+
+    def set_hardware(self, enabled):
+        self.app.state.store.change(lambda d: d["integrations"].update(hardware=enabled))
+
+    def probe(self, readings):
+        return mock.patch.object(self.app.state.engine.renderer.providers.extra, "hardware", return_value=readings)
+
+    def test_runtime_has_the_notification_status_and_revision_ignores_it(self):
+        first = self.client.get("/api/state").json()
+        self.assertEqual(first["runtime"]["notifications"], "Disabled")
+        self.assertIn("online", first["runtime"])
+        self.app.state.engine.bridge.notifications.status = "Running"
+        second = self.client.get("/api/state").json()
+        self.assertEqual(second["runtime"]["notifications"], "Running")
+        self.assertEqual(first["revision"], second["revision"])
+        self.assertNotIn("hardware_sensors", second["config"])
+
+    def test_hardware_sensors_are_listed_only_when_enabled(self):
+        readings = [{"Identifier": "/coretemp/temperature/0", "Name": "Package id 0", "SensorType": "Temperature", "Value": 54.26}]
+        with self.probe(readings):
+            self.set_hardware(False)
+            self.assertEqual(self.client.get("/api/state").json()["hardware_sensors"], [])
+            self.set_hardware(True)
+            state = self.client.get("/api/state").json()
+        self.assertEqual(state["hardware_sensors"], [{"id": "/coretemp/temperature/0", "name": "Package id 0",
+                                                     "type": "Temperature", "value": 54.3}])
+
+    def test_hardware_sensors_are_capped_cut_and_sanitised(self):
+        readings = [{"Identifier": f"/s/{i}", "Name": "n" * 200, "SensorType": "Fan", "Value": float(i)} for i in range(400)]
+        readings += [None, {"Name": "no id"}, {"Identifier": "/nan", "Name": "x", "SensorType": "Load", "Value": float("nan")}]
+        with self.probe(readings):
+            self.set_hardware(True)
+            sensors = self.client.get("/api/state").json()["hardware_sensors"]
+        self.assertEqual(len(sensors), 300)
+        self.assertEqual(len(sensors[0]["name"]), 80)
+        with self.probe([readings[-1]]):
+            self.assertIsNone(self.client.get("/api/state").json()["hardware_sensors"][0]["value"])
+
+    def test_a_failing_or_empty_probe_gives_an_empty_list(self):
+        self.set_hardware(True)
+        with mock.patch.object(self.app.state.engine.renderer.providers.extra, "hardware", side_effect=RuntimeError("x")):
+            self.assertEqual(self.client.get("/api/state").json()["hardware_sensors"], [])
+        with self.probe([]):
+            self.assertEqual(self.client.get("/api/state").json()["hardware_sensors"], [])

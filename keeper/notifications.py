@@ -205,21 +205,39 @@ class NotificationService:
         self.config, self.device_id = {}, None
         self.limiter = RateLimiter()
         self.status = "Disabled"
+        self.logged = "Disabled"
         self.retry_at = 0.
+
+    def set_status(self, value):
+        self.status = value
+        if value != "Running":   # "Running" is set before the backend has connected; tick() logs it once it has held
+            self.log_change()
+
+    def log_change(self):
+        """Log each status change once (never the content of a notification)."""
+        value = self.status
+        if value == "Starting" or value == self.logged:
+            return
+        self.logged = value
+        try:
+            self.engine.log("Notification listener: " + value, "warning" if value.startswith("Unavailable") else "info")
+        except Exception:
+            pass
 
     def tick(self, data, now=None):
         now = time.monotonic() if now is None else now
         self.config = dict(data.get("integrations", {}).get("notifications") or {})
         self.device_id = data.get("active_device")
-        if not self.config.get("enabled"):
+        if not (self.config.get("enabled") or (self.config.get("teams") or {}).get("enabled")):
             self.close()
         elif (self.thread is None or not self.thread.is_alive()) and now >= self.retry_at \
                 and not self.engine.stop_event.is_set():
             self.start(now)
+        self.log_change()
 
     def start(self, now):
         self.stop = threading.Event()
-        self.status = "Starting"
+        self.set_status("Starting")
         self.thread = threading.Thread(target=self.run, args=(self.stop,), daemon=True, name="divoom-notifications")
         self.thread.start()
         self.retry_at = now + RETRY_SECONDS
@@ -228,33 +246,40 @@ class NotificationService:
         self.stop.set()
         self.thread = None
         self.retry_at = 0.
-        self.status = "Disabled"
+        self.set_status("Disabled")
 
     def run(self, stop):
         try:
             backend = self.backend or (windows_backend if os.name == "nt" else linux_backend)
-            self.status = "Running"
+            self.set_status("Running")
             for app, summary, body in backend(stop):
                 if stop.is_set() or self.engine.stop_event.is_set():
                     break
                 self.handle(app, summary, body)
         except Unavailable as error:
-            self.status = f"Unavailable ({error})"
+            self.set_status(f"Unavailable ({error})")
         except Exception as error:
-            self.status = f"Unavailable ({type(error).__name__})"
+            self.set_status(f"Unavailable ({type(error).__name__})")
 
     def handle(self, app, summary, body):
         """Filter, format, rate-limit and queue one notification. Never raises."""
         try:
             cfg = self.config
-            if not cfg.get("enabled") or not self.device_id:
+            teams = {**TEAMS_DEFAULTS, **(cfg.get("teams") or {})}
+            general = bool(cfg.get("enabled"))
+            if not (general or teams["enabled"]) or not self.device_id:
                 return False
             if not app_allowed(app, cfg.get("allow_apps"), cfg.get("deny_apps")):
                 return False
+            found = None
+            if not general:   # Teams alone: everything that is not Teams is dropped, and does not use up the rate limit
+                found = classify_teams(app, summary, body, teams["patterns"])
+                if not found:
+                    return False
             if not self.limiter.allow(cfg.get("per_minute", 6)):
                 return False
-            teams = {**TEAMS_DEFAULTS, **(cfg.get("teams") or {})}
-            found = classify_teams(app, summary, body, teams["patterns"]) if teams["enabled"] else None
+            if general and teams["enabled"]:
+                found = classify_teams(app, summary, body, teams["patterns"])
             panel = min(max(int(cfg.get("panel", 1)), 1), 5) - 1
             seconds = min(max(int(cfg.get("seconds", 8)), 5), 60)
             if found:
