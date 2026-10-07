@@ -450,7 +450,9 @@ class MailTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    CONF = {"enabled": True, "host": "imap.test", "port": 993, "user": "user-secret", "password": "pw-secret", "mailbox": "INBOX", "show_subject": False}
+    CONF = {"id": "main", "name": "Main", "provider": "imap", "enabled": True, "host": "imap.test", "port": 993, "user": "user-secret",
+            "password": "pw-secret", "mailbox": "INBOX", "show_subject": False}
+    MAIL = {"enabled": True, "accounts": [CONF]}
 
     def run_fetch(self, fake, **conf):
         calls = []
@@ -557,10 +559,10 @@ class MailTests(unittest.TestCase):
         p = Providers(); extra = p.extra
         with patch("keeper.mail.fetch_unread") as fetch:
             self.assertEqual(extra.mail_state(), (None, "not configured"))
-            extra.mail_conf = {**self.CONF, "enabled": False}
+            extra.mail_conf = {**self.MAIL, "enabled": False}
             self.assertEqual(extra.mail_state(), (None, "not configured")); fetch.assert_not_called()
-            gate = threading.Event(); fetch.side_effect = lambda conf: (gate.wait(2), {"unread": 2, "subject": None})[1]
-            extra.mail_conf = dict(self.CONF)
+            gate = threading.Event(); fetch.side_effect = lambda conf, **kw: (gate.wait(2), {"unread": 2, "subject": None})[1]
+            extra.mail_conf = copy.deepcopy(self.MAIL)
             extra.mail_state(); extra.mail_state(); extra.mail_state()
             time.sleep(.05); self.assertEqual(fetch.call_count, 1)
             gate.set()
@@ -568,27 +570,32 @@ class MailTests(unittest.TestCase):
                 if extra.mail() is not None:
                     break
                 time.sleep(.01)
-            self.assertEqual(extra.mail(), {"unread": 2, "subject": None})
+            self.assertEqual(extra.mail()["unread"], 2)
             self.assertEqual(fetch.call_args.args[0]["password"], "pw-secret")
-            extra.mail_conf = {**self.CONF, "host": "other.test"}
-            self.assertIsNone(extra.mail())  # new config discards the old reading
+            gate.clear()  # the rebuilt sampler must not answer instantly, or the assertion below would race it
+            extra.mail_conf = {**self.MAIL, "accounts": [{**self.CONF, "host": "other.test"}]}
+            self.assertIsNone(extra.mail())  # new connection settings discard the old reading
+            gate.set()
 
     def test_demo_data_respects_show_subject(self):
         p = Providers(demo=True)
-        self.assertEqual(p.extra.mail_state(), ({"unread": 3, "subject": None}, ""))
-        p.extra.mail_conf = {"show_subject": True}
+        data, error = p.extra.mail_state()
+        self.assertEqual((data["unread"], data["subject"], error), (3, None, ""))
+        p.extra.mail_conf = {"enabled": True, "accounts": [{**self.CONF, "show_subject": True}]}
         self.assertEqual(p.extra.mail()["subject"], "Weekly report")
 
     def test_render_states_and_validation(self):
         from keeper.extensions import render_extra
         p = Providers()
-        for state in ((None, "not configured"), (None, "Waiting for first reading"), (None, "authentication failed"),
-                      ({"unread": 0, "subject": None}, ""), ({"unread": 12, "subject": "Weekly report"}, "")):
+        row = [{"id": "main", "name": "Main", "unread": 0, "error": ""}]
+        for state in ((None, "not configured"), (None, "Waiting for first reading"), (None, "authentication failed"), (None, "account missing"),
+                      ({"unread": 0, "subject": None, "accounts": row, "failed": 0}, ""),
+                      ({"unread": 12, "subject": "Weekly report", "accounts": row, "failed": 0}, "")):
             with patch.object(p.extra, "mail_state", return_value=state):
                 self.assertEqual(render_extra(slot("mail"), p).size, (128, 128))
-        with patch.object(p.extra, "mail_state", return_value=({"unread": 0, "subject": None}, "")):
+        with patch.object(p.extra, "mail_state", return_value=({"unread": 0, "subject": None, "accounts": row, "failed": 0}, "")):
             green = render_extra(slot("mail"), p)
-        with patch.object(p.extra, "mail_state", return_value=({"unread": 4, "subject": None}, "")):
+        with patch.object(p.extra, "mail_state", return_value=({"unread": 4, "subject": None, "accounts": row, "failed": 0}, "")):
             amber = render_extra(slot("mail"), p)
         self.assertIn((74, 222, 128), green.getdata()); self.assertIn((251, 191, 36), amber.getdata())
         validate_content(slot("mail"))
@@ -633,9 +640,11 @@ class AutomationTests(FixtureCase):
 
     def test_mail_unread_alert_metric(self):
         extra = self.engine.renderer.providers.extra
-        with patch.object(extra, "mail", return_value={"unread": 7, "subject": None}):
+        with patch.object(extra, "mail_state", return_value=({"unread": 7, "subject": None}, "")) as state:
             self.assertEqual(self.auto.value(self.rule(metric="mail_unread")), 7)
-        with patch.object(extra, "mail", return_value=None):
+            state.assert_called_with("all")  # old rules (empty source) mean the combined count
+            self.auto.value(self.rule(metric="mail_unread", source="abc123")); state.assert_called_with("abc123")
+        with patch.object(extra, "mail_state", return_value=(None, "account missing")):
             self.assertIsNone(self.auto.value(self.rule(metric="mail_unread")))
         self.store.change(lambda data: data.update(alerts=[self.rule(metric="mail_unread")]))
 

@@ -1,8 +1,9 @@
 import {ctx} from "../ctx.js";
-import {el,button,card,hint,banner,mark,field,numeric,render,toast} from "../ui.js";
+import {el,button,card,hint,banner,mark,field,numeric,render,toast,save,load} from "../ui.js";
 import {t,setLanguage,languages} from "../i18n.js";
 import {token,request} from "../api.js";
-import {id} from "../model.js";
+import {id,MAX_MAIL_ACCOUNTS,newMailAccount,applyMailProvider,isOAuthMail} from "../model.js";
+import {startOAuth,waitConnected,completeOAuth,storedToken} from "../oauth.js";
 const names = (conf, key) => ({
   get list() {
     return conf[key].join(", ");
@@ -35,6 +36,156 @@ function timeCard() {
     hint(timeStatus()),
     hint(t("ui.timesync_hint")),
   );
+}
+const providerName = { spotify: "Spotify", google: "Google", microsoft: "Microsoft" };
+// Connect / Disconnect for Spotify or one mail account. The portal holds the PKCE verifier; this page only opens the
+// authorization address and then either waits for the stored token (loopback) or sends back the pasted address (manual).
+function oauthControls(key, service, accountId, provider, connected) {
+  const readToken = async () => storedToken((await request("/state")).config, service, accountId);
+  const finish = async () => {
+    delete ctx.oauth[key];
+    await load();
+    render();
+    toast(t("ui.oauth_connected"));
+  };
+  const connect = async () => {
+    if (ctx.dirty) await save();
+    const before = storedToken(ctx.cfg, service, accountId);
+    const flow = await startOAuth(request, (url) => window.open(url, "_blank", "noopener"), service, accountId);
+    toast(t("ui.oauth_register_uri", { uri: flow.redirect_uri }));
+    if (flow.mode === "manual") {
+      ctx.oauth[key] = { state: flow.state, url: flow.url };
+      render();
+      return;
+    }
+    toast(t("ui.oauth_waiting"));
+    if (await waitConnected(readToken, before)) await finish();
+    else toast(t("ui.oauth_timeout"), true);
+  };
+  const box = el(
+    "div",
+    {},
+    hint(connected ? t(service === "spotify" ? "ui.spotify_connected" : "ui.mail_connected") : t(service === "spotify" ? "ui.spotify_not_connected" : "ui.mail_not_connected")),
+    el(
+      "div",
+      { class: "row" },
+      button(t("ui.oauth_connect"), connect),
+      button(t("ui.oauth_disconnect"), () => {
+        delete ctx.oauth[key];
+        if (service === "spotify") ctx.cfg.integrations.spotify.refresh_token = "";
+        else ctx.cfg.integrations.mail.accounts.find((a) => a.id === accountId).refresh_token = "";
+        mark();
+        render();
+      }),
+    ),
+  );
+  const pending = ctx.oauth[key];
+  if (pending) {
+    const input = el("input", { type: "text", autocomplete: "off", spellcheck: "false" });
+    box.append(
+      hint(t("ui.oauth_paste_title", { service: providerName[provider] })),
+      hint(t("ui.oauth_paste_hint")),
+      el("a", { href: pending.url, target: "_blank", rel: "noopener" }, t("ui.oauth_open_again")),
+      el("label", { class: "field" }, input),
+      el(
+        "div",
+        { class: "row" },
+        button(t("ui.oauth_submit"), async () => {
+          await completeOAuth(request, pending.state, input.value);
+          await finish();
+        }),
+        button(t("ui.oauth_cancel"), () => {
+          delete ctx.oauth[key];
+          render();
+        }),
+      ),
+    );
+  }
+  return box;
+}
+function mailCard() {
+  const mail = ctx.cfg.integrations.mail;
+  const accounts = mail.accounts;
+  const index = Math.max(0, accounts.findIndex((a) => a.id === ctx.mailAccount));
+  const a = accounts[index];
+  const list = el("div", { class: "row" });
+  accounts.forEach((account, i) =>
+    list.append(
+      button(
+        (account.enabled ? "● " : "○ ") + (account.name || account.user || account.id),
+        () => {
+          ctx.mailAccount = account.id;
+          render();
+        },
+        i === index ? "active" : "",
+      ),
+    ),
+  );
+  const parts = [
+    t("ui.mail_imap"),
+    field(mail, "enabled", t("ui.enable_mail"), "checkbox"),
+    list,
+    el(
+      "div",
+      { class: "row" },
+      button(t("ui.mail_add_account"), () => {
+        if (accounts.length >= MAX_MAIL_ACCOUNTS) return toast(t("ui.mail_max_accounts"), true);
+        const account = newMailAccount();
+        accounts.push(account);
+        ctx.mailAccount = account.id;
+        mark();
+        render();
+      }),
+      a
+        ? button(
+            t("ui.mail_remove_account"),
+            () => {
+              accounts.splice(index, 1);
+              ctx.mailAccount = accounts[Math.min(index, accounts.length - 1)]?.id;
+              mark();
+              render();
+            },
+            "danger",
+          )
+        : null,
+    ),
+  ];
+  if (!a) return card(...parts, hint(t("ui.mail_no_accounts")));
+  const oauth = isOAuthMail(a);
+  const provider = field(a, "provider", t("ui.mail_provider"), "select", {
+    imap: t("ui.mail_provider_imap"),
+    google: t("ui.mail_provider_google"),
+    microsoft: t("ui.mail_provider_microsoft"),
+  });
+  provider.querySelector("select").addEventListener("change", (event) => {
+    applyMailProvider(a, event.target.value);
+    render();
+  });
+  parts.push(
+    field(a, "enabled", t("ui.mail_account_enabled"), "checkbox"),
+    el("div", { class: "grid" }, field(a, "name", t("ui.name")), provider),
+    el(
+      "div",
+      { class: "grid" },
+      field(a, "host", t("ui.server_2")),
+      numeric(a, "port", t("ui.port"), 1, 65535),
+    ),
+    field(a, "user", oauth ? t("ui.mail_email") : t("ui.username")),
+  );
+  if (!oauth) parts.push(field(a, "password", t("ui.password"), "password"));
+  else {
+    parts.push(field(a, "client_id", t("ui.oauth_client_id")));
+    if (a.provider === "google") parts.push(field(a, "client_secret", t("ui.oauth_client_secret"), "password"));
+    else parts.push(field(a, "tenant", t("ui.oauth_tenant")));
+    parts.push(
+      field(a, "redirect_uri", t("ui.oauth_redirect_uri")),
+      hint(t("ui.oauth_redirect_hint")),
+      oauthControls("mail:" + a.id, "mail", a.id, a.provider, !!a.refresh_token),
+      hint(t("ui.oauth_hint")),
+    );
+  }
+  parts.push(field(a, "mailbox", t("ui.mailbox")), field(a, "show_subject", t("ui.show_subject"), "checkbox"));
+  return card(...parts);
 }
 export function integrationPage(main) {
   const mqtt = ctx.cfg.integrations.mqtt;
@@ -102,30 +253,8 @@ export function integrationPage(main) {
         field(ctx.cfg.integrations.spotify, "client_id", "Client ID"),
         field(ctx.cfg.integrations.spotify, "redirect_uri", t("ui.spotify_redirect_uri")),
         hint(t("ui.spotify_redirect_uri_hint")),
-        hint(
-          ctx.cfg.integrations.spotify.refresh_token
-            ? t("ui.spotify_connected")
-            : t("ui.spotify_not_connected"),
-        ),
         ...(ctx.state.capabilities.mode === "server"
-          ? [
-              button(t("ui.spotify_connect"), async () => {
-                try {
-                  const r = await request("/spotify/connect", "POST", {
-                    client_id: ctx.cfg.integrations.spotify.client_id,
-                  });
-                  window.open(r.url, "_blank", "noopener");
-                  toast(t("ui.spotify_redirect_hint", { uri: r.redirect_uri }));
-                } catch (error) {
-                  toast(error.message, true);
-                }
-              }),
-              button(t("ui.spotify_disconnect"), () => {
-                ctx.cfg.integrations.spotify.refresh_token = "";
-                mark();
-                render();
-              }),
-            ]
+          ? [oauthControls("spotify", "spotify", "", "spotify", !!ctx.cfg.integrations.spotify.refresh_token)]
           : [hint(t("ui.spotify_desktop_server_only"))]),
       ),
       card(
@@ -136,24 +265,7 @@ export function integrationPage(main) {
         field(ctx.cfg.integrations.prtg, "verify_tls", t("ui.verify_tls"), "checkbox"),
         hint(t("ui.prtg_hint")),
       ),
-      card(
-        t("ui.mail_imap"),
-        field(ctx.cfg.integrations.mail, "enabled", t("ui.enable_mail"), "checkbox"),
-        el(
-          "div",
-          { class: "grid" },
-          field(ctx.cfg.integrations.mail, "host", t("ui.server_2")),
-          numeric(ctx.cfg.integrations.mail, "port", t("ui.port"), 1, 65535),
-        ),
-        el(
-          "div",
-          { class: "grid" },
-          field(ctx.cfg.integrations.mail, "user", t("ui.username")),
-          field(ctx.cfg.integrations.mail, "password", t("ui.password"), "password"),
-        ),
-        field(ctx.cfg.integrations.mail, "mailbox", t("ui.mailbox")),
-        field(ctx.cfg.integrations.mail, "show_subject", t("ui.show_subject"), "checkbox"),
-      ),
+      mailCard(),
       card(
         t("ui.pc_notifications"),
         field(ctx.cfg.integrations.notifications, "enabled", t("ui.enable_pc_notifications"), "checkbox"),

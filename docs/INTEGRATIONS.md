@@ -104,10 +104,12 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
 
 1. Create an app at <https://developer.spotify.com/dashboard>.
 2. Under **Redirect URIs** register the URI for how you connect (Spotify accepts `https`, or `http` only on a loopback IP literal; `localhost` is rejected):
-   - **Desktop app**: `http://127.0.0.1/callback`. Keeper opens a one-shot server on `127.0.0.1` with a random port and sends that port with the authorization request; Spotify allows leaving the port out of a registered loopback URI. If the Dashboard insists on a port, register `http://127.0.0.1:<port>/callback` for a port of your choice.
-   - **Server portal**: `{portal address}/api/spotify/callback`, where the address is the one in your browser's address bar, for example `http://127.0.0.1:8080/api/spotify/callback` (reach a remote server through an SSH tunnel to its port) or `https://keeper.example.com/api/spotify/callback`. A plain `http://` address that is not `127.0.0.1` / `[::1]` is refused by Keeper and by Spotify. Behind a reverse proxy the portal must see the same scheme and host as your browser.
+   - **Desktop app (Qt)**: `http://127.0.0.1/callback`. Keeper opens a one-shot server on `127.0.0.1` with a random port and sends that port with the authorization request; Spotify allows leaving the port out of a registered loopback URI. If the Dashboard insists on a port, register `http://127.0.0.1:<port>/callback` for a port of your choice.
+   - **Web UI (browser shell or server portal), automatic**: `{portal address}/api/oauth/callback`, where the address is the one in your browser's address bar, for example `http://127.0.0.1:8080/api/oauth/callback` (reach a remote server through an SSH tunnel to its port) or `https://keeper.example.com/api/oauth/callback`. A plain `http://` address that is not `127.0.0.1` / `[::1]` is refused by Keeper and by Spotify. Behind a reverse proxy the portal must see the same scheme and host as your browser. Keeper shows the exact address it used when you press Connect.
+   - **Web UI, paste-back** (when the Dashboard rejects `http` loopback): enter an `https` address you registered (even a placeholder such as `https://example.org/callback`) in *Redirect URI* and press Save. See "Connect from the web UI" below.
+   - The older `{portal address}/api/spotify/callback` keeps working for the old connect route.
 3. Copy the app's **Client ID** into Integrations → Spotify and enable it. Do not enter a client secret.
-4. Press **Connect Spotify** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. On the portal, reload the page afterwards.
+4. Press **Connect** and approve in the browser. Scopes requested: `user-read-currently-playing user-read-playback-state`. In the web UI the page notices the connection by itself (automatic mode) or asks you to paste the address back (https mode).
 5. Add a Spotify widget to a screen.
 
 **Display option.** Each Spotify screen has a *Display* setting (`spotify_display`): `both` (default: cover, play state, title and artist), `art` (the cover fills the screen, with a small PLAY/PAUSE label and a thin progress bar) or `text` (large title and artist, no cover). Screens without the setting use `both`. The not-connected, connecting and nothing-playing messages ignore it. Mobile does not render this widget.
@@ -122,11 +124,11 @@ The **Spotify** widget shows the track playing on your Spotify account (title, a
   4. Approve. Spotify redirects to your address; the page itself may show an error or not load at all, which is fine.
   5. Copy the **full address from the browser's address bar** (it looks like `https://example.org/callback?code=...&state=...`) and paste it into the dialog Keeper shows. A bare `code=...&state=...` query string also works; the `state` is always required and checked.
 
-  The code is exchanged immediately with the PKCE verifier kept in memory; the pasted address is never stored or logged. Pasted text is limited to 2048 characters. The portal flow ignores this setting and derives its address from the request.
+  The code is exchanged immediately with the PKCE verifier kept in memory; the pasted address is never stored or logged. Pasted text is limited to 2048 characters. The old `/api/spotify/connect` portal route ignores this setting and derives its address from the request; the web UI uses `/api/oauth/start`, which honours it.
 
 What is stored: only the **client ID** and the **refresh token** (`integrations.spotify`, in `config.json`, mode 0600; the token is blanked in exports). Access tokens live in memory, authorization codes are never stored, and neither is logged. Spotify refresh tokens last about six months; Keeper stores a replacement if Spotify issues one.
 
-To disconnect press **Disconnect** (this clears the token; on the portal press Save afterwards), and optionally remove Keeper under spotify.com/account/apps.
+To disconnect press **Disconnect** (this clears the token; in the web UI press Save afterwards), and optionally remove Keeper under spotify.com/account/apps.
 
 Behaviour: the player is polled every 5 seconds in the background, only while a Spotify widget is rendered. "Spotify not connected" appears without a token or after Spotify rejects it twice (reconnect), "Nothing playing" when no player is active, "Spotify unavailable" on network errors; `Retry-After` is honoured when Spotify rate-limits. Cover art is fetched once per track from Spotify's CDN (`*.scdn.co`, `*.spotifycdn.com`, 1 MB cap). Podcast episodes show the show name; ads show "Advertisement". Standalone mobile apps cannot connect; the widget shows a placeholder.
 
@@ -134,14 +136,54 @@ Verification status: the OAuth parameters, redirect rules and endpoint were chec
 
 ## Unread mail (IMAP)
 
-The **Unread mail** widget and the `mail_unread` alert metric show how many unread messages a mailbox holds. Configure the server, user, password and mailbox under Integrations → Mail.
+The **Unread mail** widget and the `mail_unread` alert metric show how many unread messages your mailboxes hold. Configure the accounts under Integrations → Mail. Keeper supports **up to 10 accounts** (`integrations.mail.accounts`), each one either a plain IMAP login with a password or a **Google** / **Microsoft** sign-in (OAuth 2.0, XOAUTH2 over IMAP) that never stores a password.
 
-- Port 993 uses TLS from the start; port 143 uses STARTTLS and Keeper never sends the password unless STARTTLS succeeded. Certificates are always verified; there is no option to disable it.
-- Use an **app password** with providers that require one: Gmail (Google Account → Security → App passwords, IMAP must be enabled) and Fastmail (Settings → Privacy & Security → App passwords, IMAP scope). Your normal account password usually does not work.
+- A **Mail** screen shows one account or *All accounts* (the sum of the reachable accounts; no subject). Its `mail_account` field is `all` or an account id; an id that no longer exists is shown as *(missing) id* and the widget reports "account missing". A `mail_unread` alert rule has the same choice in its `source` field (`all`/empty = combined, or an account id); the alert source is the account id.
+- Configurations written before multiple accounts (flat `host`, `port`, `user`, `password`, `mailbox`, `show_subject`) are migrated on load to a single account with id `main` (same enabled state); the web editor, the desktop app and the backend all apply the same rule, and an alert pointing at an unknown account is reset to *All accounts*.
+- Port 993 uses TLS from the start; port 143 uses STARTTLS and Keeper never sends the password (or an OAuth token; OAuth accounts refuse port 143) unless STARTTLS succeeded. Certificates are always verified; there is no option to disable it.
 - Privacy: only the unread count is read by default (`STATUS ... (UNSEEN)` on a read-only `EXAMINE`d mailbox). Keeper never marks mail as read and never downloads message bodies. With **Show the subject** on, it also fetches only the Subject header of the newest unread message (`BODY.PEEK`), shown on the widget; it is off by default.
-- The mailbox is polled every 120 seconds in the background, never on the display loop; a reading older than 10 minutes is treated as unavailable and the alert does not fire. Errors are shown as a short reason (authentication failed, cannot connect, timeout, protocol error) that never includes your credentials.
-- The password is stored in `config.json` (mode 0600) and is blanked in exports.
-- Standalone mobile apps cannot use IMAP; the widget shows a placeholder there. Not yet tried against a real IMAP server.
+- Each mailbox is polled every 120 seconds in the background, never on the display loop; a reading older than 10 minutes is treated as unavailable and the alert does not fire. Errors are shown as a short reason (authentication failed, cannot connect, timeout, protocol error, authorization expired (reconnect), not signed in) that never includes your credentials.
+- Stored in `config.json` (mode 0600): passwords, OAuth client secrets and refresh tokens; all are blanked in exports. Access tokens live in memory only. A rotated refresh token (Microsoft issues a new one on refresh) is saved with a compare-and-swap, so a Disconnect or a new connection is never overwritten by a background refresh.
+- Standalone mobile apps cannot use IMAP; the widget shows a placeholder there. Not yet tried against a real IMAP server, Google or Microsoft.
+
+### Plain IMAP
+
+Choose provider **IMAP (password)**, then server, port, user, password and mailbox. Use an **app password** with providers that require one: Gmail (Google Account → Security → App passwords, IMAP must be enabled) and Fastmail (Settings → Privacy & Security → App passwords, IMAP scope). Your normal account password usually does not work.
+
+### Google (Gmail / Workspace)
+
+You register your own OAuth app; Keeper ships no client ID.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/) create a project, then **APIs & Services → OAuth consent screen**: user type **External** (or Internal for a Workspace domain), add yourself under **Test users**.
+2. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app.** Copy the **Client ID** and the **Client secret** (for Desktop clients Google requires the secret at the token endpoint and does not treat it as confidential).
+3. In Keeper pick provider **Google**, enter your Gmail address, the Client ID and the Client secret, leave *Redirect URI* empty, Save and press **Connect**. The requested scope is `https://mail.google.com/` (IMAP); Keeper asks for offline access to receive a refresh token.
+4. IMAP must be enabled for the account (Gmail settings → Forwarding and POP/IMAP).
+
+**Refresh tokens expire after 7 days while the consent screen is in the *Testing* publishing status** (External apps with sensitive/restricted scopes). The mail card then shows "authorization expired (reconnect)": press Connect again, or move the consent screen to production (Google may require verification for the restricted Gmail scope). A token also stops working if you revoke access, leave it unused for 6 months or change the password.
+
+Redirect URIs: Desktop clients accept any `http://127.0.0.1:<port>` loopback address without registering it, so the automatic web flow works as is. Google does not let a Desktop client register an `https` redirect; to use the paste-back flow with Google create a **Web application** client instead and register your `https` address there.
+
+### Microsoft (Outlook / Microsoft 365)
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/) → **App registrations → New registration**. Supported account types: *Accounts in any organizational directory and personal Microsoft accounts* (tenant `common`), or a single tenant (then enter its ID or domain as **Tenant** in Keeper).
+2. **Authentication → Add a platform → Mobile and desktop applications**, and add a redirect URI (see below). Under *Advanced settings* set **Allow public client flows** to *Yes*. Do **not** create a client secret: Keeper treats this as a public client (PKCE) and never sends one.
+3. **API permissions → Add a permission → APIs my organization uses → Office 365 Exchange Online → Delegated permissions → `IMAP.AccessAsUser.All`**. For work or school accounts an administrator may have to **grant admin consent**; without it sign-in fails or asks for approval.
+4. Exchange Online must have **IMAP enabled for the mailbox** (the organization may have disabled it).
+5. In Keeper pick provider **Microsoft**, enter the account email, the **Application (client) ID** and the tenant, Save and press **Connect**. Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All offline_access`.
+
+Redirect URIs to register (public client):
+
+- **Paste-back (easiest)**: register `https://login.microsoftonline.com/common/oauth2/nativeclient` and enter exactly that address in Keeper's *Redirect URI*. After you sign in the browser lands on a Microsoft page (which may look like an error page); copy the full address and paste it into Keeper.
+- **Automatic (loopback)**: leave *Redirect URI* empty and register the address Keeper displays when you press Connect, which has the form `http://127.0.0.1:<port>/api/oauth/callback`. Microsoft ignores the port when matching `localhost` URIs, prefers `127.0.0.1`, and only accepts an `http://127.0.0.1` URI through the application **manifest** (the portal text box refuses it). `[::1]` is not supported.
+
+### Connect from the web UI
+
+Press **Connect** on an OAuth account (or Spotify). Keeper saves unsaved changes first, then asks the server for an authorization address and opens it in a new tab. Two modes, chosen by the account's *Redirect URI*:
+
+- **Automatic (loopback)** — *Redirect URI* empty or `http://127.0.0.1…`: the provider sends the browser back to `{portal address}/api/oauth/callback`; the page waits (up to 3 minutes) for the token to appear and then shows "connected". The address must be `http://127.0.0.1:<port>` / `[::1]` or `https`; any other plain `http` address is refused.
+- **Paste-back** — *Redirect URI* is an `https` address: after you authorize, the browser opens that address (the page may be an error page, which is fine). Copy the **full address from the address bar** (it contains `code=…&state=…`), paste it into the box that Keeper shows and press **Submit**. The server exchanges the code with the PKCE verifier it kept in memory, using the same redirect URI as in the first step. A pasted address works once and only within 5 minutes; after a failure press Connect again.
+
+The server keeps at most 20 pending sign-ins for 5 minutes each, every one bound to a single-use random `state`; repeated failures (10 per minute) are rate limited. Nothing from the request is reflected in the callback page, error messages are fixed texts, and codes, tokens, secrets and verifiers are never logged or returned. **Disconnect** clears the account's token; press Save afterwards.
 
 ## PC notifications
 

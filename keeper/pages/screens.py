@@ -123,6 +123,7 @@ class ScreensPage:
                 f.addRow(self.t("Vista", "View"), self.pc_view)
                 self.pc_disk = QComboBox()
                 self.pc_disk.setEditable(True)
+                self.pc_disk.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon); self.pc_disk.setMinimumContentsLength(16)  # long mount paths must not widen the page
                 self.pc_disk.addItem(self.t("Disco del sistema", "System disk"), "")
                 import psutil
                 try:

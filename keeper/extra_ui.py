@@ -66,6 +66,18 @@ def save_buttons(dialog, layout):
     layout.addRow(b) if isinstance(layout, QFormLayout) else layout.addWidget(b)
 
 
+def mail_account_combo(window, selected, all_text=None):
+    """'All accounts' plus every configured mail account (data = id); an id that no longer exists stays selectable."""
+    from .mail import migrate_conf
+    accounts = [a for a in migrate_conf(window.store.snapshot().get("integrations", {}).get("mail", {})).get("accounts", []) if isinstance(a, dict)]
+    options = [("all", all_text or window.t("Todas las cuentas", "All accounts"))] + [(a["id"], a.get("name") or a.get("user") or a["id"]) for a in accounts]
+    if selected not in {k for k, _ in options}:
+        options.append((selected, window.t("(falta) ", "(missing) ") + str(selected)))
+    box = combo(options, selected)
+    box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon); box.setMinimumContentsLength(14)  # long names must not widen the page
+    return box
+
+
 class ContentFields:
     def __init__(self, parent, form, screen):
         self.parent, self.screen = parent, copy.deepcopy(screen)
@@ -93,6 +105,8 @@ class ContentFields:
         elif kind == "prtg":
             form.addRow(hint("Shows PRTG sensor counts (up, warning, down, paused) and the worst sensor. The address and API key are set under Integrations. Refreshes every 30 s; if it cannot read the server it shows the reason."))
         elif kind == "mail":
+            self.mail_account = mail_account_combo(self.parent, screen.get("mail_account", "all"))
+            form.addRow(self.parent.t("Cuenta", "Account"), self.mail_account)
             form.addRow(hint(self.parent.t("Muestra el número de correos sin leer (IMAP, solo lectura). El servidor y la contraseña se configuran en Integraciones. Se actualiza cada 2 minutos.",
                                       "Shows the number of unread emails (IMAP, read-only). Server and password are set under Integrations. Refreshes every 2 minutes.")))
         elif kind == "spotify":
@@ -124,6 +138,8 @@ class ContentFields:
             s["elements"] = copy.deepcopy(self.screen.get("elements", []))
         elif kind == "spotify":
             s["spotify_display"] = self.spotify_display.currentData()
+        elif kind == "mail":
+            s["mail_account"] = self.mail_account.currentData()
         validate_content(s)
 
 
@@ -160,12 +176,17 @@ class RuleDialog(QDialog):
                                            ("mail_unread", window.t("Correos sin leer", "Unread mail"))], r.get("metric", "cpu"))
                 self.operator = combo([("above", "Greater than"), ("below", "Less than")], r.get("operator", "above"))
                 self.threshold = QDoubleSpinBox(); self.threshold.setRange(-1e12, 1e12); self.threshold.setValue(r.get("threshold", 80))
-                self.source = QLineEdit(r.get("source", "")); self.source.setPlaceholderText("Service URL, disk path or sensor ID/topic")
+                self.source = QLineEdit("" if r.get("metric") == "mail_unread" else r.get("source", "")); self.source.setPlaceholderText("Service URL, disk path or sensor ID/topic")
+                self.mail_account = mail_account_combo(window, r.get("source") or "all" if r.get("metric") == "mail_unread" else "all", window.t("Todas las cuentas (suma)", "All accounts (combined)"))
                 self.sensor_source = combo([("mqtt", "MQTT"), ("hardware", "LibreHardwareMonitor")], r.get("sensor_source", "mqtt"))
                 self.sensor_field = QLineEdit(r.get("sensor_field", ""))
                 self.hold = number(0, 3600, r.get("hold", 10)); self.cooldown = number(30, 86400, r.get("cooldown", 300))
-                for label, w in [("Metric", self.metric_combo), ("Comparison", self.operator), ("Threshold", self.threshold), ("Source (if applicable)", self.source), ("Sensor type", self.sensor_source), ("Sensor JSON field", self.sensor_field), ("Hold condition (s)", self.hold), ("Minimum between alerts (s)", self.cooldown)]:
+                for label, w in [("Metric", self.metric_combo), ("Comparison", self.operator), ("Threshold", self.threshold), ("Source (if applicable)", self.source), (window.t("Cuenta de correo", "Mail account"), self.mail_account), ("Sensor type", self.sensor_source), ("Sensor JSON field", self.sensor_field), ("Hold condition (s)", self.hold), ("Minimum between alerts (s)", self.cooldown)]:
                     form.addRow(label, w)
+                def mail_rows(*_):  # an unread-mail alert picks one of the configured accounts instead of a free-text source
+                    mail = self.metric_combo.currentData() == "mail_unread"
+                    form.setRowVisible(self.mail_account, mail); form.setRowVisible(self.source, not mail)
+                self.metric_combo.currentIndexChanged.connect(mail_rows); mail_rows()
                 form.addRow(hint("One alert per incident, re-armed once the value returns to normal. For a service that is down: greater than 0.5. Missing sensors do not trigger alerts."))
             form.addRow("Screen (with image or widget)", self.panel); form.addRow("Message", self.text); form.addRow("Alert duration (s)", self.seconds); form.addRow(self.buzzer)
         save_buttons(self, form)
@@ -182,7 +203,7 @@ class RuleDialog(QDialog):
                     r["minutes"] = self.minutes.value()
                 else:
                     r.update(metric=self.metric_combo.currentData(), operator=self.operator.currentData(), threshold=self.threshold.value(),
-                             source=self.source.text().strip(), sensor_source=self.sensor_source.currentData(), sensor_field=self.sensor_field.text().strip(), hold=self.hold.value(), cooldown=self.cooldown.value())
+                             source=(self.mail_account.currentData() if self.metric_combo.currentData() == "mail_unread" else self.source.text().strip()), sensor_source=self.sensor_source.currentData(), sensor_field=self.sensor_field.text().strip(), hold=self.hold.value(), cooldown=self.cooldown.value())
             data = self.window.store.snapshot()
             data[self.group] = [x for x in data.get(self.group, []) if x["id"] != r["id"]] + [r]
             from .extensions import validate_extensions
@@ -351,18 +372,9 @@ class IntegrationPanel(QWidget):
         form.addRow(hint(t("Dirección: solo el servidor PRTG, p. ej. https://prtg.example.com:1616 (una URL /api/... pegada se recorta). Token: interfaz web de PRTG → Setup → Account Settings → API Keys (sirve para las dos APIs). Se usa la API v2 de PRTG si está disponible; si no, la API clásica.",
                            "Address: just the PRTG server, e.g. https://prtg.example.com:1616 (a pasted /api/... URL is trimmed). Token: PRTG web interface → Setup → Account Settings → API Keys (works for both API versions). The PRTG v2 API is used when available, otherwise the classic API.")))
         tabs.addTab(page, "PRTG")
-        page = QWidget(); form = QFormLayout(page)
-        self.mail_on = QCheckBox(t("Activar correo (IMAP)", "Enable mail (IMAP)")); self.mail_on.setChecked(mail["enabled"])
-        self.mail_host = QLineEdit(mail["host"]); self.mail_port = number(1, 65535, mail["port"])
-        self.mail_user = QLineEdit(mail["user"]); self.mail_password = secret(mail["password"])
-        self.mail_box = QLineEdit(mail["mailbox"])
-        self.mail_subject = QCheckBox(t("Mostrar el asunto", "Show the subject")); self.mail_subject.setChecked(mail["show_subject"])
-        form.addRow(self.mail_on)
-        for text, w in [(t("Servidor", "Server"), self.mail_host), (t("Puerto", "Port"), self.mail_port), (t("Usuario", "User"), self.mail_user),
-                        (t("Contraseña", "Password"), self.mail_password), (t("Buzón", "Mailbox"), self.mail_box)]:
-            form.addRow(text, w)
-        form.addRow(self.mail_subject)
-        tabs.addTab(page, t("Correo", "Mail"))
+        from .mail_ui import MailAccountsPanel
+        self.mail = MailAccountsPanel(self.window, mail)
+        tabs.addTab(self.mail, t("Correo", "Mail"))
         page = QWidget(); form = QFormLayout(page)
         self.nt_on = QCheckBox(t("Activar notificaciones del PC", "Enable PC notifications")); self.nt_on.setChecked(notif["enabled"])
         self.nt_panel = number(1, 5, notif["panel"]); self.nt_seconds = number(5, 60, notif["seconds"]); self.nt_rate = number(1, 60, notif["per_minute"])
@@ -488,8 +500,7 @@ class IntegrationPanel(QWidget):
         config = {"spotify": {"enabled": self.sp_on.isChecked(), "client_id": self.sp_client.text().strip(), "refresh_token": self.sp_token,
                               "redirect_uri": self.sp_redirect.text().strip()},
                   "prtg": {"enabled": self.prtg_on.isChecked(), "base_url": self.prtg_url.text().strip(), "token": self.prtg_token.text().strip(), "verify_tls": self.prtg_tls.isChecked()},
-                  "mail": {"enabled": self.mail_on.isChecked(), "host": self.mail_host.text().strip(), "port": self.mail_port.value(), "user": self.mail_user.text().strip(),
-                           "password": self.mail_password.text(), "mailbox": self.mail_box.text().strip() or "INBOX", "show_subject": self.mail_subject.isChecked()},
+                  "mail": self.mail.config(),
                   "notifications": {"enabled": self.nt_on.isChecked(), "panel": self.nt_panel.value(), "seconds": self.nt_seconds.value(), "allow_apps": names(self.nt_allow),
                                     "deny_apps": names(self.nt_deny), "show_body": self.nt_body.isChecked(), "per_minute": self.nt_rate.value(),
                                     "teams": {"enabled": self.tm_on.isChecked(), "patterns": names(self.tm_patterns), "show_preview": self.tm_preview.isChecked(),
@@ -506,8 +517,10 @@ class IntegrationPanel(QWidget):
             def apply(data):
                 if not self.sp_dirty:  # SpotifySource may have rotated the token since this panel loaded it
                     config["spotify"]["refresh_token"] = data.get("integrations", {}).get("spotify", {}).get("refresh_token", self.sp_token)
+                self.mail.merge_tokens(config["mail"], data)  # accounts connected elsewhere keep their (possibly rotated) token
                 data.update(integrations=config)
             self.window.store.change(apply)
+            self.mail.saved(config["mail"])
             self.sp_dirty, self.sp_token = False, config["spotify"]["refresh_token"]
             self.window.toast("Integrations saved")
         except Exception as error:
@@ -537,8 +550,7 @@ class IntegrationPanel(QWidget):
         sp, pr, ml, nt = ({**defaults()["integrations"][k], **data.get(k, {})} for k in ("spotify", "prtg", "mail", "notifications"))
         self.sp_on.setChecked(sp["enabled"]); self.sp_client.setText(sp["client_id"]); self.sp_redirect.setText(sp["redirect_uri"]); self.sp_token, self.sp_dirty = sp["refresh_token"], False; self.refresh_spotify_status()
         self.prtg_on.setChecked(pr["enabled"]); self.prtg_url.setText(pr["base_url"]); self.prtg_token.setText(pr["token"]); self.prtg_tls.setChecked(pr["verify_tls"])
-        self.mail_on.setChecked(ml["enabled"]); self.mail_host.setText(ml["host"]); self.mail_port.setValue(ml["port"]); self.mail_user.setText(ml["user"])
-        self.mail_password.setText(ml["password"]); self.mail_box.setText(ml["mailbox"]); self.mail_subject.setChecked(ml["show_subject"])
+        self.mail.load(ml)
         self.nt_on.setChecked(nt["enabled"]); self.nt_panel.setValue(nt["panel"]); self.nt_seconds.setValue(nt["seconds"]); self.nt_rate.setValue(nt["per_minute"])
         self.nt_allow.setText(", ".join(nt["allow_apps"])); self.nt_deny.setText(", ".join(nt["deny_apps"])); self.nt_body.setChecked(nt["show_body"])
         tm = {**defaults()["integrations"]["notifications"]["teams"], **(nt.get("teams") if isinstance(nt.get("teams"), dict) else {})}

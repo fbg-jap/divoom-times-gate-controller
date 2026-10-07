@@ -1,7 +1,7 @@
 import {ctx} from "../ctx.js";
 import {$,el,button,row,card,hint,mark,field,numeric,d,action,deviceOptions,sceneOptions,render} from "../ui.js";
 import {t} from "../i18n.js";
-import {id,metrics} from "../model.js";
+import {id,metrics,mailAccountOptions} from "../model.js";
 export function automationPage(main) {
   const p = {
     work: 25,
@@ -204,8 +204,8 @@ export function automationPage(main) {
           if (group === "reminders")
             box.append(numeric(r, "minutes", t("ui.repeat_every_min"), 1, 10080));
           else {
-            box.append(
-              field(
+            const wasMail = r.metric === "mail_unread";
+            const metricField = field(
                 r,
                 "metric",
                 t("ui.metric"),
@@ -221,7 +221,15 @@ export function automationPage(main) {
                       prtg_warning: t("ui.prtg_warning_sensors"),
                       mail_unread: t("ui.mail_unread"),
                     },
-              ),
+              );
+            metricField.querySelector("select").addEventListener("change", () => {
+              if (r.metric === "mail_unread") r.source = "all";
+              else if (wasMail) r.source = "";
+              render();
+            });
+            if (r.metric === "mail_unread" && !r.source) r.source = "all";
+            box.append(
+              metricField,
               el(
                 "div",
                 { class: "grid" },
@@ -231,11 +239,9 @@ export function automationPage(main) {
                 }),
                 numeric(r, "threshold", t("ui.threshold"), -1000000000, 1000000000, 0.1),
               ),
-              field(
-                r,
-                "source",
-                t("ui.service_sensor_url_mqtt_topic"),
-              ),
+              r.metric === "mail_unread"
+                ? field(r, "source", t("ui.mail_alert_account"), "select", mailAccountOptions(ctx.cfg.integrations.mail, r.source, t("ui.mail_all_combined")))
+                : field(r, "source", t("ui.service_sensor_url_mqtt_topic")),
               field(
                 r,
                 "sensor_source",

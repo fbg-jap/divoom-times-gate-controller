@@ -29,10 +29,12 @@ from . import __version__
 from .config import ConfigStore, slot, validate, uid
 from .content import all_screens, assets, panorama_canvas
 from .engine import Engine
+from .extensions import spotify_redirect_kind
+from .mail import migrate_conf
 from .panorama_media import decode_clip, VIDEO_EXTENSIONS, rgb
 from .protocol import valid_ip
 from .timesync import timesource
-from . import spotify
+from . import oauth, spotify
 from .widgets import png_bytes
 from . import platform_support
 
@@ -224,6 +226,9 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     pending_spotify = spotify.PendingAuth()
     app.state.spotify_pending = pending_spotify
     app.state.spotify_session = spotify.requests.Session
+    app.state.oauth_pending = pending_oauth = oauth.PendingOAuth(clock)
+    app.state.oauth_session = spotify.requests.Session
+    oauth_failures = deque()  # failed callback/paste-back attempts (monotonic times), like the launch-code limiter
     app.state.launch_codes = LaunchCodes(clock)
     app.state.quit_event = threading.Event()
     app.state.open_external = platform_support.open_external
@@ -231,13 +236,13 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
 
     @app.middleware("http")
     async def security(request, call_next):
-        # The browser returns from accounts.spotify.com without the Bearer header. Only this exact GET is exempt, and the
-        # handler itself requires a single-use `state` that an authenticated /api/spotify/connect call issued.
+        # The browser returns from accounts.spotify.com / Google / Microsoft without the Bearer header. Only these two exact
+        # GETs are exempt, and the handlers themselves require a single-use `state` that an authenticated start call issued.
         hosts = request.headers.getlist("host")
         if shell_mode and (len(hosts) != 1 or host_name(hosts[0]) not in LOOPBACK_HOSTS | extra_hosts):
             # DNS rebinding: a page on another origin must not reach the local server under its own hostname.
             return JSONResponse({"error": "Host not allowed"}, status_code=421)
-        public = request.method == "GET" and request.url.path == "/api/spotify/callback"
+        public = request.method == "GET" and request.url.path in {"/api/spotify/callback", "/api/oauth/callback"}
         # The shell exchanges its single-use launch code for the token here; exact POST match only.
         public = public or (shell_mode and request.method == "POST" and request.url.path == "/api/launch")
         if request.url.path.startswith("/api/") and not public:
@@ -334,6 +339,151 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         except spotify.SpotifyError as error:
             return page(502, "Could not connect to Spotify: " + spotify.redact(str(error), query["code"], verifier))
         return page(200, "Spotify connected. You can close this tab and reload Keeper.")
+
+    OAUTH_INVALID = "This sign-in link is invalid or has expired. Start again from Keeper."
+    OAUTH_FAILED = "Could not complete the connection. Check the client settings and try again."
+    OAUTH_SAFE_ERRORS = {  # fixed texts of the paste-back parsers (they never include the pasted input)
+        "the pasted address is empty or too long", "the pasted address has no authorization code",
+        "Spotify did not authorize Keeper", "the pasted address does not belong to this connection attempt; start again",
+        "sign-in was not authorized", "the pasted address does not belong to this sign-in attempt; start again"}
+
+    def oauth_limited():
+        now = clock()
+        while oauth_failures and now - oauth_failures[0] > 60:
+            oauth_failures.popleft()
+        return len(oauth_failures) >= 10
+
+    def oauth_failed():
+        oauth_failures.append(clock())
+
+    def oauth_error(error):
+        text = str(error)
+        return text if text in OAUTH_SAFE_ERRORS else OAUTH_FAILED
+
+    def exchange_token(entry, code):
+        session = app.state.oauth_session()
+        if entry["service"] == "spotify":
+            data = spotify.exchange_code(session, entry["account"]["client_id"], code, entry["verifier"], entry["redirect_uri"])
+            if not data["refresh_token"]:
+                raise spotify.SpotifyError("no refresh token")
+            return data["refresh_token"]
+        return oauth._need_refresh(oauth.exchange_code(session, entry["account"]["provider"], entry["account"], code,
+                                                       entry["verifier"], entry["redirect_uri"]))
+
+    def paste_token(entry, state, pasted):
+        session = app.state.oauth_session()
+        if entry["service"] == "spotify":
+            return spotify.finish_manual(session, entry["account"]["client_id"], entry["redirect_uri"], entry["verifier"], state, pasted)
+        return oauth.finish_manual(session, entry["account"]["provider"], entry["account"], entry["redirect_uri"], entry["verifier"], state, pasted)
+
+    def store_connected(entry, token):
+        """Set the refresh token (a new sign-in replaces whatever is stored) together with the client id it belongs to."""
+        found = []
+        def apply(data):
+            integrations = data.setdefault("integrations", {})
+            if entry["service"] == "spotify":
+                integrations.setdefault("spotify", {}).update(refresh_token=token, client_id=entry["account"]["client_id"])
+                found.append(True)
+                return
+            mail = migrate_conf(integrations.get("mail", {}))
+            for account in mail.get("accounts", []) if isinstance(mail, dict) else []:
+                if isinstance(account, dict) and account.get("id") == entry["account"].get("id"):
+                    account.update(refresh_token=token, client_id=entry["account"]["client_id"])
+                    integrations["mail"] = mail
+                    found.append(True)
+                    return
+        store.change(apply)
+        if not found:
+            raise ValueError("Account not found. Save the configuration and try again.")
+
+    @app.post("/api/oauth/start")
+    async def oauth_start(request: Request):
+        values = await json_body(request)
+        service = values.get("service")
+        if service not in {"spotify", "mail"}:
+            raise ValueError("Unknown service")
+        integrations = store.snapshot().get("integrations", {})
+        for key in ("client_id", "redirect_uri", "account_id"):
+            if values.get(key) is not None and not isinstance(values[key], str):
+                raise ValueError("Invalid " + key)
+        if service == "spotify":
+            stored = integrations.get("spotify", {})
+            account = {"client_id": (values.get("client_id") or stored.get("client_id", "")).strip()}
+            if not re.fullmatch(r"[A-Za-z0-9]{8,128}", account["client_id"]):
+                raise ValueError("Enter the Spotify Client ID first")
+        else:
+            accounts = migrate_conf(integrations.get("mail", {})).get("accounts", [])
+            stored = next((a for a in accounts if isinstance(a, dict) and a.get("id") == values.get("account_id")), None)
+            if stored is None:
+                raise ValueError("Unknown mail account. Save the configuration first.")
+            if stored.get("provider") not in oauth.PROVIDERS:
+                raise ValueError("This account does not use OAuth")
+            account = {**stored, "client_id": (values.get("client_id") or stored.get("client_id", "")).strip()}
+            if not account["client_id"] or len(account["client_id"]) > 256 or not account["client_id"].isprintable() or " " in account["client_id"]:
+                raise ValueError("Enter the Client ID first")
+            if stored["provider"] == "google" and not account.get("client_secret"):
+                raise ValueError("Enter the Client secret first")
+        configured = (values.get("redirect_uri") or stored.get("redirect_uri", "")).strip()
+        kind = spotify_redirect_kind(configured)
+        if kind is None:
+            raise ValueError("Invalid redirect URI: use an https address or leave it empty")
+        if kind == "https":
+            mode, redirect_uri = "manual", configured
+        else:
+            mode, redirect_uri = "loopback", str(request.base_url).rstrip("/") + "/api/oauth/callback"
+            if not loopback_or_https(redirect_uri):
+                raise ValueError("Open the portal through http://127.0.0.1:<port> (for example an SSH tunnel) or behind https, "
+                                 "or set an https redirect URI and paste the address back.")
+        state, url = pending_oauth.issue(service, mode, redirect_uri, account)
+        return {"authorize_url": url, "state": state, "mode": mode, "redirect_uri": redirect_uri}
+
+    @app.get("/api/oauth/callback")
+    async def oauth_callback(request: Request):
+        def page(status, message):  # static texts only: nothing from the request is ever reflected
+            blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
+            return Response(blob, status_code=status, media_type="text/html")
+        if oauth_limited():
+            return page(429, "Too many attempts. Wait a minute and start again from Keeper.")
+        query = request.query_params
+        entry = pending_oauth.take(query.get("state", ""))
+        if entry is None or entry["mode"] != "loopback":
+            oauth_failed()
+            return page(400, OAUTH_INVALID)
+        code = query.get("code")
+        if not code:
+            return page(400, "The sign-in was not authorized.")
+        try:
+            token = await asyncio.to_thread(exchange_token, entry, code)
+            await asyncio.to_thread(store_connected, entry, token)
+        except Exception:
+            oauth_failed()
+            return page(502, OAUTH_FAILED)
+        return page(200, "Connected. You can close this tab and return to Keeper.")
+
+    @app.post("/api/oauth/complete")
+    async def oauth_complete(request: Request):
+        if oauth_limited():
+            return JSONResponse({"error": "Too many attempts"}, status_code=429)
+        values = await json_body(request)
+        state, pasted = values.get("state"), values.get("pasted")
+        if not isinstance(state, str) or not isinstance(pasted, str):
+            raise ValueError("state and pasted are required")
+        entry = pending_oauth.take(state)
+        if entry is None or entry["mode"] != "manual":
+            oauth_failed()
+            return JSONResponse({"error": OAUTH_INVALID}, status_code=400)
+        try:
+            token = await asyncio.to_thread(paste_token, entry, state, pasted)
+            await asyncio.to_thread(store_connected, entry, token)
+        except ValueError as error:
+            return JSONResponse({"error": str(error)}, status_code=400)
+        except (spotify.SpotifyError, oauth.OAuthError) as error:
+            oauth_failed()
+            return JSONResponse({"error": oauth_error(error)}, status_code=400)
+        except Exception:
+            oauth_failed()
+            return JSONResponse({"error": OAUTH_FAILED}, status_code=400)
+        return {"connected": True}
 
     if shell_mode:
         @app.post("/api/launch")

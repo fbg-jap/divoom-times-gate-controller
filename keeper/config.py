@@ -40,8 +40,7 @@ def defaults():
                              "mqtt": {"enabled": False, "host": "", "port": 1883, "prefix": "keeper", "username": "", "password": "", "tls": False},
                              "spotify": {"enabled": False, "client_id": "", "refresh_token": "", "redirect_uri": ""},
                              "prtg": {"enabled": False, "base_url": "", "token": "", "verify_tls": True},
-                             "mail": {"enabled": False, "host": "", "port": 993, "user": "", "password": "",
-                                      "mailbox": "INBOX", "show_subject": False},
+                             "mail": {"enabled": False, "accounts": []},
                              "notifications": {"enabled": False, "panel": 1, "seconds": 8, "allow_apps": [],
                                                "deny_apps": [], "show_body": False, "per_minute": 6,
                                                "teams": {"enabled": False, "patterns": ["microsoft teams", "msteams", "teams-for-linux", "teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com"],
@@ -50,6 +49,18 @@ def defaults():
                              "timesync": {"enabled": False, "source": "ntp", "servers": ["pool.ntp.org"], "https_url": "https://www.cloudflare.com/",
                                           "interval_minutes": 60, "fallback_https": True, "sync_device": False},
                              "hardware": False}}
+
+
+def migrate_mail_config(data):
+    """In place: the single flat mail account of older configs becomes accounts[0]; alert rules with a stale mail source are reset."""
+    from .mail import migrate_conf
+    integrations = data.get("integrations") if isinstance(data, dict) else None
+    if isinstance(integrations, dict) and "mail" in integrations:
+        integrations["mail"] = migrate_conf(integrations["mail"])
+        known = {a.get("id") for a in integrations["mail"].get("accounts", []) if isinstance(a, dict)} if isinstance(integrations["mail"], dict) else set()
+        for rule in data.get("alerts", []):
+            if isinstance(rule, dict) and rule.get("metric") == "mail_unread" and rule.get("source", "") not in known | {"", "all"}:
+                rule["source"] = ""
 
 
 def validate(data):
@@ -120,6 +131,7 @@ class ConfigStore:
         if self.path.exists():
             # Never overwrite a damaged config with defaults.
             raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
+            migrate_mail_config(raw)
             validate(raw)
             self.data = {**defaults(), **raw}
             # Older configs lack the newer integration sections: merge them under the saved values.
@@ -273,6 +285,12 @@ class ConfigStore:
                 for secret in ("token", "password", "refresh_token", "client_secret", "user", "username"):
                     if secret in conf:
                         conf[secret] = ""
+                for account in conf.get("accounts", []) if isinstance(conf.get("accounts"), list) else []:
+                    if isinstance(account, dict):
+                        account["enabled"] = False
+                        for secret in ("password", "refresh_token", "client_secret", "user"):
+                            if secret in account:
+                                account[secret] = ""
         media_assets = {}
         for s in (asset for screen in all_screens(data) for asset in assets(screen)):
             p = Path(s.get("path", ""))

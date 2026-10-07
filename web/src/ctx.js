@@ -12,6 +12,8 @@ export const ctx = {
   toastTimer: undefined,
   previewTimer: undefined,
   editing: null,
+  oauth: {},
+  mailAccount: undefined,
   pano: null,
   render: () => {},
   login: () => {},

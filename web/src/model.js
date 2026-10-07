@@ -5,6 +5,75 @@ export const id = () =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 export const copy = (value) => structuredClone(value);
+// Mail accounts (mirrors keeper/mail.py: ACCOUNT_DEFAULTS, DEFAULT_HOSTS, MAX_ACCOUNTS, migrate_conf).
+export const MAX_MAIL_ACCOUNTS = 10;
+export const MAIL_HOSTS = { google: "imap.gmail.com", microsoft: "outlook.office365.com" };
+export const MAIL_PROVIDERS = ["imap", "google", "microsoft"];
+export const mailAccountDefaults = () => ({
+  id: "",
+  name: "",
+  provider: "imap",
+  enabled: true,
+  host: "",
+  port: 993,
+  user: "",
+  password: "",
+  mailbox: "INBOX",
+  show_subject: false,
+  client_id: "",
+  client_secret: "",
+  tenant: "common",
+  refresh_token: "",
+  redirect_uri: "",
+});
+const MAIL_LEGACY_KEYS = ["host", "port", "user", "password", "mailbox", "show_subject"];
+const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+export const newMailAccount = (provider = "imap") =>
+  applyMailProvider({ ...mailAccountDefaults(), id: id().slice(0, 8), provider }, provider);
+// The old flat integrations.mail becomes accounts[0] (id "main"); pure, like migrate_conf in Python.
+export function migrateMail(conf) {
+  if (!plain(conf)) return conf;
+  const legacy = {};
+  for (const k of MAIL_LEGACY_KEYS) if (k in conf) legacy[k] = conf[k];
+  let accounts = conf.accounts;
+  if (accounts == null) {
+    accounts = [];
+    if (["host", "user", "password"].some((k) => legacy[k])) {
+      const user = typeof legacy.user === "string" ? legacy.user : "";
+      accounts = [
+        {
+          ...mailAccountDefaults(),
+          ...legacy,
+          id: "main",
+          name: user.slice(0, 40) || "Mail",
+          provider: "imap",
+          enabled: conf.enabled ?? false,
+        },
+      ];
+    }
+  } else if (Array.isArray(accounts))
+    accounts = accounts.map((a) => (plain(a) ? { ...mailAccountDefaults(), ...a } : a));
+  const rest = Object.fromEntries(Object.entries(conf).filter(([k]) => !MAIL_LEGACY_KEYS.includes(k)));
+  return { ...rest, accounts };
+}
+// Switching provider fills the server preset of Google/Microsoft and clears a preset host when going back to IMAP.
+export function applyMailProvider(account, provider) {
+  account.provider = provider;
+  if (MAIL_HOSTS[provider]) {
+    account.host = MAIL_HOSTS[provider];
+    account.port = 993;
+  } else if (Object.values(MAIL_HOSTS).includes(account.host)) account.host = "";
+  return account;
+}
+export const isOAuthMail = (account) => account?.provider in MAIL_HOSTS;
+// <select> options for a mail account choice: "all" first, then every account, then an unknown saved id kept as "(missing) id".
+export function mailAccountOptions(mail, selected, allLabel) {
+  const options = { all: allLabel };
+  for (const a of mail?.accounts || [])
+    if (plain(a) && a.id) options[a.id] = a.name || a.user || a.id;
+  if (selected && !(selected in options)) options[selected] = t("ui.mail_missing") + selected;
+  return options;
+}
 export const lists = () =>
   Array.from({ length: 5 }, () => ({ enabled: false, items: [] }));
 export const screen = (kind = "empty", extra = {}) => ({
@@ -95,15 +164,7 @@ export function defaults() {
         fallback_https: true,
         sync_device: false,
       },
-      mail: {
-        enabled: false,
-        host: "",
-        port: 993,
-        user: "",
-        password: "",
-        mailbox: "INBOX",
-        show_subject: false,
-      },
+      mail: { enabled: false, accounts: [] },
       notifications: {
         enabled: false,
         panel: 1,
@@ -153,6 +214,11 @@ export const kinds = lazy({
 export function normalize(value) {
   const cfg = { ...defaults(), ...copy(value) };
   cfg.integrations = { ...defaults().integrations, ...cfg.integrations };
+  cfg.integrations.mail = migrateMail(cfg.integrations.mail);
+  const known = new Set((cfg.integrations.mail?.accounts || []).filter(plain).map((a) => a.id));
+  for (const rule of cfg.alerts || [])
+    if (plain(rule) && rule.metric === "mail_unread" && !["", "all", ...known].includes(rule.source ?? ""))
+      rule.source = "";
   for (const key of ["api", "mqtt", "spotify", "prtg", "mail", "notifications", "timesync"])
     cfg.integrations[key] = {
       ...defaults().integrations[key],

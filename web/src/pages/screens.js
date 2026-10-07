@@ -2,7 +2,7 @@ import {ctx} from "../ctx.js";
 import {$,el,button,row,card,hint,banner,mark,field,numeric,d,saveAndSend,showImage,preview,fileField,render} from "../ui.js";
 import {t} from "../i18n.js";
 import {native} from "../api.js";
-import {id,copy,screen,kinds,metrics} from "../model.js";
+import {id,copy,screen,kinds,metrics,mailAccountOptions} from "../model.js";
 export function screenPage(main) {
   const panels = el("div", { class: "panels" });
   d().screens.forEach((s, i) => {
@@ -272,7 +272,13 @@ export function contentForm(s, inList = false) {
     );
   }
   if (s.kind === "prtg") form.append(hint(t("ui.prtg_widget_hint")));
-  if (s.kind === "mail") form.append(hint(t("ui.mail_widget_hint")));
+  if (s.kind === "mail") {
+    s.mail_account ??= "all";
+    form.append(
+      hint(t("ui.mail_widget_hint")),
+      field(s, "mail_account", t("ui.mail_account"), "select", mailAccountOptions(ctx.cfg.integrations.mail, s.mail_account, t("ui.mail_all_accounts"))),
+    );
+  }
   if (s.kind === "spotify") {
     s.spotify_display ??= "both";
     form.append(
