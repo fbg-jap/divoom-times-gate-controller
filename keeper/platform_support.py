@@ -156,8 +156,10 @@ def linux_launcher_entry(config_root, ui_args=()):
     if icon and (not target.exists() or target.read_bytes() != icon.read_bytes()):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(icon.read_bytes())
+    # An absolute icon path always resolves: the icon-theme lookup needs a refreshed cache that a user-level theme may not have.
     entry = ("[Desktop Entry]\nType=Application\nName=Divoom Keeper Studio\nComment=Control the Divoom Times Gate\nExec=" +
-             _desktop_exec(config_root, ui_args) + "\nIcon=divoom-keeper-studio\nCategories=Utility;\nTerminal=false\n"
+             _desktop_exec(config_root, ui_args) + "\nIcon=" + (str(target) if icon else "divoom-keeper-studio") +
+             "\nCategories=Utility;\nTerminal=false\n"
              "StartupWMClass=" + WM_CLASS + "\n")
     path = data / "applications" / "divoom-keeper-studio.desktop"
     if not path.exists() or path.read_text(encoding="utf-8") != entry:

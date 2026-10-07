@@ -163,7 +163,8 @@ class LauncherEntryTests(unittest.TestCase):
             entry = Path(temp) / "applications" / "divoom-keeper-studio.desktop"
             text = entry.read_text(encoding="utf-8")
             self.assertIn("StartupWMClass=DivoomKeeperStudio", text)
-            self.assertIn("Icon=divoom-keeper-studio", text)
+            target = Path(temp) / "icons" / "hicolor" / "256x256" / "apps" / "divoom-keeper-studio.png"
+            self.assertIn(f"Icon={target}", text)   # absolute: no icon-theme cache needed
             self.assertIn("--config-dir", text)
             self.assertNotIn("--minimized", text)
             self.assertTrue((Path(temp) / "icons" / "hicolor" / "256x256" / "apps" / "divoom-keeper-studio.png").is_file())
