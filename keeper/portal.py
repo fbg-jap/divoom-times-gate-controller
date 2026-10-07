@@ -511,6 +511,12 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                 return denied
             return {"token": token}
 
+        @app.post("/api/launch/issue")
+        def issue_launch_code():
+            # Bearer + Host + Origin are enforced by the middleware. A second app process (same user, holds admin.token)
+            # asks for a code here so it can open the running instance already logged in.
+            return {"code": app.state.launch_codes.issue()}
+
         @app.get("/api/startup")
         def get_startup():
             return {"enabled": bool(store.snapshot().get("startup"))}

@@ -13,6 +13,8 @@ export function token(value) {
   if (value !== undefined) sessionStorage.setItem("keeper-token", value);
   return sessionStorage.getItem("keeper-token") || "";
 }
+// A pasted token often carries a trailing newline/space (or terminal line wrapping): drop all whitespace.
+export const cleanToken = (value) => String(value ?? "").replace(/\s+/g, "");
 export function launchCode(hash) {
   const match = /^#launch=([A-Za-z0-9_-]{16,128})$/.exec(hash || "");
   return match ? match[1] : "";
@@ -49,7 +51,10 @@ export async function request(path, method = "GET", data, binary = false) {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw Error(error.error || error.detail || `HTTP ${response.status}`);
+    throw Object.assign(
+      Error(error.error || error.detail || `HTTP ${response.status}`),
+      { status: response.status },
+    );
   }
   if (binary) return response.blob();
   return response.json();

@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import io
 import json
+import logging
 import os
 import re
 import socket
@@ -24,6 +25,26 @@ from keeper.portal import LaunchCodes, create_app, host_name
 
 TOKEN = "unit-test-token-at-least-24-characters"
 ROOT = Path(__file__).resolve().parents[1]
+
+
+_guards = []
+
+
+def setUpModule():
+    """Safety net: no test may touch the real data folder or start a real browser (every test injects its own fakes)."""
+    sandbox = tempfile.TemporaryDirectory(prefix="keeper-test-home-")
+    _guards.append(sandbox)
+    patches = [mock.patch("keeper.platform_support.data_directory", return_value=Path(sandbox.name) / "data"),
+               mock.patch.object(shell.open_ui, "__defaults__", (lambda: None, mock.Mock(side_effect=OSError), lambda url: False))]
+    for patch in patches:
+        patch.start()
+        _guards.append(patch)
+
+
+def tearDownModule():
+    for guard in reversed(_guards):
+        guard.cleanup() if hasattr(guard, "cleanup") else guard.stop()
+    _guards.clear()
 
 
 class Clock:
@@ -113,7 +134,7 @@ class LaunchCodeTests(PortalCase):
         self.assertEqual(self.launch(code).status_code, 401)  # expired by now, but no longer limited
 
     def test_no_http_route_issues_codes(self):
-        for path in ("/api/launch/new", "/api/launch/issue"):
+        for path in ("/api/launch/new",):
             self.assertIn(self.client.post(path, headers=self.auth).status_code, {404, 405})
         self.assertIn(self.client.get("/api/launch", headers=self.auth).status_code, {404, 405})
 
@@ -135,6 +156,43 @@ class LaunchCodeTests(PortalCase):
             with TestClient(plain) as client:
                 code = plain.state.launch_codes.issue()
                 self.assertEqual(client.post("/api/launch", json={"code": code}).status_code, 401)
+
+
+class LaunchIssueRouteTests(PortalCase):
+    def issue(self, **kwargs):
+        return self.client.post("/api/launch/issue", **kwargs)
+
+    def test_bearer_is_required(self):
+        self.assertEqual(self.issue().status_code, 401)
+        self.assertEqual(self.issue(headers={"Authorization": "Bearer wrong-token"}).status_code, 401)
+        self.assertEqual(self.issue(headers={"Authorization": TOKEN}).status_code, 401)
+        self.assertEqual(self.app.state.launch_codes.codes, {})
+
+    def test_origin_and_host_rules(self):
+        self.assertEqual(self.issue(headers={**self.auth, "Origin": "http://evil.example"}).status_code, 403)
+        self.assertEqual(self.issue(headers={**self.auth, "Host": "keeper.lan"}).status_code, 421)
+        self.assertEqual(self.issue(headers={**self.auth, "Origin": "http://127.0.0.1:8765"}).status_code, 200)
+        self.assertEqual(len(self.app.state.launch_codes.codes), 1)
+
+    def test_code_is_single_use_and_expires(self):
+        response = self.issue(headers=self.auth)
+        self.assertEqual(response.status_code, 200)
+        code = response.json()["code"]
+        self.assertEqual(self.launch(code).json(), {"token": TOKEN})
+        self.assertEqual(self.launch(code).status_code, 401)
+        expiring = self.issue(headers=self.auth).json()["code"]
+        self.clock.now += 61
+        self.assertEqual(self.launch(expiring).status_code, 401)
+
+    def test_codes_are_fresh_each_time(self):
+        self.assertNotEqual(self.issue(headers=self.auth).json()["code"], self.issue(headers=self.auth).json()["code"])
+
+    def test_route_does_not_exist_outside_shell_mode(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plain = create_app(Path(temp), token=TOKEN, demo=True)
+            with TestClient(plain) as client:
+                self.assertIn(client.post("/api/launch/issue", headers=self.auth).status_code, {404, 405})
+                self.assertEqual(plain.state.launch_codes.codes, {})
 
 
 class LaunchOriginTests(PortalCase):
@@ -402,6 +460,135 @@ class LaunchPageTests(unittest.TestCase):
                 shell.run(args_for(Path(temp)), serve=serve, healthy=lambda p: True, opener=urls.append, tray_loader=lambda: None, quit_event=quit_event)
             self.assertEqual(len(urls), 1)
             self.assertRegex(urls[0], r"^http://127\.0\.0\.1:\d+/$")
+
+
+class FakeResponse:
+    def __init__(self, status=200, body=None):
+        self.status_code, self.body = status, body
+
+    def json(self):
+        return self.body
+
+
+class FakeSession:
+    def __init__(self, response=None, error=None):
+        self.response, self.error, self.calls, self.trust_env = response, error, [], True
+
+    def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        if self.error:
+            raise self.error
+        return self.response
+
+
+class SecondInstanceLoginTests(unittest.TestCase):
+    CODE = "A" * 32
+    SECRET = "second-instance-secret-token-0123456789abc"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        (self.root / "admin.token").write_text(self.SECRET + "\n")
+        self.sleeps, self.argvs, self.pages = [], [], []
+        self.logs = self.capture_logs()
+
+    def tearDown(self):
+        logging.getLogger("keeper.shell").removeHandler(self.handler)
+        self.temp.cleanup()
+
+    def capture_logs(self):
+        records = []
+        self.handler = logging.Handler()
+        self.handler.emit = lambda record: records.append(record.getMessage())
+        logging.getLogger("keeper.shell").addHandler(self.handler)
+        logging.getLogger("keeper.shell").setLevel(logging.INFO)
+        return records
+
+    def opener(self, url):
+        popen = mock.Mock()
+        popen.side_effect = lambda argv, **kw: (self.argvs.append(list(argv)), "file://" in argv[1] and self.pages.append(
+            (launch_target(argv).read_text(encoding="utf-8"), launch_target(argv).exists())))
+        return shell.open_ui(url, find=lambda: "/usr/bin/brave", popen=popen, fallback=lambda u: self.argvs.append([u]) or True)
+
+    def reopen(self, session):
+        shell.reopen_running(self.root, 4321, self.opener, session_factory=lambda: session, sleep=self.sleeps.append)
+
+    def test_success_opens_a_file_page_and_removes_it_afterwards(self):
+        session = FakeSession(FakeResponse(200, {"code": self.CODE}))
+        self.reopen(session)
+        url, kwargs = session.calls[0]
+        self.assertEqual(url, "http://127.0.0.1:4321/api/launch/issue")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer " + self.SECRET)
+        self.assertEqual(kwargs["timeout"], 5)
+        self.assertIs(session.trust_env, False)
+        joined = " ".join(" ".join(a) for a in self.argvs)
+        self.assertNotIn(self.CODE, joined)
+        self.assertNotIn(self.SECRET, joined)
+        self.assertIn("file://", joined)
+        self.assertIn("#launch=" + self.CODE, self.pages[0][0])
+        self.assertEqual(self.sleeps, [shell.LAUNCH_WAIT])
+        self.assertEqual(list(self.root.glob("open-*.html")), [])
+        text = " ".join(self.logs)
+        for secret in (self.CODE, self.SECRET):
+            self.assertNotIn(secret, text)
+        self.assertIn("Opening the UI in brave (app mode)", text)
+
+    def test_page_is_removed_even_when_the_wait_is_interrupted(self):
+        session = FakeSession(FakeResponse(200, {"code": self.CODE}))
+        with self.assertRaises(KeyboardInterrupt):
+            shell.reopen_running(self.root, 4321, self.opener, session_factory=lambda: session, sleep=mock.Mock(side_effect=KeyboardInterrupt))
+        self.assertEqual(list(self.root.glob("open-*.html")), [])
+
+    def test_failures_fall_back_to_the_plain_login_page(self):
+        cases = [FakeSession(FakeResponse(401, {})), FakeSession(error=OSError("refused")),
+                 FakeSession(FakeResponse(200, {"code": 5})), FakeSession(FakeResponse(200, {}))]
+        for session in cases:
+            self.argvs.clear()
+            self.reopen(session)
+            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/"]])
+            self.assertEqual(list(self.root.glob("open-*.html")), [])
+        self.assertEqual(self.sleeps, [])
+        self.assertIn("could not log in automatically", " ".join(self.logs))
+        self.assertNotIn(self.SECRET, " ".join(self.logs))
+
+    def test_missing_token_file_skips_the_request(self):
+        (self.root / "admin.token").unlink()
+        session = FakeSession(FakeResponse(200, {"code": self.CODE}))
+        self.reopen(session)
+        self.assertEqual(session.calls, [])
+        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/"]])
+
+    def test_run_uses_it_when_the_lock_is_held_and_logs_to_studio_log(self):
+        (self.root / "shell.json").write_text(json.dumps({"port": 4321, "pid": 1}))
+        held = FileLock(self.root / "studio.lock", timeout=0)
+        held.acquire()
+        try:
+            with mock.patch("keeper.shell.reopen_running") as reopen:
+                self.assertEqual(shell.run(args_for(self.root), opener=lambda u: True), 0)
+        finally:
+            held.release()
+        reopen.assert_called_once()
+        self.assertEqual(reopen.call_args.args[:2], (self.root, 4321))
+        self.assertIn("Another instance is running on port 4321", (self.root / "studio.log").read_text())
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE((self.root / "studio.log").stat().st_mode), 0o600)
+
+
+class OpenUiLogTests(unittest.TestCase):
+    def test_messages_name_the_route_and_hold_no_secrets(self):
+        url = "file:///tmp/open-1.html"
+        with self.assertLogs("keeper.shell", "INFO") as app_mode:
+            shell.open_ui(url, find=lambda: "/usr/bin/chromium", popen=mock.Mock())
+        with self.assertLogs("keeper.shell", "INFO") as system:
+            shell.open_ui(url, find=lambda: None, fallback=lambda u: True)
+        with self.assertLogs("keeper.shell", "INFO") as failed:
+            shell.open_ui(url, find=lambda: None, fallback=lambda u: False)
+        self.assertEqual([r.getMessage() for r in app_mode.records], ["Opening the UI in chromium (app mode)"])
+        self.assertEqual([r.getMessage() for r in system.records], ["Opening the UI with the system opener"])
+        self.assertIn("Could not open a browser:", failed.records[-1].getMessage())
+        for record in app_mode.records + system.records + failed.records:
+            self.assertNotIn("launch", record.getMessage())
+            self.assertNotIn(url, record.getMessage())
 
 
 class FakeServer:

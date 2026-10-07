@@ -34,6 +34,7 @@ WINDOWS_BROWSERS = [
 ]
 log = logging.getLogger("keeper.shell")
 PRIVATE_DIR, PRIVATE_FILE = 0o700, 0o600
+LAUNCH_WAIT = 65  # launch-code TTL (60 s) plus margin: how long a second instance keeps its launch page
 
 
 class PrivateRotatingFileHandler(RotatingFileHandler):
@@ -168,12 +169,58 @@ def open_ui(url, find=find_app_browser, popen=subprocess.Popen, fallback=platfor
     browser = find()
     if browser:
         try:
+            log.info("Opening the UI in %s (app mode)", Path(browser).name)
             popen([browser, "--app=" + url], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
             return True
         except OSError as error:
             log.warning("Could not start %s: %s", browser, error)
-    return bool(fallback(url))
+    log.info("Opening the UI with the system opener")
+    opened = bool(fallback(url))
+    if not opened:
+        log.warning("Could not open a browser: no browser found and the system opener failed")
+    return opened
+
+
+def reopen_running(root, port, opener, *, session_factory=None, sleep=time.sleep, wait=LAUNCH_WAIT):
+    """Second instance: open the running one already logged in; falls back to its login page. Never raises.
+
+    Reads the owner-only admin.token, asks the running instance for a fresh single-use launch code (Bearer, loopback,
+    no proxy) and opens a 0600 launch page exactly like the first instance, so only a file:// URI reaches argv. The
+    process then stays alive for `wait` seconds (code TTL plus margin) and deletes the page: the code is dead by then.
+    """
+    base = f"http://127.0.0.1:{port}/"
+    page = None
+    try:
+        token = (Path(root) / "admin.token").read_text(encoding="utf-8").strip()
+        if not token:
+            raise ValueError("empty token file")
+        if session_factory is None:
+            import requests
+            session_factory = requests.Session
+        session = session_factory()
+        session.trust_env = False  # no proxy may ever see the token
+        response = session.post(base + "api/launch/issue", headers={"Authorization": "Bearer " + token, "Host": f"127.0.0.1:{port}"},
+                                timeout=5, allow_redirects=False)
+        if response.status_code != 200:
+            raise ValueError(f"the running instance answered HTTP {response.status_code}")
+        code = response.json().get("code")
+        if not isinstance(code, str) or not code:
+            raise ValueError("no launch code in the reply")
+        page = launch_page(root, base + "#launch=" + code)
+    except Exception as error:  # nothing here may stop the plain fallback; the message never contains the token or code
+        log.warning("Second instance: could not log in automatically (%s); opening the login page", error)
+        opener(base)
+        return
+    try:
+        if opener(page.as_uri()):
+            log.info("Second instance: opened the running UI with a launch page (removed in %s s)", wait)
+            sleep(wait)
+        else:
+            log.warning("Second instance: the browser did not start")
+    finally:
+        with suppress(OSError):
+            page.unlink()
 
 
 def load_tray():
@@ -274,8 +321,8 @@ def config_failure(root, error):
 def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_loader=load_tray, quit_event=None):
     """Run the shell until quit. Returns the process exit code.
 
-    A second instance only opens the browser on the running one; the page then asks for the access token as the
-    plain web portal does (the launch code is in-process only, so a second process cannot obtain one).
+    A second instance opens the browser on the running one, logged in through a launch code that the running one
+    issues to it on request (reopen_running); when that fails it opens the login page.
     """
     ensure_std_streams()
     if getattr(args, "self_test", False):
@@ -296,8 +343,25 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
         lock.acquire()
     except Timeout:
         port = read_running(root)
-        if port and not args.minimized:
-            opener(f"http://127.0.0.1:{port}/")
+        second_log = logging.FileHandler(root / "studio.log", encoding="utf-8")  # append; the first instance owns rotation
+        second_log.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        root_logger = logging.getLogger()
+        root_logger.addHandler(second_log)
+        previous_level = root_logger.level
+        root_logger.setLevel(logging.INFO)
+        try:
+            if os.name != "nt":
+                with suppress(OSError):
+                    os.chmod(second_log.baseFilename, PRIVATE_FILE)
+            if port and not args.minimized:
+                log.info("Another instance is running on port %s; opening it", port)
+                reopen_running(root, port, opener)
+            else:
+                log.info("Another instance is running (port %s); nothing to open", port)
+        finally:
+            root_logger.removeHandler(second_log)
+            root_logger.setLevel(previous_level)
+            second_log.close()
         print("Keeper is already running" + (f": http://127.0.0.1:{port}/" if port else "."), file=sys.stderr)
         return 0
     remove_stale_launch_pages(root)

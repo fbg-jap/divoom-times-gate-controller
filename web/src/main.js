@@ -1,6 +1,6 @@
 import "./style.css";
 import {t,lazy} from "./i18n.js";
-import {init,native,token,request,redeemLaunch} from "./api.js";
+import {init,native,token,request,redeemLaunch,cleanToken} from "./api.js";
 import {ctx} from "./ctx.js";
 import {$,app,el,button,row,banner,hint,run,field,load,save,deviceOptions,preview,d} from "./ui.js";
 import {screenPage} from "./pages/screens.js";
@@ -134,8 +134,15 @@ function login() {
           onsubmit: (event) => {
             event.preventDefault();
             run(async () => {
-              token($("#token").value);
-              await load();
+              token(cleanToken($("#token").value));
+              try {
+                await load();
+              } catch (e) {
+                token("");
+                sessionStorage.removeItem("keeper-token");
+                if (e.status === 401) throw Error(t("ui.token_not_accepted"));
+                throw e;
+              }
               render();
             });
           },
