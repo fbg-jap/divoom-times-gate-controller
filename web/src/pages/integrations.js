@@ -317,6 +317,12 @@ export function integrationPage(main) {
         field(ctx.cfg.integrations.prtg, "verify_tls", t("ui.verify_tls"), "checkbox"),
         hint(t("ui.prtg_hint")),
       ),
+      card(
+        "GitHub",
+        field(ctx.cfg.integrations.github, "enabled", t("ui.enable_github"), "checkbox"),
+        field(ctx.cfg.integrations.github, "token", "Token", "password"),
+        hint(t("ui.github_hint")),
+      ),
       mailCard(),
       card(
         t("ui.pc_notifications"),

@@ -40,6 +40,7 @@ def defaults():
                              "mqtt": {"enabled": False, "host": "", "port": 1883, "prefix": "keeper", "username": "", "password": "", "tls": False},
                              "spotify": {"enabled": False, "client_id": "", "refresh_token": "", "redirect_uri": ""},
                              "prtg": {"enabled": False, "base_url": "", "token": "", "verify_tls": True},
+                             "github": {"enabled": False, "token": ""},
                              "mail": {"enabled": False, "accounts": []},
                              "notifications": {"enabled": False, "panel": 1, "seconds": 8, "color": "#ff7a3d", "border": True, "blink": True, "allow_apps": [],
                                                "deny_apps": [], "show_body": False, "per_minute": 6,

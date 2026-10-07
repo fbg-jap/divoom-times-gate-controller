@@ -57,6 +57,29 @@ def prtg_reason(error):
     return "unexpected response"
 
 
+GITHUB_API = "https://api.github.com"
+GITHUB_QUERIES = {"review": "is:pr is:open archived:false review-requested:@me", "mine": "is:pr is:open archived:false author:@me"}
+
+
+def github_reason(error):
+    """Map any exception to a fixed, safe reason (requests' own text carries the URL; the token must never be shown)."""
+    if isinstance(error, requests.Timeout):
+        return "timeout"
+    if isinstance(error, requests.ConnectionError):
+        return "cannot connect"
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if status == 401:
+        return "bad token"
+    if status == 429 or (status == 403 and str(getattr(response, "headers", {}).get("X-RateLimit-Remaining", "")) == "0"):
+        return "rate limited"
+    if status == 403:
+        return "access denied"
+    if status == 422:
+        return "repository not found"
+    return "unexpected response"
+
+
 def font(size, bold=False):
     name = "segoeuib.ttf" if bold else "segoeui.ttf"
     bundled = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
@@ -156,6 +179,24 @@ class Providers:
                 raise ValueError("The response is too large")
             chunks.append(chunk)
         return b"".join(chunks)
+
+    def github_fetch(self, token, query):
+        """Open pull requests matching a GitHub search query: {"count": n, "items": [{number, title, repo, author, draft}]}.
+        Blocking; raises on any failure (ExtraSources maps it with github_reason). Called from a background sampler."""
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "DivoomKeeperStudio"}
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        with self.session.get(GITHUB_API + "/search/issues", params={"q": query, "per_page": 3, "sort": "updated", "order": "desc"},
+                              headers=headers, timeout=8, stream=True, allow_redirects=False) as response:
+            response.raise_for_status()
+            body = self.prtg_read(response, 512 * 1024)
+        data = json.loads(body)
+        items = []
+        for item in (data.get("items") or [])[:3]:
+            repo = str(item.get("repository_url", "")).rsplit("/repos/", 1)[-1]
+            items.append({"number": int(item.get("number", 0)), "title": str(item.get("title", ""))[:200], "repo": repo[:100],
+                          "author": str((item.get("user") or {}).get("login", ""))[:40], "draft": bool(item.get("draft"))})
+        return {"count": int(data.get("total_count", 0)), "items": items}
 
     # PRTG v2 API: GET {base}/api/v2/sensors?limit=1[&filter=status=UP] with "Authorization: Bearer <API key>"
     #   -> JSON list of sensors; X-Total-Count is the number of sensors matching the filter. One filter value per request.

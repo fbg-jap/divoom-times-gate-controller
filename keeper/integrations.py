@@ -73,6 +73,7 @@ class Bridge:
         timesource.configure({} if self.engine.demo else config.get("timesync", {}))
         self.engine.renderer.providers.extra.hardware_enabled = bool(config.get("hardware", False))
         self.engine.renderer.providers.extra.prtg_conf = config.get("prtg", {})
+        self.engine.renderer.providers.extra.github_conf = config.get("github", {})
         from .mail import migrate_conf
         self.engine.renderer.providers.extra.mail_save = self.save_mail_token
         self.engine.renderer.providers.extra.mail_conf = migrate_conf(config.get("mail", {}))

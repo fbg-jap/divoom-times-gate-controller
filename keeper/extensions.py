@@ -18,6 +18,8 @@ FIRST_READ_WAIT = 2.5
 METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disk %"),
            ("cpu_temp", "CPU °C"), ("gpu_temp", "GPU °C"), ("download", "Descarga B/s"), ("upload", "Subida B/s")]
 PRTG_METRICS = {"prtg_down", "prtg_warning"}
+GITHUB_REPO = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
+GITHUB_QUERY_KINDS = ("review", "mine", "repo")
 
 
 def finite(value):
@@ -37,6 +39,12 @@ def validate_content(s):
         raise ValueError("Spotify display must be both, art or text")
     if s.get("panorama_speed") and int(s["panorama_speed"]) not in {100, 200, 250, 500, 1000}:
         raise ValueError("Invalid panorama speed")
+    if s.get("kind") == "github":
+        if s.get("github_query", "review") not in GITHUB_QUERY_KINDS:
+            raise ValueError("GitHub query must be review, mine or repo")
+        repo = s.get("github_repo", "")
+        if not isinstance(repo, str) or (repo and not GITHUB_REPO.fullmatch(repo)):
+            raise ValueError("Invalid GitHub repository (use owner/name)")
     if s.get("kind") == "rss" and s.get("url"):
         http_url(s["url"])
     if not 5 <= int(s.get("news_seconds", 15)) <= 3600:
@@ -191,7 +199,7 @@ def validate_mail_accounts(conf):
 
 def validate_new_integrations(integrations):
     from .widgets import http_url
-    for name in ("spotify", "prtg", "mail", "notifications"):
+    for name in ("spotify", "prtg", "github", "mail", "notifications"):
         conf = integrations.get(name, {})
         if name == "mail":
             from .mail import migrate_conf
@@ -204,6 +212,8 @@ def validate_new_integrations(integrations):
             _text(conf, "client_id", 128); _text(conf, "refresh_token", 1024)
             if spotify_redirect_kind(_text(conf, "redirect_uri", 300)) is None:
                 raise ValueError("Invalid redirect_uri")
+        elif name == "github":
+            _text(conf, "token", 512)
         elif name == "prtg":
             _text(conf, "token", 512)
             if _text(conf, "base_url", 300):
@@ -286,6 +296,7 @@ class ExtraSources:
         self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
         self.prtg_conf, self.prtg_key, self.prtg_probe = {}, None, None
+        self.github_conf, self.github_probes = {}, {}   # github_probes: (token, query) -> AsyncProbe
         self.mail_conf, self.mail_probes, self.mail_save = {}, {}, None  # mail_probes: account id -> {"key","source","probe"}
         self.spotify_conf, self.spotify_save, self.spotify_source, self.spotify_probe = {}, None, None, None
 
@@ -346,6 +357,44 @@ class ExtraSources:
             self.providers.prtg_api = None
             self.prtg_key, self.prtg_probe = key, AsyncProbe(sample, 30, 120)
         value, error = self.prtg_probe.read(wait=FIRST_READ_WAIT)
+        return value, error or ""
+
+    def github_state(self, s):
+        """(data, error) for a github screen: data is {"count", "items"} or None; error is "", "not configured", "token required",
+        "choose a repository" or a short reason. Never blocks for more than FIRST_READ_WAIT."""
+        kind = s.get("github_query", "review")
+        repo = str(s.get("github_repo", "")).strip()
+        if self.providers.demo:
+            items = [{"number": 412, "title": "Fix connection retries", "repo": "acme/keeper", "author": "ana", "draft": False},
+                     {"number": 409, "title": "Add notice colors", "repo": "acme/keeper", "author": "bo", "draft": True}]
+            return {"count": 2, "items": items}, ""
+        conf = self.github_conf or {}
+        if not conf.get("enabled"):
+            return None, "not configured"
+        token = str(conf.get("token", "")).strip()
+        if kind == "repo":
+            if not GITHUB_REPO.fullmatch(repo):
+                return None, "choose a repository"
+            query = f"is:pr is:open repo:{repo}"
+        else:
+            if not token:
+                return None, "token required"   # "@me" means the token's owner
+            from .widgets import GITHUB_QUERIES
+            query = GITHUB_QUERIES.get(kind, GITHUB_QUERIES["review"])
+        key = (token, query)
+        probe = self.github_probes.get(key)
+        if probe is None:
+            from .windows_sources import AsyncProbe
+            def sample():
+                try:
+                    return self.providers.github_fetch(token, query)
+                except Exception as error:
+                    from .widgets import github_reason
+                    raise RuntimeError(github_reason(error)) from None
+            while len(self.github_probes) >= 8:
+                self.github_probes.pop(next(iter(self.github_probes)))
+            probe = self.github_probes[key] = AsyncProbe(sample, 60, 300)   # the search API allows 30 requests a minute
+        value, error = probe.read(wait=FIRST_READ_WAIT)
         return value, error or ""
 
     def prtg(self):
@@ -551,6 +600,15 @@ def render_extra(s, providers):
             wrapped[count-1] = last + "…"
         for n, line in enumerate(wrapped[:count]):
             draw.text(((128 - draw.textlength(line, font=face)) / 2 if center else 8, y+n*(size+2)), line, fill=color, font=face)
+    def fit(text, y, size, color="white", bold=False, center=False, smallest=10):
+        """One line: the font shrinks down to `smallest` to make it fit, then the text is cut with an ellipsis."""
+        text = str(text)
+        while size > smallest and draw.textlength(text, font=font(size, bold)) > 112:
+            size -= 1
+        face = font(size, bold)
+        while len(text) > 1 and draw.textlength(text, font=face) > 112:
+            text = text[:-2].rstrip() + "…" if not text.endswith("…") else text[:-2] + "…"
+        draw.text(((128 - draw.textlength(text, font=face)) / 2 if center else 8, y), text, fill=color, font=face)
     kind = s["kind"]
     if kind == "music":
         data = extra.music()
@@ -591,6 +649,28 @@ def render_extra(s, providers):
         text = "N/A" if value is None else f"{number:.1f}" if number is not None else str(value)
         lines(text[:60], 42, 25, 2)
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
+    elif kind == "github":
+        query = s.get("github_query", "review")
+        repo = str(s.get("github_repo", "")).strip()
+        data, error = extra.github_state(s)
+        default_title = {"review": "Review requested", "mine": "My pull requests"}.get(query, repo.split("/")[-1] or "GitHub")
+        fit(s.get("title") or default_title, 5, 13, accent, True, True)
+        if data is None and error in {"not configured", "token required", "choose a repository"}:
+            lines({"not configured": "GitHub not configured", "token required": "Add a GitHub token",
+                   "choose a repository": "Choose a repository"}[error], 40, 13, 3, "#ff6b6b", True)
+        elif data is None and error.startswith("Waiting"):
+            lines("Checking GitHub…", 40, 13, 2, "#9aa4b5", True)
+        elif data is None:
+            lines("GitHub unavailable", 34, 13, 1, "#ff6b6b", True)
+            lines(error or "protocol error", 56, 12, 3, "#9aa4b5", True)
+        else:
+            lines("open · " + (repo if query == "repo" else "you"), 24, 11, 1, "#9aa4b5", True)
+            count = data["count"]
+            text = str(count) if count < 1000 else "999+"
+            face = font(46, True)
+            draw.text(((128 - draw.textlength(text, font=face)) / 2, 36), text, fill="#4ade80" if count == 0 else "#fbbf24", font=face)
+            for n, item in enumerate(data["items"][:2]):
+                fit(f"#{item['number']} {item['title']}", 92 + n * 15, 12)
     elif kind == "prtg":
         data, error = extra.prtg_state()
         lines(s.get("title") or "PRTG", 5, 13, 1, accent, True, True)

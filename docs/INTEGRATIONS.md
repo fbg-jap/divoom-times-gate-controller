@@ -98,6 +98,17 @@ The **PRTG status** widget and the `prtg_down` / `prtg_warning` alert metrics re
 - The widget and the settings show one of a fixed set of reasons, never the address or the key: `cannot connect`, `timeout`, `not an API endpoint (check the address)` (the address answers with a web page, so it is not the API), `invalid API key`, `access denied` and `unexpected response`.
 - The v2 API was checked against a live server; the classic API shape was taken from the PRTG documentation.
 
+## GitHub pull requests
+
+The **GitHub pull requests** screen shows how many pull requests are open and the titles of the latest two. Enable it under **Integrations > GitHub** and choose what to show on the screen:
+
+- **Review requested from me** and **My open pull requests** need a token, because `@me` means the token's owner.
+- **Open pull requests of a repository** takes `owner/name`; a public repository works without a token (a token only raises the rate limit).
+
+Create the token under GitHub > Settings > Developer settings > Personal access tokens. A fine-grained token with read access to *Pull requests* and *Metadata* is enough; a classic token needs the `repo` scope to see private repositories. The token is stored in `config.json` (owner-only, like the other integration secrets) and is removed from exported backups.
+
+Keeper uses the GitHub search API (`GET https://api.github.com/search/issues`) from a background sampler, once a minute per distinct query (the search API allows 30 requests a minute), with a fixed host, no redirects and a response size cap. A failure is shown as a short fixed reason (*bad token*, *rate limited*, *access denied*, *repository not found*, *timeout*, *cannot connect*); the token and the URL never appear on the screen or in the log. GitHub Enterprise servers are not supported yet. The mobile app shows a "desktop/server only" message for this screen.
+
 ## Spotify
 
 The **Spotify** widget shows the track playing on your Spotify account (title, artist, cover, play/pause and a progress bar). It is read-only: Keeper cannot play, pause or skip. It uses the Spotify Web API with the Authorization Code + PKCE flow, so no client secret exists anywhere.

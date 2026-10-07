@@ -304,6 +304,15 @@ export function contentForm(s, inList = false) {
     );
   }
   if (s.kind === "prtg") form.append(hint(t("ui.prtg_widget_hint")));
+  if (s.kind === "github") {
+    s.github_query ??= "review";
+    s.github_repo ??= "";
+    form.append(
+      hint(t("ui.github_widget_hint")),
+      field(s, "github_query", t("ui.github_query"), "select", { review: t("ui.github_q_review"), mine: t("ui.github_q_mine"), repo: t("ui.github_q_repo") }),
+      ...(s.github_query === "repo" ? [field(s, "github_repo", t("ui.github_repo"))] : []),
+    );
+  }
   if (s.kind === "mail") {
     s.mail_account ??= "all";
     form.append(

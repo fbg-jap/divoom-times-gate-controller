@@ -166,6 +166,7 @@ export function defaults() {
       },
       spotify: { enabled: false, client_id: "", refresh_token: "", redirect_uri: "" },
       prtg: { enabled: false, base_url: "", token: "", verify_tls: true },
+      github: { enabled: false, token: "" },
       timesync: {
         enabled: false,
         source: "ntp",
@@ -221,6 +222,7 @@ export const kinds = lazy({
   pomodoro: "Pomodoro",
   sensor: "Sensor",
   prtg: "PRTG",
+  github: "ui.github_prs",
   mail: "ui.mail_unread",
   spotify: "Spotify",
   native: "model.native_unmanaged",
@@ -234,7 +236,7 @@ export function normalize(value) {
   for (const rule of cfg.alerts || [])
     if (plain(rule) && rule.metric === "mail_unread" && !["", "all", ...known].includes(rule.source ?? ""))
       rule.source = "";
-  for (const key of ["api", "mqtt", "spotify", "prtg", "mail", "notifications", "timesync"])
+  for (const key of ["api", "mqtt", "spotify", "prtg", "github", "mail", "notifications", "timesync"])
     cfg.integrations[key] = {
       ...defaults().integrations[key],
       ...cfg.integrations[key],

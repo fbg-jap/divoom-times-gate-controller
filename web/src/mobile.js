@@ -382,6 +382,9 @@ export class MobileEngine {
       case "prtg":
         text(t("mob.prtg_desktop_only"), 32, 15);
         break;
+      case "github":
+        text(t("mob.github_desktop_only"), 32, 15);
+        break;
       case "mail":
         text(t("mob.mail_desktop_only"), 32, 15);
         break;
