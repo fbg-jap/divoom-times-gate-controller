@@ -103,6 +103,8 @@ jobs:
       - run: bash build_linux.sh
         env:
           PYTHON: python3.12
+      - name: Install desktop-file-validate (appimagetool validates the .desktop file)
+        run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
       - name: Download appimagetool and runtime (pinned, checksum verified)
         run: |
           curl -fsSL -o "$RUNNER_TEMP/appimagetool" "$APPIMAGETOOL_URL"

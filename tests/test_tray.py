@@ -276,7 +276,8 @@ class StartTrayAdapterTests(unittest.TestCase):
     def test_returns_none_when_no_tray_is_available(self):
         with patch.dict(sys.modules, {"pystray": None}):
             self.assertIsNone(tray.start_tray(self.callbacks()))
-        with patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}):
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"}), \
+                patch.object(tray.sys, "platform", "linux"):   # the Wayland rule only applies on Linux
             module = fake_pystray()
             with patch.dict(sys.modules, {"pystray": module}):
                 self.assertIsNone(tray.start_tray(self.callbacks()))   # xorg backend on Wayland

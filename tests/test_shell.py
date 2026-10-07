@@ -291,7 +291,7 @@ class BrowserTests(unittest.TestCase):
         args, kwargs = popen.call_args
         self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x"])
         self.assertEqual(kwargs["env"], {"CLEAN": "1"})
-        self.assertIs(kwargs["start_new_session"], True)
+        self.assertIs(kwargs["start_new_session"], os.name != "nt")   # Windows detaches differently
         self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
 
     def test_fallback_when_no_browser_or_start_fails(self):
@@ -514,8 +514,9 @@ class LifecycleTests(unittest.TestCase):
                 while not urls and time.monotonic() < deadline:
                     time.sleep(.05)
                 self.assertTrue(urls, "shell did not open the UI")
-                from urllib.parse import unquote, urlparse
-                base, code = re.search(r'location\.replace\("([^"#]+)#launch=([\w-]+)"\)', Path(unquote(urlparse(urls[0]).path)).read_text()).groups()
+                from urllib.parse import urlparse
+                from urllib.request import url2pathname   # handles file:///C:/... on Windows
+                base, code = re.search(r'location\.replace\("([^"#]+)#launch=([\w-]+)"\)', Path(url2pathname(urlparse(urls[0]).path)).read_text()).groups()
                 import httpx
                 reply = httpx.post(base + "api/launch", json={"code": code}, timeout=10)
                 self.assertEqual(reply.status_code, 200)
@@ -568,9 +569,13 @@ class HardeningTests(unittest.TestCase):
 
     def test_free_port_is_not_a_fallback(self):
         seen = []
+        with socket.socket() as probe:      # a port that is free right now (8765 may be held by a running Keeper)
+            probe.bind(("127.0.0.1", 0))
+            free = probe.getsockname()[1]
         with tempfile.TemporaryDirectory() as temp, mock.patch("keeper.shell.write_private", lambda path, text: seen.append(json.loads(text))):
-            self.run_shell(Path(temp))
+            self.run_shell(Path(temp), args_for(Path(temp), port=free))
         self.assertIs(seen[0]["fallback"], False)
+        self.assertEqual(seen[0]["port"], free)
 
     def test_windows_socket_is_exclusive(self):
         sock = mock.MagicMock()
@@ -653,7 +658,8 @@ class NoConsoleTests(unittest.TestCase):
             shell.ensure_std_streams()
             sys.stdout.write("x")
             sys.stderr.write("y")
-            self.assertFalse(sys.stdout.isatty())
+            if os.name != "nt":
+                self.assertFalse(sys.stdout.isatty())   # on Windows the NUL device reports isatty() True
             sys.stdout.close()
             sys.stderr.close()
         with mock.patch.object(sys, "stdout", io.StringIO()) as kept:

@@ -222,7 +222,8 @@ class PortalTests(unittest.TestCase):
         self.assertNotEqual(revision(self.app.state.store.snapshot()), before)
 
     def test_legacy_spotify_routes_are_gone(self):
-        self.assertEqual(self.client.post("/api/spotify/connect", json={}).status_code, 405)
+        # 405 when the built web UI is mounted at "/", 404 when web/dist does not exist (CI runs tests before building it)
+        self.assertIn(self.client.post("/api/spotify/connect", json={}).status_code, (404, 405))
         self.assertEqual(self.client.get("/api/spotify/callback?code=c&state=x", headers={"Authorization": ""}).status_code, 401)
 
     # --- migration of the original app's profiles --------------------------------------------------------------------
