@@ -160,7 +160,7 @@ class Automations:
             data = provider.extra.prtg()
             return None if data is None else data[r["metric"][5:]]
         if r["metric"] == "mail_unread":
-            data = provider.extra.mail()
+            data, _ = provider.extra.mail_state(r.get("source") or "all")  # the rule's source is the mail account id
             return None if data is None else data["unread"]
         return finite(provider.pc().get(r["metric"]))
 

@@ -10,6 +10,7 @@ import unittest.mock
 import zipfile
 
 from keeper.config import ConfigStore, defaults, validate
+from keeper.mail import new_account
 
 
 class IntegrationConfigTests(unittest.TestCase):
@@ -26,14 +27,14 @@ class IntegrationConfigTests(unittest.TestCase):
         raw["integrations"]["api"]["port"] = 9000
         self.store.path.write_text(json.dumps(raw))
         loaded = ConfigStore(self.root / "store", migrate=False)
-        self.assertEqual(loaded.data["integrations"]["mail"]["port"], 993)
+        self.assertEqual(loaded.data["integrations"]["mail"], {"enabled": False, "accounts": []})
         self.assertEqual(loaded.data["integrations"]["api"]["port"], 9000)
 
     def test_validation_bounds(self):
-        bad = [("mail", "port", 70000), ("notifications", "seconds", 4), ("notifications", "panel", 6),
+        bad = [("mail", "accounts", "x"), ("notifications", "seconds", 4), ("notifications", "panel", 6),
                ("notifications", "per_minute", 0), ("prtg", "base_url", "ftp://x"),
                ("notifications", "allow_apps", ["a"] * 51), ("spotify", "client_id", "x" * 200),
-               ("mail", "host", 5), ("prtg", "verify_tls", "yes")]
+               ("mail", "enabled", "yes"), ("prtg", "verify_tls", "yes")]
         for name, key, value in bad:
             data = defaults()
             data["integrations"][name][key] = value
@@ -71,14 +72,80 @@ class IntegrationConfigTests(unittest.TestCase):
             i = data["integrations"]
             i["spotify"].update(client_id="fake-client", refresh_token="FAKE-REFRESH-TOKEN")
             i["prtg"].update(token="FAKE-PRTG-TOKEN")
-            i["mail"].update(user="fake-user@example.test", password="FAKE-MAIL-PASSWORD")
+            i["mail"]["accounts"] = [new_account(id="a1", user="fake-user@example.test", password="FAKE-MAIL-PASSWORD"),
+                                     new_account(id="a2", provider="google", user="fake-g@example.test", client_secret="FAKE-GSECRET",
+                                                 refresh_token="FAKE-MAIL-REFRESH", client_id="client-123")]
         self.store.change(apply)
         bundle = self.root / "backup.zip"
         self.store.export(bundle)
         with zipfile.ZipFile(bundle) as archive:
             text = archive.read("config.json").decode()
-        for secret in ("FAKE-REFRESH-TOKEN", "FAKE-PRTG-TOKEN", "FAKE-MAIL-PASSWORD", "fake-user@example.test"):
+        for secret in ("FAKE-REFRESH-TOKEN", "FAKE-PRTG-TOKEN", "FAKE-MAIL-PASSWORD", "fake-user@example.test", "fake-g@example.test",
+                       "FAKE-GSECRET", "FAKE-MAIL-REFRESH"):
             self.assertNotIn(secret, text)
+        exported = json.loads(text)["integrations"]["mail"]
+        self.assertEqual([a["id"] for a in exported["accounts"]], ["a1", "a2"])  # the structure survives, the secrets do not
+        self.assertEqual(exported["accounts"][1]["client_id"], "client-123")
+        self.assertFalse(any(a["enabled"] for a in exported["accounts"]))
+
+    def test_legacy_flat_mail_config_is_migrated_to_the_first_account(self):
+        raw = copy.deepcopy(self.store.data)
+        raw["integrations"]["mail"] = {"enabled": True, "host": "imap.old.test", "port": 143, "user": "me@old.test", "password": "pw",
+                                       "mailbox": "Work", "show_subject": True}
+        validate(raw)  # an old export/backup still validates before it is migrated
+        self.store.path.write_text(json.dumps(raw))
+        loaded = ConfigStore(self.root / "store", migrate=False).data["integrations"]["mail"]
+        self.assertEqual(set(loaded), {"enabled", "accounts"})  # the legacy keys are dropped
+        self.assertTrue(loaded["enabled"])
+        (account,) = loaded["accounts"]
+        self.assertEqual((account["id"], account["name"], account["provider"], account["enabled"]), ("main", "me@old.test", "imap", True))
+        self.assertEqual((account["host"], account["port"], account["user"], account["password"], account["mailbox"], account["show_subject"]),
+                         ("imap.old.test", 143, "me@old.test", "pw", "Work", True))
+        again = ConfigStore(self.root / "store", migrate=False).data["integrations"]["mail"]  # saved in the new shape: stable
+        self.assertEqual(again, loaded)
+        empty = copy.deepcopy(self.store.data)
+        empty["integrations"]["mail"] = {"enabled": False, "host": "", "port": 993, "user": "", "password": "", "mailbox": "INBOX", "show_subject": False}
+        self.store.path.write_text(json.dumps(empty))
+        self.assertEqual(ConfigStore(self.root / "store", migrate=False).data["integrations"]["mail"]["accounts"], [])
+
+    def test_mail_account_validation(self):
+        def check(**changes):
+            data = defaults()
+            data["integrations"]["mail"]["accounts"] = [new_account(id="ok1")]
+            data["integrations"]["mail"]["accounts"][0].update(changes)
+            validate(data)
+        check()
+        check(provider="google", client_id="c", client_secret="s", redirect_uri="https://example.org/cb", tenant="common")
+        check(provider="microsoft", tenant="contoso.onmicrosoft.com", redirect_uri="https://login.microsoftonline.com/common/oauth2/nativeclient")
+        for changes in ({"id": "UPPER"}, {"id": ""}, {"id": "x" * 17}, {"id": 5}, {"provider": "yahoo"}, {"name": "n" * 41}, {"host": "h" * 256},
+                        {"port": 0}, {"port": 70000}, {"port": "993"}, {"mailbox": 5}, {"tenant": "bad tenant!"}, {"tenant": "t" * 65}, {"tenant": ""},
+                        {"redirect_uri": "http://localhost/cb"}, {"redirect_uri": "http://example.org/cb"}, {"enabled": "yes"},
+                        {"show_subject": 1}, {"refresh_token": "t" * 5000}, {"client_secret": 5}):
+            with self.assertRaises(ValueError, msg=repr(changes)):
+                check(**changes)
+        data = defaults()
+        data["integrations"]["mail"]["accounts"] = [new_account(id="dup"), new_account(id="dup")]
+        with self.assertRaises(ValueError):
+            validate(data)
+        data["integrations"]["mail"]["accounts"] = [new_account(id=f"a{n}") for n in range(11)]
+        with self.assertRaises(ValueError):
+            validate(data)
+        data["integrations"]["mail"]["accounts"] = ["not a dict"]
+        with self.assertRaises(ValueError):
+            validate(data)
+
+    def test_mail_alert_source_must_be_all_or_an_existing_account(self):
+        data = defaults()
+        data["integrations"]["mail"]["accounts"] = [new_account(id="acct1")]
+        device_id = data["devices"][0]["id"]
+        def rule(source):
+            return {"id": "r1", "device_id": device_id, "metric": "mail_unread", "source": source, "text": "x"}
+        for source in ("", "all", "acct1"):
+            data["alerts"] = [rule(source)]
+            validate(data)
+        data["alerts"] = [rule("gone")]
+        with self.assertRaises(ValueError):
+            validate(data)
 
     @unittest.skipIf(sys.platform == "win32", "POSIX permissions")
     def test_config_file_mode_0600(self):

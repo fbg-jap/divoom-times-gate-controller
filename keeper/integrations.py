@@ -71,7 +71,9 @@ class Bridge:
         config = data.get("integrations", {})
         self.engine.renderer.providers.extra.hardware_enabled = bool(config.get("hardware", False))
         self.engine.renderer.providers.extra.prtg_conf = config.get("prtg", {})
-        self.engine.renderer.providers.extra.mail_conf = config.get("mail", {})
+        from .mail import migrate_conf
+        self.engine.renderer.providers.extra.mail_save = self.save_mail_token
+        self.engine.renderer.providers.extra.mail_conf = migrate_conf(config.get("mail", {}))
         self.engine.renderer.providers.extra.spotify_conf = config.get("spotify", {})
         self.engine.renderer.providers.extra.spotify_save = self.save_spotify_token
         # Only what start_api/start_mqtt use: editing prtg, mail, notifications or spotify must not restart them.
@@ -105,6 +107,15 @@ class Bridge:
             spotify = data.setdefault("integrations", {}).setdefault("spotify", {})
             if spotify.get("refresh_token") == old:
                 spotify["refresh_token"] = token
+        self.engine.store.change(apply)
+
+    def save_mail_token(self, account_id, token, old):
+        """Persist a rotated mail refresh token, unless it was changed meanwhile (reconnect, Disconnect, account removed)."""
+        def apply(data):
+            mail = data.setdefault("integrations", {}).get("mail", {})
+            for account in mail.get("accounts", []):
+                if isinstance(account, dict) and account.get("id") == account_id and account.get("refresh_token") == old:
+                    account["refresh_token"] = token
         self.engine.store.change(apply)
 
     def start_api(self, config):

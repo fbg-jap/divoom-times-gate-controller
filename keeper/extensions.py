@@ -35,6 +35,9 @@ def validate_content(s):
         http_url(s["url"])
     if not 5 <= int(s.get("news_seconds", 15)) <= 3600:
         raise ValueError("Invalid news duration")
+    if s.get("kind") == "mail" and "mail_account" in s:
+        if s["mail_account"] != "all" and not (isinstance(s["mail_account"], str) and re.fullmatch(r"[a-z0-9]{1,16}", s["mail_account"])):
+            raise ValueError("Invalid mail account")
     if s.get("kind") == "custom":
         elements = s.get("elements", [])
         if not isinstance(elements, list) or len(elements) > 20:
@@ -87,6 +90,11 @@ def validate_extensions(data):
                         raise ValueError("Invalid alert time")
                     if r["metric"] == "service":
                         http_url(r.get("source", ""))
+                    if r["metric"] == "mail_unread" and r.get("source", "") not in ("", "all"):
+                        from .mail import migrate_conf
+                        known = {a.get("id") for a in migrate_conf(data.get("integrations", {}).get("mail", {})).get("accounts", []) if isinstance(a, dict)}
+                        if r["source"] not in known:
+                            raise ValueError("An alert uses a mail account that does not exist")
     integrations = data.get("integrations", {})
     for name in ("api", "mqtt"):
         conf = integrations.get(name, {})
@@ -144,10 +152,38 @@ def spotify_redirect_kind(value):
     return "loopback" if url.scheme == "http" and host in ("127.0.0.1", "::1") else None
 
 
+def validate_mail_accounts(conf):
+    from .mail import MAX_ACCOUNTS, PROVIDERS
+    accounts = conf.get("accounts", [])
+    if not isinstance(accounts, list) or len(accounts) > MAX_ACCOUNTS:
+        raise ValueError(f"Invalid mail accounts (at most {MAX_ACCOUNTS})")
+    seen = set()
+    for account in accounts:
+        if not isinstance(account, dict):
+            raise ValueError("Invalid mail account")
+        if not isinstance(account.get("id"), str) or not re.fullmatch(r"[a-z0-9]{1,16}", account["id"]) or account["id"] in seen:
+            raise ValueError("Invalid or duplicate mail account id")
+        seen.add(account["id"])
+        if account.get("provider", "imap") not in PROVIDERS:
+            raise ValueError("Invalid mail provider")
+        _flag(account, "enabled"); _flag(account, "show_subject")
+        _bounded(account, "port", 1, 65535, 993)
+        for key, limit in (("name", 40), ("host", 255), ("user", 256), ("password", 256), ("mailbox", 128), ("client_id", 256),
+                           ("client_secret", 256), ("refresh_token", 4096)):
+            _text(account, key, limit)
+        if not isinstance(account.get("tenant", "common"), str) or not re.fullmatch(r"[A-Za-z0-9.-]{1,64}", account.get("tenant", "common")):
+            raise ValueError("Invalid tenant")
+        if spotify_redirect_kind(_text(account, "redirect_uri", 300)) is None:
+            raise ValueError("Invalid redirect_uri")
+
+
 def validate_new_integrations(integrations):
     from .widgets import http_url
     for name in ("spotify", "prtg", "mail", "notifications"):
         conf = integrations.get(name, {})
+        if name == "mail":
+            from .mail import migrate_conf
+            conf = migrate_conf(conf)  # configs and exports written before multiple accounts still validate
         if not isinstance(conf, dict):
             raise ValueError(f"Invalid {name} settings")
         for key in ("enabled", "verify_tls", "show_subject", "show_body"):
@@ -161,9 +197,7 @@ def validate_new_integrations(integrations):
             if _text(conf, "base_url", 300):
                 http_url(conf["base_url"])
         elif name == "mail":
-            _bounded(conf, "port", 1, 65535, 993)
-            for key, limit in (("host", 255), ("user", 256), ("password", 256), ("mailbox", 128)):
-                _text(conf, key, limit)
+            validate_mail_accounts(conf)
         else:
             _bounded(conf, "panel", 1, 5, 1); _bounded(conf, "seconds", 5, 60, 8); _bounded(conf, "per_minute", 1, 60, 6)
             _names(conf, "allow_apps"); _names(conf, "deny_apps")
@@ -191,7 +225,7 @@ class ExtraSources:
         self.pomodoro = {"phase": "Ready", "remaining": 1500, "total": 1500, "running": False, "cycle": 0}
         self.news_cursor = {}
         self.prtg_conf, self.prtg_key, self.prtg_probe = {}, None, None
-        self.mail_conf, self.mail_key, self.mail_probe = {}, None, None
+        self.mail_conf, self.mail_probes, self.mail_save = {}, {}, None  # mail_probes: account id -> {"key","source","probe"}
         self.spotify_conf, self.spotify_save, self.spotify_source, self.spotify_probe = {}, None, None, None
 
     def music(self):
@@ -255,24 +289,77 @@ class ExtraSources:
         """Status counts from integrations.prtg, or None (not configured/unreachable/not sampled yet)."""
         return self.prtg_state()[0]
 
-    def mail_state(self):
-        """(data, error): data is {"unread","subject"} or None; error is "" or a short reason."""
-        conf = self.mail_conf or {}
-        if self.providers.demo:
-            return {"unread": 3, "subject": "Weekly report" if conf.get("show_subject") else None}, ""
-        if not conf.get("enabled") or not conf.get("host") or not conf.get("user") or not conf.get("password"):
-            return None, "not configured"
-        key = tuple(conf.get(k) for k in ("host", "port", "user", "password", "mailbox", "show_subject"))
-        if key != self.mail_key:
+    def mail_accounts(self):
+        """The configured accounts (dicts) of integrations.mail, whatever shape the stored config has."""
+        from .mail import migrate_conf
+        conf = migrate_conf(self.mail_conf or {})
+        accounts = conf.get("accounts") if isinstance(conf, dict) else []
+        return [a for a in accounts if isinstance(a, dict)] if isinstance(accounts, list) else []
+
+    def _mail_probe(self, account):
+        """The (lazily created) sampler of one account; rebuilt when its connection settings change, never because a token rotated."""
+        from .mail import DEFAULT_HOSTS
+        oauth = account.get("provider") in DEFAULT_HOSTS
+        key = tuple(account.get(k) for k in ("provider", "host", "port", "user", "password", "mailbox", "show_subject", "client_id",
+                                             "client_secret", "tenant"))
+        entry = self.mail_probes.get(account["id"])
+        token = account.get("refresh_token", "")
+        if entry is None or entry["key"] != key or (oauth and token not in (entry["source"].initial_token, entry["source"].refresh_token)):
             from .mail import fetch_unread
             from .windows_sources import AsyncProbe
-            snapshot = dict(conf)
-            self.mail_key, self.mail_probe = key, AsyncProbe(lambda: fetch_unread(snapshot), 120, 600)
-        value, error = self.mail_probe.read(wait=FIRST_READ_WAIT)
-        return value, error or ""
+            snapshot, source = dict(account), None
+            if oauth:
+                from .oauth import MailTokenSource
+                source = MailTokenSource(snapshot, self.mail_save)
+            entry = self.mail_probes[account["id"]] = {"key": key, "source": source,
+                                                       "probe": AsyncProbe(lambda: fetch_unread(snapshot, token_provider=source), 120, 600)}
+        return entry["probe"]
 
-    def mail(self):
-        return self.mail_state()[0]
+    def mail_state(self, account="all"):
+        """(data, error). data: {"unread","subject","accounts":[{"id","name","unread","error"}],"failed"} or None.
+        `account` is "all" (sum of the reachable accounts, no subject) or an account id. error is "", "not configured",
+        "account missing" or a short reason. Never blocks for more than FIRST_READ_WAIT in total."""
+        from .mail import DEFAULT_HOSTS, migrate_conf
+        conf = migrate_conf(self.mail_conf or {})
+        accounts = self.mail_accounts()
+        if self.providers.demo:
+            return {"unread": 3, "subject": "Weekly report" if any(a.get("show_subject") for a in accounts) else None,
+                    "accounts": [{"id": "demo", "name": "Demo", "unread": 3, "error": ""}], "failed": 0}, ""
+        if not isinstance(conf, dict) or not conf.get("enabled"):
+            return None, "not configured"
+        targets = accounts
+        if account != "all":
+            targets = [a for a in accounts if a.get("id") == account]
+            if not targets:
+                return None, "account missing"
+        targets = [a for a in targets if a.get("enabled") and a.get("user")
+                   and (a.get("provider") in DEFAULT_HOSTS or (a.get("host") and a.get("password")))]
+        for stale in set(self.mail_probes) - {a.get("id") for a in accounts}:
+            del self.mail_probes[stale]
+        if not targets:
+            return None, "not configured"
+        probes = [(a, self._mail_probe(a)) for a in targets]
+        for _, probe in probes:
+            probe.read()  # starts every sampler first, so they run in parallel
+        deadline = time.monotonic() + FIRST_READ_WAIT
+        rows, readings = [], []
+        for a, probe in probes:
+            value, error = probe.read(wait=max(0.0, deadline - time.monotonic()))
+            readings.append((a, value, error or ("unavailable" if value is None else "")))
+        for a, value, error in readings:
+            rows.append({"id": a["id"], "name": a.get("name") or a.get("user", ""), "unread": value["unread"] if value else None, "error": "" if value else error})
+        if account != "all":
+            value, error = readings[0][1], readings[0][2]
+            return (None, error) if value is None else ({"unread": value["unread"], "subject": value.get("subject"), "accounts": rows, "failed": 0}, "")
+        ok = [r for r in readings if r[1] is not None]
+        if not ok:
+            reasons = [e for _, _, e in readings if not e.startswith("Waiting")]
+            return None, reasons[0] if reasons else readings[0][2]
+        failed = sum(1 for _, v, e in readings if v is None and not e.startswith("Waiting"))
+        return {"unread": sum(v["unread"] for _, v, _ in ok), "subject": None, "accounts": rows, "failed": failed}, ""
+
+    def mail(self, account="all"):
+        return self.mail_state(account)[0]
 
     def spotify_state(self):
         """(data, error): data is a track dict or {"idle": True}; error is "", "not connected" or a short reason."""
@@ -485,20 +572,31 @@ def render_extra(s, providers):
                 if end > 8:
                     draw.rectangle((8, 122, end, 124), fill=accent)
     elif kind == "mail":
-        data, error = extra.mail_state()
+        account = s.get("mail_account", "all")
+        data, error = extra.mail_state(account)
         lines(s.get("title") or "Unread mail", 7, 11, 1, accent)
         if data is None and error == "not configured":
             lines("Mail not configured", 40, 13, 3, "#ff6b6b")
+        elif data is None and error == "account missing":
+            lines("Mail account missing", 40, 13, 3, "#ff6b6b")
         elif data is None and error.startswith("Waiting"):
             lines("Checking mail…", 40, 13, 2, "#9aa4b5")
         elif data is None:
             lines("Mail unavailable", 34, 13, 1, "#ff6b6b")
             lines(error or "protocol error", 56, 10, 3, "#9aa4b5")
         else:
+            everyone = account == "all"
+            name = "All accounts" if everyone else (data["accounts"][0]["name"] if data.get("accounts") else "")
+            lines(name, 19, 9, 1, "#9aa4b5")
             color = "#4ade80" if data["unread"] == 0 else "#fbbf24"
             text = str(data["unread"])
             face = font(46, True)
-            draw.text(((128 - draw.textlength(text, font=face)) / 2, 28), text, fill=color, font=face)
-            if data.get("subject"):
+            width = draw.textlength(text, font=face)
+            draw.text(((128 - width) / 2, 28), text, fill=color, font=face)
+            failed = data.get("failed", 0) if everyone else 0
+            if failed:
+                draw.text(((128 + width) / 2 + 3, 36), "!", fill="#ff4d4d", font=font(30, True))
+                lines(f"{failed} account(s) failed", 92, 10, 3, "#ff6b6b")
+            elif data.get("subject"):
                 lines(data["subject"], 92, 10, 3)
     return image
