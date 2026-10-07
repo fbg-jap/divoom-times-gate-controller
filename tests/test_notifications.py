@@ -1,3 +1,4 @@
+import os
 import json
 import queue
 import threading
@@ -118,6 +119,7 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(service.handle("Mail", "Hello", "body"))
         self.assertEqual(engine.automations.calls, [("dev1", 2, "Hello", "Mail", 12, False, "#ff7a3d", True, True)])
 
+    @unittest.skipIf(os.name == "nt", "installed apps come from XDG .desktop entries (Linux only)")
     def test_known_apps_lists_seen_senders_and_installed_entries(self):
         import tempfile
         from pathlib import Path
@@ -134,8 +136,7 @@ class ServiceTests(unittest.TestCase):
             (apps / "a.desktop").write_text("[Desktop Entry]\nName=Zeta Editor\nType=Application\n", encoding="utf-8")
             (apps / "b.desktop").write_text("[Desktop Entry]\nName=Hidden Thing\nNoDisplay=true\n", encoding="utf-8")
             (apps / "c.desktop").write_text("[Desktop Entry]\nName=Alpha Mail\n[Desktop Action x]\nName=Compose\n", encoding="utf-8")
-            with patch.object(notifications.os, "name", "posix"):
-                found = notifications.installed_apps(now=1e9, environ={"XDG_DATA_HOME": temp, "XDG_DATA_DIRS": "/nonexistent"})
+            found = notifications.installed_apps(now=1e9, environ={"XDG_DATA_HOME": temp, "XDG_DATA_DIRS": "/nonexistent"})
         self.assertEqual(found, ["Alpha Mail", "Zeta Editor"])
         self.assertEqual(service.known_apps()["seen"], ["Brave", "slack"])
         notifications._installed.update(at=-1e9, names=[])
