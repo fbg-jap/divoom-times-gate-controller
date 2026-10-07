@@ -164,13 +164,27 @@ def find_app_browser(which=shutil.which, exists=os.path.exists, environ=None, pl
     return None
 
 
+BROWSER_PROFILE = None   # set by run(): the app window gets its own browser profile folder (and so its own process)
+
+
+def browser_flags():
+    """Flags that need a browser process of their own: with Keeper's profile folder Brave/Chrome start a separate process
+    instead of handing --app to the normal, already running one (which ignores --class and --window-size)."""
+    flags = ["--window-size=1280,800"]
+    if sys.platform.startswith("linux"):
+        flags.append("--class=" + platform_support.WM_CLASS)
+    if BROWSER_PROFILE:
+        flags += ["--user-data-dir=" + str(BROWSER_PROFILE), "--no-first-run", "--no-default-browser-check"]
+    return flags
+
+
 def open_ui(url, find=find_app_browser, popen=subprocess.Popen, fallback=platform_support.open_external):
     """Open `url` in an app-mode browser window, else the default handler. Returns True when something started."""
     browser = find()
     if browser:
         try:
             log.info("Opening the UI in %s (app mode)", Path(browser).name)
-            popen([browser, "--app=" + url, "--window-size=1280,800", *(["--class=" + platform_support.WM_CLASS] if sys.platform.startswith("linux") else [])], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
+            popen([browser, "--app=" + url, *browser_flags()], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
             return True
         except OSError as error:
@@ -338,6 +352,8 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
     root, temp = resolve_root(args)
     owned = not args.config_dir or not root.exists()
     root.mkdir(mode=PRIVATE_DIR, parents=True, exist_ok=True)
+    global BROWSER_PROFILE
+    BROWSER_PROFILE = root / "browser"   # not in demo/test roots that vanish: it is only a path until a browser starts
     if owned and os.name != "nt":
         try:
             os.chmod(root, PRIVATE_DIR)
