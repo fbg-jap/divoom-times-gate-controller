@@ -118,6 +118,28 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(service.handle("Mail", "Hello", "body"))
         self.assertEqual(engine.automations.calls, [("dev1", 2, "Hello", "Mail", 12, False, "#ff7a3d", True, True)])
 
+    def test_known_apps_lists_seen_senders_and_installed_entries(self):
+        import tempfile
+        from pathlib import Path
+        from keeper import notifications
+        engine, service, _ = self.service()
+        service.device_id = "dev1"
+        service.config = data()["integrations"]["notifications"]
+        service.handle("Slack", "hi", "")
+        service.handle("Brave", "hi", "")
+        service.handle("slack", "again", "")   # same app: moved to the end, no duplicate by case
+        with tempfile.TemporaryDirectory() as temp:
+            apps = Path(temp) / "applications"
+            apps.mkdir()
+            (apps / "a.desktop").write_text("[Desktop Entry]\nName=Zeta Editor\nType=Application\n", encoding="utf-8")
+            (apps / "b.desktop").write_text("[Desktop Entry]\nName=Hidden Thing\nNoDisplay=true\n", encoding="utf-8")
+            (apps / "c.desktop").write_text("[Desktop Entry]\nName=Alpha Mail\n[Desktop Action x]\nName=Compose\n", encoding="utf-8")
+            with patch.object(notifications.os, "name", "posix"):
+                found = notifications.installed_apps(now=1e9, environ={"XDG_DATA_HOME": temp, "XDG_DATA_DIRS": "/nonexistent"})
+        self.assertEqual(found, ["Alpha Mail", "Zeta Editor"])
+        self.assertEqual(service.known_apps()["seen"], ["Brave", "slack"])
+        notifications._installed.update(at=-1e9, names=[])
+
     def test_custom_color_border_and_blink_switches(self):
         engine, service, _ = self.service()
         service.device_id = "dev1"

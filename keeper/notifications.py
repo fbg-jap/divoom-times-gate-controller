@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import unicodedata
+from pathlib import Path
 
 TITLE_MAX, TEXT_MAX = 80, 500
 RETRY_SECONDS = 30
@@ -42,6 +43,43 @@ def format_notification(app, summary, body, show_body=False):
     if extra:
         text = clean(f"{text} - {extra}" if text else extra, TEXT_MAX)
     return (title, text) if text else None
+
+
+_installed = {"at": -1e9, "names": []}
+
+
+def installed_apps(now=None, environ=None):
+    """Names of installed desktop applications (Linux .desktop entries; cached for a minute). Empty elsewhere."""
+    if os.name == "nt":
+        return []
+    now = time.monotonic() if now is None else now
+    if now - _installed["at"] < 60:
+        return _installed["names"]
+    env = os.environ if environ is None else environ
+    dirs = [Path(env.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")]
+    dirs += [Path(p) for p in (env.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":") if p]
+    names = set()
+    for base in dirs:
+        try:
+            files = list((base / "applications").glob("*.desktop"))[:1500]
+        except OSError:
+            continue
+        for path in files:
+            try:
+                name, hidden = "", False
+                for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[:80]:
+                    if line.startswith("[") and line.strip() != "[Desktop Entry]":
+                        break
+                    if line.startswith("Name=") and not name:
+                        name = line[5:].strip()
+                    elif line.strip() in ("NoDisplay=true", "Hidden=true"):
+                        hidden = True
+                if name and not hidden:
+                    names.add(clean(name, 64))
+            except OSError:
+                continue
+    _installed.update(at=now, names=sorted(names, key=str.casefold)[:500])
+    return _installed["names"]
 
 
 def color_of(value, fallback):
@@ -210,6 +248,7 @@ class NotificationService:
         self.config, self.device_id = {}, None
         self.limiter = RateLimiter()
         self.status = "Disabled"
+        self.seen_apps = collections.OrderedDict()   # app names that sent a notification, most recent last
         self.logged = "Disabled"
         self.retry_at = 0.
 
@@ -266,9 +305,23 @@ class NotificationService:
         except Exception as error:
             self.set_status(f"Unavailable ({type(error).__name__})")
 
+    def remember_app(self, app):
+        name = clean(app, 64)
+        if name:
+            for other in [k for k in self.seen_apps if k.casefold() == name.casefold()]:
+                del self.seen_apps[other]
+            self.seen_apps[name] = True
+            while len(self.seen_apps) > 100:
+                self.seen_apps.popitem(last=False)
+
+    def known_apps(self):
+        """{seen: names that sent a notification, installed: installed application names} for the app pickers."""
+        return {"seen": sorted(self.seen_apps, key=str.casefold), "installed": installed_apps()}
+
     def handle(self, app, summary, body):
         """Filter, format, rate-limit and queue one notification. Never raises."""
         try:
+            self.remember_app(app)
             cfg = self.config
             teams = {**TEAMS_DEFAULTS, **(cfg.get("teams") or {})}
             general = bool(cfg.get("enabled"))

@@ -170,7 +170,7 @@ def open_ui(url, find=find_app_browser, popen=subprocess.Popen, fallback=platfor
     if browser:
         try:
             log.info("Opening the UI in %s (app mode)", Path(browser).name)
-            popen([browser, "--app=" + url, "--window-size=1280,800"], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
+            popen([browser, "--app=" + url, "--window-size=1280,800", *(["--class=" + platform_support.WM_CLASS] if sys.platform.startswith("linux") else [])], env=platform_support.external_environment(), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
             return True
         except OSError as error:
@@ -230,6 +230,9 @@ def load_tray():
     except ImportError:
         return None
     return start_tray
+
+
+LOCK_TAKEOVER_WAIT = 10
 
 
 def pick_socket(port):
@@ -343,8 +346,17 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
     lock = FileLock(root / "studio.lock", timeout=0, mode=PRIVATE_FILE)
     try:
         lock.acquire()
+        running = False
     except Timeout:
+        running = True
+    if running:
         port = read_running(root)
+        if not (port and wait_healthy(port, timeout=1)):
+            # The other instance is still shutting down (or hung): take over as soon as it releases the lock.
+            with suppress(Timeout):
+                lock.acquire(timeout=LOCK_TAKEOVER_WAIT)
+                running = False
+    if running:
         second_log = logging.FileHandler(root / "studio.log", encoding="utf-8")  # append; the first instance owns rotation
         second_log.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
         root_logger = logging.getLogger()
@@ -388,6 +400,11 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
                 set_startup(True, root)
             except OSError as error:
                 log.warning("Could not update autostart: %s", error)
+        if not args.demo and sys.platform.startswith("linux"):
+            try:   # taskbar icon: the app window's --class matches this entry's StartupWMClass
+                platform_support.linux_launcher_entry(root)
+            except Exception as error:
+                log.warning("Could not install the launcher entry: %s", error)
         app.state.quit_event = quit_event
         wanted = args.port or int(os.getenv("KEEPER_SHELL_PORT", DEFAULT_PORT))
         sock = pick_socket(wanted)

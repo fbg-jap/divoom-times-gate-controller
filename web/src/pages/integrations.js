@@ -12,6 +12,44 @@ const names = (conf, key) => ({
     conf[key] = value.split(",").map((n) => n.trim()).filter(Boolean);
   },
 });
+// Dropdown of known apps (those that sent a notification, then installed ones) that adds to a list of app names;
+// the chosen names are removable chips, and a name that is not listed can be typed in.
+function appPicker(conf, key, label) {
+  const box = el("div", { class: "field" });
+  const draw = () => {
+    const chosen = conf[key];
+    const known = ctx.state?.notification_apps || {};
+    const free = (list) => (list || []).filter((n) => !chosen.some((c) => c.toLowerCase() === n.toLowerCase()));
+    const select = el("select", {}, el("option", { value: "" }, t("ui.app_pick")));
+    for (const [group, list] of [[t("ui.apps_seen"), free(known.seen)], [t("ui.apps_installed"), free(known.installed)]]) {
+      if (!list.length) continue;
+      const g = el("optgroup", { label: group });
+      for (const name of list) g.append(el("option", { value: name }, name));
+      select.append(g);
+    }
+    const add = (name) => {
+      name = String(name || "").trim();
+      if (!name || chosen.some((c) => c.toLowerCase() === name.toLowerCase())) return;
+      conf[key] = [...chosen, name];
+      mark();
+      draw();
+    };
+    select.addEventListener("change", () => add(select.value));
+    const typed = el("input", { type: "text", placeholder: t("ui.app_custom") });
+    typed.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); add(typed.value); }
+    });
+    const chips = chosen.map((name) =>
+      el("button", { class: "chip", type: "button", title: t("ui.app_remove"), onclick: () => {
+        conf[key] = chosen.filter((c) => c !== name);
+        mark();
+        draw();
+      } }, name + " ×"));
+    box.replaceChildren(el("span", {}, label), el("div", { class: "row" }, chips), select, typed);
+  };
+  draw();
+  return box;
+}
 function timeStatus() {
   const s = ctx.state?.runtime?.timesync;
   if (!s || !s.enabled) return t("ui.timesync_off");
@@ -292,8 +330,8 @@ export function integrationPage(main) {
           numeric(ctx.cfg.integrations.notifications, "seconds", t("ui.seconds_5_60"), 5, 60),
           numeric(ctx.cfg.integrations.notifications, "per_minute", t("ui.max_per_minute"), 1, 60),
         ),
-        field(names(ctx.cfg.integrations.notifications, "allow_apps"), "list", t("ui.allowed_apps")),
-        field(names(ctx.cfg.integrations.notifications, "deny_apps"), "list", t("ui.blocked_apps")),
+        appPicker(ctx.cfg.integrations.notifications, "allow_apps", t("ui.allowed_apps")),
+        appPicker(ctx.cfg.integrations.notifications, "deny_apps", t("ui.blocked_apps")),
         field(ctx.cfg.integrations.notifications, "show_body", t("ui.show_body"), "checkbox"),
         field(ctx.cfg.integrations.notifications, "color", t("ui.notice_color"), "color"),
         field(ctx.cfg.integrations.notifications, "border", t("ui.notice_border"), "checkbox"),

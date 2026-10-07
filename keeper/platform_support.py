@@ -120,12 +120,8 @@ def linux_hardware():
     return result
 
 
-def linux_startup(enabled, config_root, ui_args=()):
-    root = Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "autostart"
-    path = root / "divoom-keeper-studio.desktop"
-    if not enabled:
-        path.unlink(missing_ok=True)
-        return
+def _desktop_exec(config_root, ui_args, extra=()):
+    """Quoted Exec= value that relaunches this app (the AppImage file itself when running from one)."""
     # Desktop Entry Exec quoting, not shell evaluation.
     def quote(value):
         value = str(value)
@@ -140,7 +136,42 @@ def linux_startup(enabled, config_root, ui_args=()):
     args = [appimage] if appimage else [sys.executable]
     if not appimage and not getattr(sys, "frozen", False):
         args.append(str(Path(__file__).resolve().parents[1] / "app.py"))
-    args += [*ui_args, "--minimized", "--config-dir", str(config_root)]
+    args += [*ui_args, *extra, "--config-dir", str(config_root)]
+    return " ".join(quote(x) for x in args)
+
+
+WM_CLASS = "DivoomKeeperStudio"
+
+
+def linux_launcher_entry(config_root, ui_args=()):
+    """Application menu entry + icon so the taskbar groups Keeper's window under its own icon (StartupWMClass)."""
+    data = Path(os.getenv("XDG_DATA_HOME", str(Path.home() / ".local" / "share")))
+    icon = None
+    from .tray import _icon_paths
+    for candidate in _icon_paths():
+        if candidate.is_file():
+            icon = candidate
+            break
+    target = data / "icons" / "hicolor" / "256x256" / "apps" / "divoom-keeper-studio.png"
+    if icon and (not target.exists() or target.read_bytes() != icon.read_bytes()):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(icon.read_bytes())
+    entry = ("[Desktop Entry]\nType=Application\nName=Divoom Keeper Studio\nComment=Control the Divoom Times Gate\nExec=" +
+             _desktop_exec(config_root, ui_args) + "\nIcon=divoom-keeper-studio\nCategories=Utility;\nTerminal=false\n"
+             "StartupWMClass=" + WM_CLASS + "\n")
+    path = data / "applications" / "divoom-keeper-studio.desktop"
+    if not path.exists() or path.read_text(encoding="utf-8") != entry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(entry, encoding="utf-8")
+
+
+def linux_startup(enabled, config_root, ui_args=()):
+    root = Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "autostart"
+    path = root / "divoom-keeper-studio.desktop"
+    if not enabled:
+        path.unlink(missing_ok=True)
+        return
+    exec_line = _desktop_exec(config_root, ui_args, ("--minimized",))
     root.mkdir(parents=True, exist_ok=True)
     path.write_text("[Desktop Entry]\nType=Application\nName=Divoom Keeper Studio\nExec=" +
-                    " ".join(quote(x) for x in args) + "\nTerminal=false\n", encoding="utf-8")
+                    exec_line + "\nTerminal=false\n", encoding="utf-8")

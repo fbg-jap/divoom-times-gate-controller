@@ -149,3 +149,24 @@ class ExternalLaunchTests(unittest.TestCase):
                 self.assertFalse(platform.open_external("https://example.org"))
         with patch.object(platform.sys, "platform", "linux"), patch.object(platform.shutil, "which", return_value=None):
             self.assertFalse(platform.open_external("https://example.org"))
+
+
+class LauncherEntryTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "XDG desktop entries")
+    def test_writes_an_entry_with_the_wm_class_and_the_icon_once(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from keeper import platform_support
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"XDG_DATA_HOME": temp}):
+            platform_support.linux_launcher_entry(Path(temp) / "cfg")
+            entry = Path(temp) / "applications" / "divoom-keeper-studio.desktop"
+            text = entry.read_text(encoding="utf-8")
+            self.assertIn("StartupWMClass=DivoomKeeperStudio", text)
+            self.assertIn("Icon=divoom-keeper-studio", text)
+            self.assertIn("--config-dir", text)
+            self.assertNotIn("--minimized", text)
+            self.assertTrue((Path(temp) / "icons" / "hicolor" / "256x256" / "apps" / "divoom-keeper-studio.png").is_file())
+            before = entry.stat().st_mtime_ns
+            platform_support.linux_launcher_entry(Path(temp) / "cfg")
+            self.assertEqual(entry.stat().st_mtime_ns, before)   # unchanged content is not rewritten

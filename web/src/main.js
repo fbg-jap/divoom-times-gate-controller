@@ -185,6 +185,7 @@ setInterval(async () => {
     ctx.state.runtime = fresh.runtime;
     const sensorsAppeared = !ctx.state.hardware_sensors?.length && fresh.hardware_sensors?.length;
     ctx.state.hardware_sensors = fresh.hardware_sensors;
+    ctx.state.notification_apps = fresh.notification_apps;
     if ($("#notif-status")) $("#notif-status").textContent = notificationStatusText();
     if (sensorsAppeared && $("#sensor-picker") && !$("#sensor-picker").matches(":focus")) render(); // the first probe finished
     if ($("#activity")) $("#activity").textContent = eventText();

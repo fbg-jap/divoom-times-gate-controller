@@ -580,6 +580,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                 "runtime": {"online": dict(engine.online), "pomodoro": engine.automations.pomodoro.snapshot(), "timesync": timesource.status(),
                             "notifications": engine.bridge.notifications.status},
                 "hardware_sensors": hardware_sensors(data),
+                "notification_apps": engine.bridge.notifications.known_apps(),
                 "capabilities": {"mode": "server", "demo": demo, "pc": True, "music": True,
                     "profiles": True, "mqtt": True, "hardware": True, "continuous": True,
                     "metrics_label": "Metrics of the machine running the server; in Docker, of the container"}}

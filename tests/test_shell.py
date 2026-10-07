@@ -47,6 +47,9 @@ def tearDownModule():
     _guards.clear()
 
 
+shell.LOCK_TAKEOVER_WAIT = 0.3   # keep tests with a dead first instance fast
+WM_CLASS_ARGS = ["--class=DivoomKeeperStudio"] if sys.platform.startswith("linux") else []
+
 class Clock:
     def __init__(self):
         self.now = 1000.0
@@ -347,7 +350,7 @@ class BrowserTests(unittest.TestCase):
             self.assertTrue(shell.open_ui("http://127.0.0.1:1/#launch=x", find=lambda: "/usr/bin/brave", popen=popen))
         environment.assert_called_once_with()
         args, kwargs = popen.call_args
-        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x", "--window-size=1280,800"])
+        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x", "--window-size=1280,800", *WM_CLASS_ARGS])
         self.assertEqual(kwargs["env"], {"CLEAN": "1"})
         self.assertIs(kwargs["start_new_session"], os.name != "nt")   # Windows detaches differently
         self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
@@ -546,7 +549,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         for session in cases:
             self.argvs.clear()
             self.reopen(session)
-            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800"]])
+            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS]])
             self.assertEqual(list(self.root.glob("open-*.html")), [])
         self.assertEqual(self.sleeps, [])
         self.assertIn("could not log in automatically", " ".join(self.logs))
@@ -557,7 +560,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         session = FakeSession(FakeResponse(200, {"code": self.CODE}))
         self.reopen(session)
         self.assertEqual(session.calls, [])
-        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800"]])
+        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS]])
 
     def test_run_uses_it_when_the_lock_is_held_and_logs_to_studio_log(self):
         (self.root / "shell.json").write_text(json.dumps({"port": 4321, "pid": 1}))
@@ -622,6 +625,36 @@ class SingleInstanceTests(unittest.TestCase):
             finally:
                 held.release()
             self.assertTrue((root / "shell.json").exists())  # the second instance must not touch the first one's file
+
+    def test_a_starting_instance_takes_over_from_one_that_is_shutting_down(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "shell.json").write_text(json.dumps({"port": 1, "pid": 1}))   # nothing answers on this port
+            held = FileLock(root / "studio.lock", timeout=0, thread_local=False)   # released from another thread
+            held.acquire()
+            threading.Timer(.1, held.release).start()
+            servers, urls = [], []
+            def serve(app, sock):
+                server = FakeServer()
+                servers.append(server)
+                return server, types.SimpleNamespace(is_alive=lambda: not server.should_exit, join=lambda timeout=None: None)
+            class Tray:
+                def stop(self):
+                    pass
+            def tray_loader():
+                def start(callbacks):
+                    threading.Timer(.3, callbacks["quit"]).start()
+                    return Tray()
+                return start
+            shell.LOCK_TAKEOVER_WAIT = 3
+            try:
+                code = shell.run(args_for(root), serve=serve, healthy=lambda port: True, opener=urls.append, tray_loader=tray_loader,
+                                 quit_event=threading.Event())
+            finally:
+                shell.LOCK_TAKEOVER_WAIT = 0.3
+            self.assertEqual(code, 0)
+            self.assertEqual(len(servers), 1)   # it started its own server instead of giving up
+            self.assertEqual(len(urls), 1)
 
     def test_pick_socket_falls_back_when_busy(self):
         first = shell.pick_socket(0)
