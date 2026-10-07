@@ -167,6 +167,7 @@ class Engine(threading.Thread):
             try:
                 ip = locate(d)
                 if not ip or ip == d["ip"]:
+                    self.log(f"{d['name']} · looked it up in Divoom's cloud: " + ("no other address known" if ip else "not listed (is it powered on and online?)"))
                     return
                 if probe(ip, timeout=2, port=d.get("port", 0), token=d.get("local_token", "")) is None:
                     return   # the cloud's address does not answer either: change nothing
