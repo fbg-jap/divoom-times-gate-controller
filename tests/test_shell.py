@@ -49,6 +49,7 @@ def tearDownModule():
 
 shell.LOCK_TAKEOVER_WAIT = 0.3   # keep tests with a dead first instance fast
 WM_CLASS_ARGS = ["--class=DivoomKeeperStudio"] if sys.platform.startswith("linux") else []
+X11_ARGS = lambda: ["--ozone-platform=x11"] if (sys.platform.startswith("linux") and os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" and os.environ.get("DISPLAY")) else []
 PROFILE_ARGS = lambda: ["--user-data-dir=" + str(shell.BROWSER_PROFILE), "--no-first-run", "--no-default-browser-check"] if shell.BROWSER_PROFILE else []
 
 class Clock:
@@ -351,7 +352,7 @@ class BrowserTests(unittest.TestCase):
             self.assertTrue(shell.open_ui("http://127.0.0.1:1/#launch=x", find=lambda: "/usr/bin/brave", popen=popen))
         environment.assert_called_once_with()
         args, kwargs = popen.call_args
-        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x", "--window-size=1280,800", *WM_CLASS_ARGS, *PROFILE_ARGS()])
+        self.assertEqual(args[0], ["/usr/bin/brave", "--app=http://127.0.0.1:1/#launch=x", "--window-size=1280,800", *WM_CLASS_ARGS, *X11_ARGS(), *PROFILE_ARGS()])
         self.assertEqual(kwargs["env"], {"CLEAN": "1"})
         self.assertIs(kwargs["start_new_session"], os.name != "nt")   # Windows detaches differently
         self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
@@ -550,7 +551,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         for session in cases:
             self.argvs.clear()
             self.reopen(session)
-            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS, *PROFILE_ARGS()]])
+            self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS, *X11_ARGS(), *PROFILE_ARGS()]])
             self.assertEqual(list(self.root.glob("open-*.html")), [])
         self.assertEqual(self.sleeps, [])
         self.assertIn("could not log in automatically", " ".join(self.logs))
@@ -561,7 +562,7 @@ class SecondInstanceLoginTests(unittest.TestCase):
         session = FakeSession(FakeResponse(200, {"code": self.CODE}))
         self.reopen(session)
         self.assertEqual(session.calls, [])
-        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS, *PROFILE_ARGS()]])
+        self.assertEqual(self.argvs, [["/usr/bin/brave", "--app=http://127.0.0.1:4321/", "--window-size=1280,800", *WM_CLASS_ARGS, *X11_ARGS(), *PROFILE_ARGS()]])
 
     def test_run_uses_it_when_the_lock_is_held_and_logs_to_studio_log(self):
         (self.root / "shell.json").write_text(json.dumps({"port": 4321, "pid": 1}))
@@ -666,6 +667,15 @@ class SingleInstanceTests(unittest.TestCase):
         self.assertIn("--window-size=1280,800", flags)
         with mock.patch.object(shell, "BROWSER_PROFILE", None):
             self.assertFalse([f for f in shell.browser_flags() if f.startswith("--user-data-dir")])
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux window flags")
+    def test_wayland_sessions_use_xwayland_so_the_window_class_applies(self):
+        with mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland", "DISPLAY": ":0"}):
+            self.assertIn("--ozone-platform=x11", shell.browser_flags())
+        with mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland"}, clear=True):   # no XWayland display: never force it
+            self.assertNotIn("--ozone-platform=x11", shell.browser_flags())
+        with mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"}):
+            self.assertNotIn("--ozone-platform=x11", shell.browser_flags())
 
     def test_pick_socket_falls_back_when_busy(self):
         first = shell.pick_socket(0)

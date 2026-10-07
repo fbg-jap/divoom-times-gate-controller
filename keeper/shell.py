@@ -173,6 +173,10 @@ def browser_flags():
     flags = ["--window-size=1280,800"]
     if sys.platform.startswith("linux"):
         flags.append("--class=" + platform_support.WM_CLASS)
+        if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" and os.environ.get("DISPLAY"):
+            # A native Wayland window takes its app id from the launch URL (it ignores --class), so the taskbar cannot match
+            # it to Keeper's launcher entry; through XWayland the window class is the one asked for.
+            flags.append("--ozone-platform=x11")
     if BROWSER_PROFILE:
         flags += ["--user-data-dir=" + str(BROWSER_PROFILE), "--no-first-run", "--no-default-browser-check"]
     return flags
