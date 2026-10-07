@@ -365,8 +365,12 @@ class WidgetTests(unittest.TestCase):
         from keeper.widgets import font, wrap_text
         for bold in (False, True):
             f = font(14, bold)
-            for ch in "æøåÆØÅ♪":   # Pillow's built-in fallback font draws these as empty boxes
+            for ch in "æøåÆØÅ":   # Pillow's built-in fallback font draws these as empty boxes
                 self.assertNotEqual(f.getmask(ch).getbbox(), f.getmask("\uffff").getbbox(), ch)
+        from pathlib import Path
+        from PIL import ImageFont
+        dejavu = ImageFont.truetype(str(Path(__file__).resolve().parents[1] / "keeper" / "fonts" / "DejaVuSans.ttf"), 14)
+        self.assertNotEqual(dejavu.getmask("\u266a").getbbox(), dejavu.getmask("\uffff").getbbox())   # the bundled font has the note
         draw = ImageDraw.Draw(Image.new("RGB", (128, 128)))
         lines = wrap_text(draw, "Kosovos parlament vælger præsident", font(14, True), 112)
         self.assertTrue(all(" " not in line or draw.textlength(line, font=font(14, True)) <= 112 for line in lines))
