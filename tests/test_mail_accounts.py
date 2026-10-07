@@ -72,6 +72,9 @@ class AuthorizeUrlTests(unittest.TestCase):
     def test_bad_tenant_and_provider_are_refused(self):
         with self.assertRaises(oauth.OAuthError):
             oauth.build_authorize_url("microsoft", {**MICROSOFT, "tenant": "evil.test/../x"}, "r", "s", "c")
+        for tenant in ("..", ".x", ".", "a/b"):
+            with self.assertRaises(oauth.OAuthError):
+                oauth.build_authorize_url("microsoft", {**MICROSOFT, "tenant": tenant}, "r", "s", "c")
         with self.assertRaises(oauth.OAuthError):
             oauth.build_authorize_url("yahoo", MICROSOFT, "r", "s", "c")
 
@@ -204,7 +207,7 @@ class XOAuth2ImapTests(unittest.TestCase):
         self.assertEqual(fake.log[0], ("authenticate", "XOAUTH2", b"user=me@gmail.test\x01auth=Bearer TOKEN\x01\x01"))
         self.assertNotIn("login", fake.log)  # never the password login
         self.assertEqual(self.fetch(FakeOAuthImap(), MICROSOFT)[1], [("outlook.office365.com", 993)])
-        self.assertEqual(self.fetch(FakeOAuthImap(), {**GOOGLE, "host": "imap.custom.test", "port": 1993})[1], [("imap.custom.test", 1993)])
+        self.assertEqual(self.fetch(FakeOAuthImap(), {**GOOGLE, "host": "imap.custom.test", "port": 1993, "allow_custom_host": True})[1], [("imap.custom.test", 1993)])
         self.assertTrue(base64.b64encode(mail.xoauth2("a@b.test", "tok")).startswith(b"dXNlcj1h"))  # what imaplib puts on the wire
 
     def test_oauth_never_uses_cleartext_port_143_and_requires_a_token_provider(self):
@@ -478,3 +481,41 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HostPinningTests(unittest.TestCase):
+    def fetch(self, **values):
+        from keeper.mail import fetch_unread, MailError
+        calls = []
+        def connector(host, port, timeout, context):
+            calls.append(host)
+            raise OSError("no network")
+        account = {**GOOGLE, **values}
+        with self.assertRaises(MailError) as caught:
+            fetch_unread(account, connector=connector, token_provider=lambda: "TOKEN")
+        return str(caught.exception), calls
+
+    def test_oauth_token_is_never_sent_to_an_unpinned_host(self):
+        self.assertEqual(self.fetch(host="imap.attacker.example"), ("protocol error", []))
+        self.assertEqual(self.fetch(provider="microsoft", host="imap.gmail.com"), ("protocol error", []))
+        self.assertEqual(self.fetch(host="imap.gmail.com.attacker.example"), ("protocol error", []))
+
+    def test_pinned_and_default_hosts_connect(self):
+        self.assertEqual(self.fetch(host="")[1], ["imap.gmail.com"])
+        self.assertEqual(self.fetch(host="imap.gmail.com")[1], ["imap.gmail.com"])
+        for host in ("outlook.office365.com", "outlook.office.com"):
+            self.assertEqual(self.fetch(provider="microsoft", host=host)[1], [host])
+
+    def test_allow_custom_host_permits_another_server(self):
+        self.assertEqual(self.fetch(host="imap.own.example", allow_custom_host=True)[1], ["imap.own.example"])
+        self.assertEqual(self.fetch(host="imap.own.example", allow_custom_host="yes"), ("protocol error", []))
+
+    def test_plain_imap_is_unaffected(self):
+        from keeper.mail import host_allowed
+        self.assertTrue(host_allowed({"provider": "imap", "host": "mail.anywhere.example"}))
+
+    def test_xoauth2_refuses_a_user_with_the_sasl_separator(self):
+        from keeper.mail import xoauth2, MailError
+        with self.assertRaises(MailError):
+            xoauth2("me@x.test\x01auth=Bearer evil", "T")
+        self.assertIn(b"user=me@x.test", xoauth2("me@x.test", "T"))

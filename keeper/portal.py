@@ -228,7 +228,9 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     app.state.spotify_session = spotify.requests.Session
     app.state.oauth_pending = pending_oauth = oauth.PendingOAuth(clock)
     app.state.oauth_session = spotify.requests.Session
-    oauth_failures = deque()  # failed callback/paste-back attempts (monotonic times), like the launch-code limiter
+    # Separate budgets (monotonic times of failures): the public callback only counts failures after a VALID state (a forged
+    # state costs an attacker nothing to produce and must not lock out the real sign-in or the authenticated paste-back).
+    callback_failures, complete_failures = deque(), deque()
     app.state.launch_codes = LaunchCodes(clock)
     app.state.quit_event = threading.Event()
     app.state.open_external = platform_support.open_external
@@ -347,14 +349,11 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         "Spotify did not authorize Keeper", "the pasted address does not belong to this connection attempt; start again",
         "sign-in was not authorized", "the pasted address does not belong to this sign-in attempt; start again"}
 
-    def oauth_limited():
+    def oauth_limited(failures):
         now = clock()
-        while oauth_failures and now - oauth_failures[0] > 60:
-            oauth_failures.popleft()
-        return len(oauth_failures) >= 10
-
-    def oauth_failed():
-        oauth_failures.append(clock())
+        while failures and now - failures[0] > 60:
+            failures.popleft()
+        return len(failures) >= 10
 
     def oauth_error(error):
         text = str(error)
@@ -388,6 +387,10 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             mail = migrate_conf(integrations.get("mail", {}))
             for account in mail.get("accounts", []) if isinstance(mail, dict) else []:
                 if isinstance(account, dict) and account.get("id") == entry["account"].get("id"):
+                    started = entry["account"]
+                    if (account.get("provider"), account.get("tenant"), account.get("client_id")) != (
+                            started.get("provider"), started.get("tenant"), started.get("stored_client_id")):
+                        raise ValueError("The account changed during sign-in; start again")
                     account.update(refresh_token=token, client_id=entry["account"]["client_id"])
                     integrations["mail"] = mail
                     found.append(True)
@@ -418,7 +421,8 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
                 raise ValueError("Unknown mail account. Save the configuration first.")
             if stored.get("provider") not in oauth.PROVIDERS:
                 raise ValueError("This account does not use OAuth")
-            account = {**stored, "client_id": (values.get("client_id") or stored.get("client_id", "")).strip()}
+            account = {**stored, "client_id": (values.get("client_id") or stored.get("client_id", "")).strip(),
+                       "stored_client_id": stored.get("client_id")}  # what the sign-in started from: it must not change meanwhile
             if not account["client_id"] or len(account["client_id"]) > 256 or not account["client_id"].isprintable() or " " in account["client_id"]:
                 raise ValueError("Enter the Client ID first")
             if stored["provider"] == "google" and not account.get("client_secret"):
@@ -441,14 +445,18 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
     async def oauth_callback(request: Request):
         def page(status, message):  # static texts only: nothing from the request is ever reflected
             blob = ("<!doctype html><meta charset=utf-8><title>Keeper</title><p>" + message + "</p>").encode()
-            return Response(blob, status_code=status, media_type="text/html")
-        if oauth_limited():
+            return Response(blob, status_code=status, media_type="text/html", headers={"Content-Security-Policy": "default-src 'none'"})
+        # A provider redirect is a top-level navigation. Subresource probes (img/fetch/iframe from any website) are refused
+        # before any accounting and without consuming the state. Clients that send no Sec-Fetch headers are allowed.
+        dest, mode = request.headers.get("sec-fetch-dest"), request.headers.get("sec-fetch-mode")
+        if (dest is not None and dest != "document") or (mode is not None and mode != "navigate"):
+            return page(400, OAUTH_INVALID)
+        if oauth_limited(callback_failures):
             return page(429, "Too many attempts. Wait a minute and start again from Keeper.")
         query = request.query_params
         entry = pending_oauth.take(query.get("state", ""))
         if entry is None or entry["mode"] != "loopback":
-            oauth_failed()
-            return page(400, OAUTH_INVALID)
+            return page(400, OAUTH_INVALID)  # not counted: the 192-bit single-use state needs no limiter here
         code = query.get("code")
         if not code:
             return page(400, "The sign-in was not authorized.")
@@ -456,13 +464,13 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             token = await asyncio.to_thread(exchange_token, entry, code)
             await asyncio.to_thread(store_connected, entry, token)
         except Exception:
-            oauth_failed()
+            callback_failures.append(clock())
             return page(502, OAUTH_FAILED)
         return page(200, "Connected. You can close this tab and return to Keeper.")
 
     @app.post("/api/oauth/complete")
     async def oauth_complete(request: Request):
-        if oauth_limited():
+        if oauth_limited(complete_failures):
             return JSONResponse({"error": "Too many attempts"}, status_code=429)
         values = await json_body(request)
         state, pasted = values.get("state"), values.get("pasted")
@@ -470,7 +478,7 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
             raise ValueError("state and pasted are required")
         entry = pending_oauth.take(state)
         if entry is None or entry["mode"] != "manual":
-            oauth_failed()
+            complete_failures.append(clock())
             return JSONResponse({"error": OAUTH_INVALID}, status_code=400)
         try:
             token = await asyncio.to_thread(paste_token, entry, state, pasted)
@@ -478,10 +486,10 @@ def create_app(root, token=None, demo=False, engine_factory=PortalEngine, web_ro
         except ValueError as error:
             return JSONResponse({"error": str(error)}, status_code=400)
         except (spotify.SpotifyError, oauth.OAuthError) as error:
-            oauth_failed()
+            complete_failures.append(clock())
             return JSONResponse({"error": oauth_error(error)}, status_code=400)
         except Exception:
-            oauth_failed()
+            complete_failures.append(clock())
             return JSONResponse({"error": OAUTH_FAILED}, status_code=400)
         return {"connected": True}
 

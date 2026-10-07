@@ -218,15 +218,64 @@ class LoopbackCallbackTests(OAuthPortalCase):
         bad = self.client.get("/api/oauth/callback?state=%3Cscript%3E")
         self.assertNotIn("script", bad.text)
 
-    def test_failure_rate_limit(self):
-        for _ in range(10):
+    def test_forged_states_are_not_counted_and_block_neither_callback_nor_complete(self):
+        for _ in range(50):
             self.assertEqual(self.client.get("/api/oauth/callback?code=c&state=wrong").status_code, 400)
         state = self.state()
-        self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 429)
-        self.assertEqual(self.session.calls, [])
-        self.clock.now += 61
-        state = self.start(service="mail", account_id="acc1").json()["state"]
         self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 200)
+        self.add_account(redirect_uri="https://keeper.example.test/done")
+        body = self.start(service="mail", account_id="acc1").json()
+        done = self.client.post("/api/oauth/complete", headers=self.auth, json={
+            "state": body["state"], "pasted": f"code={CODE}&state={body['state']}"})
+        self.assertEqual(done.status_code, 200, done.text)
+
+    def test_subresource_requests_are_rejected_without_consuming_the_state(self):
+        state = self.state()
+        url = f"/api/oauth/callback?code={CODE}&state={state}"
+        for headers in ({"Sec-Fetch-Dest": "image"}, {"Sec-Fetch-Dest": "iframe"}, {"Sec-Fetch-Mode": "no-cors"},
+                        {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors"}, {"Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "no-cors"}):
+            for _ in range(12):
+                self.assertEqual(self.client.get(url, headers=headers).status_code, 400, headers)
+        self.assertEqual(self.session.calls, [])
+        self.assertEqual(self.client.get(url, headers={"Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"}).status_code, 200)
+
+    def test_navigation_without_fetch_metadata_works(self):
+        state = self.state()
+        self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 200)
+        state = self.start(service="mail", account_id="acc1").json()["state"]
+        self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}", headers={"Sec-Fetch-Dest": "document"}).status_code, 200)
+
+    def test_failed_exchange_is_counted_against_its_own_budget_only(self):
+        self.session.replies = [Reply(400, {"error": "invalid_client"}) for _ in range(10)]
+        for _ in range(10):
+            state = self.state()
+            self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 502)
+        state = self.start(service="mail", account_id="acc1").json()["state"]
+        limited = self.client.get(f"/api/oauth/callback?code={CODE}&state={state}")
+        self.assertEqual(limited.status_code, 429)
+        self.add_account(redirect_uri="https://keeper.example.test/done")
+        body = self.start(service="mail", account_id="acc1").json()
+        done = self.client.post("/api/oauth/complete", headers=self.auth, json={
+            "state": body["state"], "pasted": f"code={CODE}&state={body['state']}"})
+        self.assertEqual(done.status_code, 200, done.text)
+        self.clock.now += 61
+        state = self.state()
+        self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 200)
+
+    def test_callback_pages_carry_a_restrictive_csp(self):
+        for query in ("code=c&state=wrong", "state=wrong&error=x"):
+            response = self.client.get("/api/oauth/callback?" + query)
+            self.assertEqual(response.headers["content-security-policy"], "default-src 'none'")
+        state = self.state()
+        ok = self.client.get(f"/api/oauth/callback?code={CODE}&state={state}")
+        self.assertEqual(ok.headers["content-security-policy"], "default-src 'none'")
+
+    def test_account_changed_between_start_and_callback_is_refused(self):
+        for change in ({"provider": "microsoft"}, {"tenant": "other.example"}, {"client_id": "another-client-id"}):
+            state = self.state()
+            self.store.change(lambda d, c=change: d["integrations"]["mail"]["accounts"][0].update(c))
+            self.assertEqual(self.client.get(f"/api/oauth/callback?code={CODE}&state={state}").status_code, 502, change)
+            self.assertEqual(self.account()["refresh_token"], "", change)
 
     def test_exemption_is_exact(self):
         state = self.state()
@@ -335,6 +384,14 @@ class ManualCompleteTests(OAuthPortalCase):
         self.clock.now += 61
         body = self.begin()
         self.assertEqual(self.complete(body["state"], f"code={CODE}&state={body['state']}").status_code, 200)
+
+    def test_account_changed_between_start_and_complete_is_refused(self):
+        body = self.begin()
+        self.store.change(lambda d: d["integrations"]["mail"]["accounts"][0].update(tenant="other.example"))
+        done = self.complete(body["state"], f"code={CODE}&state={body['state']}")
+        self.assertEqual(done.status_code, 400)
+        self.assertIn("changed during sign-in", done.json()["error"])
+        self.assertEqual(self.account()["refresh_token"], "")
 
     def test_cross_origin_complete_is_rejected(self):
         body = self.begin()

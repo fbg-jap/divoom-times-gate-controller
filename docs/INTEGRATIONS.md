@@ -246,3 +246,9 @@ The API token and MQTT password are stored in local user settings. Portable expo
 - [Spotify: Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri) and [currently playing](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track).
 
 [README](../README.md) · [Desktop guide](DESKTOP.md)
+
+## OAuth hardening notes
+
+- Mail OAuth tokens are only sent to the provider's own IMAP hosts (Google: imap.gmail.com; Microsoft: outlook.office365.com, outlook.office.com). Another server needs the advanced per-account option `allow_custom_host`.
+- The OAuth callback only accepts top-level navigations (`Sec-Fetch-Dest: document` or no Sec-Fetch headers) and an unknown state is not counted by the rate limiter; the callback and the paste-back endpoint have separate failure budgets.
+- `server.py` runs uvicorn without an access log so callback query strings (code, state) are never logged.

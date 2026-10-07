@@ -5,6 +5,11 @@ import os
 from pathlib import Path
 
 
+def uvicorn_options(host, port):
+    # No access log: it would record the OAuth callback query string (authorization code and state).
+    return {"host": host, "port": port, "workers": 1, "proxy_headers": False, "access_log": False}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default=os.getenv("KEEPER_HOST", "127.0.0.1"))
@@ -17,7 +22,7 @@ def main():
     import uvicorn
     app = create_app(args.data_dir, demo=args.demo)
     print(f"Portal: http://{args.host}:{args.port} · Token en {args.data_dir.resolve() / 'admin.token'} o KEEPER_TOKEN")
-    uvicorn.run(app, host=args.host, port=args.port, workers=1, proxy_headers=False)
+    uvicorn.run(app, **uvicorn_options(args.host, args.port))
 
 
 if __name__ == "__main__":

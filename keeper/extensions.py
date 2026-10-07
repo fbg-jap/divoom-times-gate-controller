@@ -159,7 +159,7 @@ def spotify_redirect_kind(value):
 
 
 def validate_mail_accounts(conf):
-    from .mail import MAX_ACCOUNTS, PROVIDERS
+    from .mail import MAX_ACCOUNTS, PROVIDERS, host_allowed
     accounts = conf.get("accounts", [])
     if not isinstance(accounts, list) or len(accounts) > MAX_ACCOUNTS:
         raise ValueError(f"Invalid mail accounts (at most {MAX_ACCOUNTS})")
@@ -172,13 +172,18 @@ def validate_mail_accounts(conf):
         seen.add(account["id"])
         if account.get("provider", "imap") not in PROVIDERS:
             raise ValueError("Invalid mail provider")
-        _flag(account, "enabled"); _flag(account, "show_subject")
+        _flag(account, "enabled"); _flag(account, "show_subject"); _flag(account, "allow_custom_host")
         _bounded(account, "port", 1, 65535, 993)
         for key, limit in (("name", 40), ("host", 255), ("user", 256), ("password", 256), ("mailbox", 128), ("client_id", 256),
                            ("client_secret", 256), ("refresh_token", 4096)):
             _text(account, key, limit)
-        if not isinstance(account.get("tenant", "common"), str) or not re.fullmatch(r"[A-Za-z0-9.-]{1,64}", account.get("tenant", "common")):
+        user = account.get("user", "")
+        if any(c in user for c in "\x00\x01\r\n") or not user.isprintable():
+            raise ValueError("Invalid user")
+        if not isinstance(account.get("tenant", "common"), str) or not re.fullmatch(r"(?!\.)[A-Za-z0-9.-]{1,64}", account.get("tenant", "common")):
             raise ValueError("Invalid tenant")
+        if not host_allowed({**account, "host": account.get("host", "")}):
+            raise ValueError("Invalid host for this provider (enable allow_custom_host to use another server)")
         if spotify_redirect_kind(_text(account, "redirect_uri", 300)) is None:
             raise ValueError("Invalid redirect_uri")
 

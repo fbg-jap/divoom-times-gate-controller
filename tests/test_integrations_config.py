@@ -152,6 +152,26 @@ class IntegrationConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate(data)
 
+    def test_mail_account_security_validation(self):
+        def check(**changes):
+            data = defaults()
+            data["integrations"]["mail"]["accounts"] = [new_account(id="ok1", provider="google", **changes)]
+            validate(data)
+        check(host="imap.gmail.com"); check(host="")
+        check(host="imap.own.example", allow_custom_host=True)
+        for changes in ({"host": "imap.attacker.example"}, {"host": "imap.attacker.example", "allow_custom_host": "true"},
+                        {"allow_custom_host": 1}, {"user": "a\x00b"}, {"user": "a\x01auth=Bearer x"}, {"user": "a\nb"}, {"user": "a\rb"},
+                        {"user": "a\x07b"}, {"tenant": ".."}, {"tenant": ".x"}):
+            with self.assertRaises(ValueError, msg=repr(changes)):
+                check(**changes)
+        data = defaults()
+        data["integrations"]["mail"]["accounts"] = [new_account(id="ms1", provider="microsoft", host="outlook.office.com"),
+                                                    new_account(id="im1", provider="imap", host="mail.anywhere.example")]
+        validate(data)
+        data["integrations"]["mail"]["accounts"] = [new_account(id="ms1", provider="microsoft", host="imap.gmail.com")]
+        with self.assertRaises(ValueError):
+            validate(data)
+
     def test_mail_alert_source_must_be_all_or_an_existing_account(self):
         data = defaults()
         data["integrations"]["mail"]["accounts"] = [new_account(id="acct1")]

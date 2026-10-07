@@ -172,6 +172,7 @@ function mailCard() {
     ),
     field(a, "user", oauth ? t("ui.mail_email") : t("ui.username")),
   );
+  if (oauth) parts.push(field(a, "allow_custom_host", t("ui.mail_allow_custom_host"), "checkbox"), hint(t("ui.mail_allow_custom_host_hint")));
   if (!oauth) parts.push(field(a, "password", t("ui.password"), "password"));
   else {
     parts.push(field(a, "client_id", t("ui.oauth_client_id")));

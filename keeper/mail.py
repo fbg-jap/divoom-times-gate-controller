@@ -23,11 +23,13 @@ class MailError(Exception):
 
 PROVIDERS = ("imap", "google", "microsoft")
 DEFAULT_HOSTS = {"google": "imap.gmail.com", "microsoft": "outlook.office365.com"}
+# An OAuth bearer token is only sent to these hosts unless the account sets allow_custom_host.
+PINNED_HOSTS = {"google": {"imap.gmail.com"}, "microsoft": {"outlook.office365.com", "outlook.office.com"}}
 MAX_ACCOUNTS = 10
 LEGACY_KEYS = ("host", "port", "user", "password", "mailbox", "show_subject")
 ACCOUNT_DEFAULTS = {"id": "", "name": "", "provider": "imap", "enabled": True, "host": "", "port": 993, "user": "", "password": "",
                     "mailbox": "INBOX", "show_subject": False, "client_id": "", "client_secret": "", "tenant": "common",
-                    "refresh_token": "", "redirect_uri": ""}
+                    "refresh_token": "", "redirect_uri": "", "allow_custom_host": False}
 
 
 def new_account(**values):
@@ -84,7 +86,16 @@ def _subject(connection, message_id):
     return None
 
 
+def host_allowed(conf):
+    """False when an OAuth account points at a host outside its provider's pinned set without allow_custom_host."""
+    pinned = PINNED_HOSTS.get(conf.get("provider", "imap"))
+    host = conf.get("host") or DEFAULT_HOSTS.get(conf.get("provider", ""), "")
+    return pinned is None or conf.get("allow_custom_host") is True or str(host).strip().lower() in pinned
+
+
 def xoauth2(user, token):
+    if "\x01" in user:
+        raise MailError("protocol error")
     return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()
 
 
@@ -100,6 +111,8 @@ def fetch_unread(conf, timeout=10, connector=_connect, token_provider=None):
     if not host or not user or (not oauth and not password):
         raise MailError("authentication failed")
     port = int(conf.get("port") or 993)
+    if oauth and not host_allowed(conf):
+        raise MailError("protocol error")  # never send the bearer token to an unexpected server
     if oauth and (port == 143 or token_provider is None):
         raise MailError("protocol error" if token_provider else "not signed in")  # a bearer token never travels in clear text
     connection = None

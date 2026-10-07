@@ -25,6 +25,7 @@ export const mailAccountDefaults = () => ({
   tenant: "common",
   refresh_token: "",
   redirect_uri: "",
+  allow_custom_host: false,
 });
 const MAIL_LEGACY_KEYS = ["host", "port", "user", "password", "mailbox", "show_subject"];
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);

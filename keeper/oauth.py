@@ -51,7 +51,7 @@ from .spotify import make_pkce_pair, redact
 TIMEOUT = 8
 TRANSIENT_BACKOFF = 60
 PASTE_LIMIT = 2048
-TENANT = re.compile(r"[A-Za-z0-9.-]{1,64}")
+TENANT = re.compile(r"(?!\.)[A-Za-z0-9.-]{1,64}")
 PROVIDERS = {
     "google": {"authorize": "https://accounts.google.com/o/oauth2/v2/auth", "token": "https://oauth2.googleapis.com/token",
                "scope": "https://mail.google.com/", "authorize_extra": {"access_type": "offline", "prompt": "consent"}, "secret": True,

@@ -96,3 +96,10 @@ test("account select: all first, then each account, unknown saved ids kept as (m
   assert.equal(mailAccountOptions(mail, "zzz", "Todas").zzz, "(falta) zzz");
   assert.deepEqual(mailAccountOptions(undefined, "", "All"), { all: "All" });
 });
+
+test("allow_custom_host defaults to false for new and migrated accounts", () => {
+  assert.equal(mailAccountDefaults().allow_custom_host, false);
+  assert.equal(newMailAccount("google").allow_custom_host, false);
+  assert.equal(migrateMail({ enabled: true, accounts: [{ id: "a1", provider: "google" }] }).accounts[0].allow_custom_host, false);
+  assert.equal(migrateMail({ enabled: true, accounts: [{ id: "a1", provider: "google", allow_custom_host: true }] }).accounts[0].allow_custom_host, true);
+});
