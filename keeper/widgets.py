@@ -389,7 +389,6 @@ class Renderer:
         accent = ImageColor.getrgb(slot.get("color", "#64e6ca"))
         image = Image.new("RGB", (128, 128), slot.get("background", "#101b2b"))
         draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((8, 8, 31, 11), radius=1, fill=accent)
         title = slot.get("title", "").strip()
         kind = slot["kind"]
 
@@ -403,7 +402,7 @@ class Renderer:
 
         label(title or {"pc": "SYSTEM", "clock": "LOCAL TIME", "text": "NOTE", "weather": "WEATHER",
                         "countdown": "COUNTDOWN", "calendar": "CALENDAR", "service": "STATUS"}.get(kind, "KEEPER"),
-              17, 13, accent, bold=True)
+              5, 13, accent, center=True, bold=True)
         if kind == "clock":
             now = timesource.now(ZoneInfo(slot.get("timezone", "Europe/Madrid")))
             label(now.strftime("%H:%M"), 41, 34, "white", center=True, bold=True)

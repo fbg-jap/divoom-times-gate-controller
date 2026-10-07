@@ -530,8 +530,8 @@ def render_extra(s, providers):
     image = Image.new("RGB", (128, 128), s.get("background", "#101b2b"))
     draw = ImageDraw.Draw(image)
     accent = s.get("color", "#64e6ca")
-    def lines(text, y, size=13, count=3, color="white"):
-        face = font(size)
+    def lines(text, y, size=13, count=3, color="white", center=False, bold=False):
+        face = font(size, bold)
         wrapped, current = [], ""
         for word in str(text).split():
             candidate = (current + " " + word).strip()
@@ -550,7 +550,7 @@ def render_extra(s, providers):
                 last = last[:-1]
             wrapped[count-1] = last + "…"
         for n, line in enumerate(wrapped[:count]):
-            draw.text((8, y+n*(size+2)), line, fill=color, font=face)
+            draw.text(((128 - draw.textlength(line, font=face)) / 2 if center else 8, y+n*(size+2)), line, fill=color, font=face)
     kind = s["kind"]
     if kind == "music":
         data = extra.music()
@@ -568,12 +568,12 @@ def render_extra(s, providers):
         lines(data.get("artist") or data.get("status", ""), 95, 10, 2, accent)
     elif kind == "rss":
         title, state = extra.news(s.get("url", ""), int(s.get("news_seconds", 15)))
-        lines(s.get("title") or state, 7, 10, 1, accent)
+        lines(s.get("title") or state, 5, 13, 1, accent, True, True)
         lines(title, 28, int(s.get("news_size", 13)), 5)
     elif kind == "pomodoro":
         data = extra.pomodoro
         phase = normalize_phase(data["phase"])
-        lines(s.get("title") or phase.upper(), 8, 12, 1, accent)
+        lines(s.get("title") or phase.upper(), 5, 13, 1, accent, True, True)
         seconds = max(0, math.ceil(data["remaining"]))
         lines(f"{seconds//60:02}:{seconds%60:02}", 40, 32, 1)
         lines(f"Cycle {data['cycle']} · {'Active' if data['running'] else 'Paused'}", 96, 11, 1, accent)
@@ -582,18 +582,18 @@ def render_extra(s, providers):
         if end > 8:
             draw.rectangle((8, 117, end, 120), fill=accent)
     elif kind == "sensor" and s.get("sensor_source") == "hardware" and not str(s.get("sensor_key", "")).strip():
-        lines(s.get("title") or "SENSOR", 8, 12, 1, accent)
+        lines(s.get("title") or "SENSOR", 5, 13, 1, accent, True, True)
         lines("Choose a sensor", 46, 15, 2, "#9aa4b5")
     elif kind == "sensor":
         value = extra.sensor(s.get("sensor_source", "mqtt"), s.get("sensor_key", ""), s.get("sensor_field", ""), int(s.get("sensor_stale", 300)))
-        lines(s.get("title") or "SENSOR", 8, 12, 1, accent)
+        lines(s.get("title") or "SENSOR", 5, 13, 1, accent, True, True)
         number = finite(value)
         text = "N/A" if value is None else f"{number:.1f}" if number is not None else str(value)
         lines(text[:60], 42, 25, 2)
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
     elif kind == "prtg":
         data, error = extra.prtg_state()
-        lines(s.get("title") or "PRTG", 6, 14, 1, accent)
+        lines(s.get("title") or "PRTG", 5, 13, 1, accent, True, True)
         if data is None and error.startswith("Waiting"):
             lines("Connecting…", 40, 13, 2, "#9aa4b5")
         elif data is None:
@@ -609,7 +609,7 @@ def render_extra(s, providers):
             lines(data["worst"] or "All sensors OK", 98, 12, 2, "white" if data["worst"] else "#4ade80")
     elif kind == "spotify":
         data, error = extra.spotify_state()
-        lines(s.get("title") or "Spotify", 6, 14, 1, accent)
+        lines(s.get("title") or "Spotify", 5, 13, 1, accent, True, True)
         if data is None and error in {"not connected", "reconnect"}:
             lines("Spotify not connected", 40, 13, 3, "#ff6b6b")
         elif data is None and error.startswith("Waiting"):
@@ -667,7 +667,7 @@ def render_extra(s, providers):
     elif kind == "mail":
         account = s.get("mail_account", "all")
         data, error = extra.mail_state(account)
-        lines(s.get("title") or "Unread mail", 7, 11, 1, accent)
+        lines(s.get("title") or "Unread mail", 5, 13, 1, accent, True, True)
         if data is None and error == "not configured":
             lines("Mail not configured", 40, 13, 3, "#ff6b6b")
         elif data is None and error == "account missing":
@@ -680,16 +680,16 @@ def render_extra(s, providers):
         else:
             everyone = account == "all"
             name = "All accounts" if everyone else (data["accounts"][0]["name"] if data.get("accounts") else "")
-            lines(name, 19, 9, 1, "#9aa4b5")
+            lines(name, 24, 11, 1, "#9aa4b5", True)
             color = "#4ade80" if data["unread"] == 0 else "#fbbf24"
             text = str(data["unread"])
             face = font(46, True)
             width = draw.textlength(text, font=face)
-            draw.text(((128 - width) / 2, 28), text, fill=color, font=face)
+            draw.text(((128 - width) / 2, 38), text, fill=color, font=face)
             failed = data.get("failed", 0) if everyone else 0
             if failed:
-                draw.text(((128 + width) / 2 + 3, 36), "!", fill="#ff4d4d", font=font(30, True))
-                lines(f"{failed} account(s) failed", 92, 10, 3, "#ff6b6b")
+                draw.text(((128 + width) / 2 + 3, 46), "!", fill="#ff4d4d", font=font(30, True))
+                lines(f"{failed} account(s) failed", 96, 12, 2, "#ff6b6b")
             elif data.get("subject"):
-                lines(data["subject"], 92, 10, 3)
+                lines(data["subject"], 96, 12, 2)
     return image
