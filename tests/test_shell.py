@@ -633,6 +633,21 @@ class SingleInstanceTests(unittest.TestCase):
         finally:
             first.close()
 
+    @unittest.skipIf(os.name == "nt", "POSIX TIME_WAIT behaviour")
+    def test_pick_socket_reuses_a_port_left_in_time_wait(self):
+        server = shell.pick_socket(0)
+        port = server.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        conn, _ = server.accept()
+        conn.close()          # the side that closes first keeps the TIME_WAIT entry
+        client.close()
+        server.close()
+        again = shell.pick_socket(port)
+        try:
+            self.assertEqual(again.getsockname()[1], port)
+        finally:
+            again.close()
+
 
 class LifecycleTests(unittest.TestCase):
     def test_run_and_quit_with_fake_server_and_tray(self):

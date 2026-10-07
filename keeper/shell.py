@@ -238,6 +238,8 @@ def pick_socket(port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if os.name == "nt":  # never SO_REUSEADDR on Windows: it would let another process share the port
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:  # POSIX: a restart right after quitting must not find the port held by TIME_WAIT sockets (it never shares a live listener)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("127.0.0.1", candidate))
         except OSError:
