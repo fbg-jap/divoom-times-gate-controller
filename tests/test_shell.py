@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import io
 import json
 import os
@@ -637,6 +638,11 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual((args.demo, args.config_dir, args.minimized, args.port, args.print_launch_url, args.ui),
                          (True, Path("/tmp/x"), True, 0, True, "web"))
         self.assertEqual(shell.parse_args([]).ui, "web")
+        for argv in (["--ui", "qt"], ["--screenshot-dir", "/tmp/x"]):
+            with contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as cm:
+                shell.parse_args(argv)
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn("Qt interface was removed", err.getvalue())
 
     def test_run_registers_the_web_ui_for_autostart(self):
         from keeper import startup

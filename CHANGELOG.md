@@ -4,6 +4,7 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 
 ## Unreleased
 
+- **The Qt desktop interface has been replaced by the web interface in a local browser window plus tray** (tag `qt-ui-last` has the last Qt version); smaller downloads (about 60 MB AppImage vs 116 MB). `app.py` is now the web shell entry (`--ui web` is accepted for old autostart entries; `--ui qt` and `--screenshot-dir` exit with an error), PySide6 is no longer a dependency, `requirements.txt` installs everything the shell needs, and `packaging/DivoomKeeperStudio.spec` is the single spec. The screenshots in `docs/screenshots` show the old Qt interface and will be retaken from the web UI.
 - **Online time** (`integrations.timesync`, off by default): an SNTP client (random request nonce, reply validation, best-of-3, 8 s budget) with an HTTPS `Date` fallback corrects the clock and countdown widgets, schedules, the calendar "now", custom-screen `{time}`/`{date}` and **Sync computer time**; the offset is ignored after 6 h without a sync, and an optional setting sends `Device/SetUTC` to the devices after each sync (at most every 6 h). Desktop Time tab and web Time card with a status line. Tested against a local fake NTP server only; not yet tried against real servers. See [Integrations](docs/INTEGRATIONS.md#online-time).
 - **Packaging for the Qt-free browser shell** (`--ui web`): new `shell_main.py` entry, `packaging/DivoomKeeperStudioWeb.spec` (PySide6 excluded, `web/dist` bundled), `build_linux.sh --ui web`, `build_windows.ps1 -Ui web` (untested), a web AppImage (`APP_NAME=DivoomKeeperStudioWeb packaging/build_appimage.sh`, CI artifact `linux-appimage-web-x86_64`) and `tools/smoke_shell.py`. Autostart relaunches the shell with `--ui web` when it was started that way. The Qt build and AppImage are unchanged.
 - **Microsoft Teams in PC notifications**: Teams chat, mention and call pop-ups (native app, `teams-for-linux`, or Teams in a browser matched by domain) are recognised and shown as `Teams · <sender>` with a purple accent, per-kind filters, own screen, longer call notices with optional buzzer; sender only by default (preview opt-in). Heuristic on notification text, untested against a real Teams client. See [Integrations](docs/INTEGRATIONS.md#microsoft-teams).
@@ -91,3 +92,8 @@ Versions 2.x and 3.0 were developed and checked locally. Their evolution is publ
 - Five persistent media slots, images/GIFs, manual/periodic sending and startup recovery.
 - LAN discovery, device selection, profiles, tray, status and autostart.
 - [Original release preserved](https://github.com/raishack/divoom-times-gate-controller/releases/tag/v0.1.3).
+
+## Unreleased · OAuth security fixes
+
+- Callback no longer lets forged states lock out sign-in (separate budgets, Sec-Fetch checks, restrictive CSP); the account must not change during sign-in.
+- Mail OAuth host pinning with `allow_custom_host`, stricter `user` and tenant validation, no uvicorn access log in server mode.

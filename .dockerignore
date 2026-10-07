@@ -1,7 +1,6 @@
 **
 !Dockerfile
 !requirements-core.txt
-!requirements-server.txt
 !server.py
 !keeper/
 !keeper/*.py

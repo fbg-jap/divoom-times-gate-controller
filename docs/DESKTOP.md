@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Platform installation](MULTIPLATFORM.md)
 
-The Windows/Linux desktop interface supports English and Spanish. Select English in **Settings** to use the labels shown in this guide.
+The Windows/Linux desktop app is a small local server with a tray icon. It runs the engine and the web interface on `127.0.0.1` and shows the interface in a browser window (an app-mode window when a Chromium-family browser such as Brave, Chrome, Chromium or Edge is installed, otherwise a normal tab). The interface supports English and Spanish; use the language selector. The previous Qt desktop window was replaced by this interface (tag `qt-ui-last` has the last Qt version).
 
 ## Getting started
 
@@ -12,7 +12,7 @@ The Windows/Linux desktop interface supports English and Spanish. Select English
 4. Enable automatic updates to maintain images and widgets. This is configured per device; several devices can run at the same time.
 5. Save layouts in **Scenes** and add rotation or schedules as needed.
 
-Closing the window hides it in the tray when a tray is available. Choose **Exit** in the tray menu to stop the engine. Without a tray, closing the window exits the app.
+Closing the browser window does not stop anything: the engine keeps sending. Stop the app with **Quit** in the tray menu or the quit button of the **Desktop** card in the web UI (needed when no tray is available, for example on stock GNOME). Starting the app again while it runs just opens the window on the running instance. The **Desktop** card also offers **Start with system** and opening the data and library folders.
 
 ## Screens and media library
 
@@ -87,11 +87,11 @@ Native tools that replace content **pause resending for that device**. Applying 
 - Content fingerprints avoid identical uploads on every update; recovery resends use a configurable interval, defaulting to 60 minutes.
 - Connection checks every 30 seconds for devices with automatic updates or saved RGB restoration enabled. Reconnection invalidates the content cache and restores managed content unless paused or powered off; lighting restoration is independent.
 - Failed transfers never select a different Divoom automatically. If an IP changes, select or correct the device explicitly.
-- The profile **locked** trigger also works in the browser shell on Windows: a Qt-free watcher listens for session lock/unlock events, starts only when a locked profile exists and knows the state only after the first lock or unlock. Unverified on real Windows (tested with a fake Windows API).
-- A single communication queue avoids overlapping transfers within the app. Network requests run outside the UI thread.
+- The profile **locked** trigger also works in the browser shell on Windows: a small native watcher listens for session lock/unlock events, starts only when a locked profile exists and knows the state only after the first lock or unlock. Unverified on real Windows (tested with a fake Windows API).
+- A single communication queue avoids overlapping transfers within the app. Network requests run in the engine, not in the browser.
 
 ## Backups and migration
 
-Use **Settings → Export portable backup…** to save settings and media, or **Import backup…** to restore a ZIP. Import first preserves the current configuration and disables automatic sending and integrations. In 3.1.1 it also pauses RGB restoration. Review the device IP and platform-dependent sources, then re-enable the features you want and apply lighting explicitly.
+Use the backup controls in **Settings** to export a portable backup of settings and media, or import a ZIP. Import first preserves the current configuration and disables automatic sending and integrations. In 3.1.1 it also pauses RGB restoration. Review the device IP and platform-dependent sources, then re-enable the features you want and apply lighting explicitly.
 
 [Platform differences and migration](MULTIPLATFORM.md#migrating-your-layouts) · [Screenshot gallery](SCREENSHOTS.md)

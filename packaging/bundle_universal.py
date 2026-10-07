@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / 'dist'
 VERSION = '3.1.0'
 BASE = f'divoom-keeper-{VERSION}'
-ROOT_FILES = {'app.py', 'server.py', 'README.md', 'LICENSE', 'LICENSE.md', 'LICENSE.txt',
+ROOT_FILES = {'app.py', 'shell_main.py', 'server.py', 'README.md', 'LICENSE', 'LICENSE.md', 'LICENSE.txt',
               'requirements.txt', 'requirements-core.txt', 'requirements-server.txt',
               'run_linux.sh', 'build_linux.sh', 'Dockerfile', 'compose.yaml', '.dockerignore',
               'run_studio.ps1', 'build_windows.ps1', '.env.example', '.gitignore'}

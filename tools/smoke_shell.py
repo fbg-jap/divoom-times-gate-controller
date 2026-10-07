@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Smoke test for the browser shell (a built binary or `python app.py --ui web`). Needs only the stdlib and requests.
+"""Smoke test for the browser shell (a built binary or `python app.py`). Needs only the stdlib and requests.
 
     tools/smoke_shell.py dist/DivoomKeeperStudioWeb-3.1.1-x86_64.AppImage --appimage-extract-and-run
-    tools/smoke_shell.py python app.py --ui web
+    tools/smoke_shell.py python app.py
 
 The command is started with --demo --minimized --config-dir <tmp> --port <free> --print-launch-url; the script
 reads the one-time launch URL, redeems it, checks the portal and quits the app through /api/quit.
@@ -124,7 +124,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
-        parser.error("give the binary path (or `python app.py --ui web`) to test")
+        parser.error("give the binary path (or `python app.py`) to test")
     try:
         run(command, args.startup_timeout)
     except SmokeError as error:

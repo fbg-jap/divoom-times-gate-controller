@@ -487,30 +487,6 @@ class UsageTests(FixtureCase):
             extensions.custom_image(s, {})
         fake.now.assert_called()
 
-    def test_set_utc_value_is_corrected_and_timezone_agnostic(self):
-        from keeper.ui import Window
-        fake = skewed(2.5)
-        calls = []
-        window = Mock()
-        window.command = lambda *a, **kw: calls.append((a, kw))
-        old = os.environ.get("TZ")
-        try:
-            for zone in ("Europe/Madrid", "America/New_York", "Asia/Kolkata"):
-                os.environ["TZ"] = zone
-                if hasattr(time, "tzset"):
-                    time.tzset()
-                with patch("keeper.ui.timesource", fake):
-                    Window.sync_time(window)
-        finally:
-            if old is None:
-                os.environ.pop("TZ", None)
-            else:
-                os.environ["TZ"] = old
-            if hasattr(time, "tzset"):
-                time.tzset()
-        utc = [kw["Utc"] for (a, kw) in calls if a[0] == "Device/SetUTC"]
-        self.assertEqual(utc, [1_800_000_002] * 3)
-
     def test_device_clock_is_sent_after_a_sync_and_at_most_every_six_hours(self):
         self.d["enabled"] = True
         self.store.update_device(self.d)

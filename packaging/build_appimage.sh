@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wrap the PyInstaller onedir (dist/linux/DivoomKeeperStudio, from build_linux.sh) into an AppImage.
-# Optional env: APP_NAME (default DivoomKeeperStudio; DivoomKeeperStudioWeb for the Qt-free web shell),
+# Optional env: APP_NAME (default DivoomKeeperStudio),
 # ONEDIR (default dist/linux/$APP_NAME), OUT_NAME (default $APP_NAME).
 # appimagetool is taken from $APPIMAGETOOL or PATH; it is never downloaded here.
 # Optional: APPIMAGE_RUNTIME=/path/to/runtime-x86_64 (https://github.com/AppImage/type2-runtime/releases, tag 20251108).
@@ -18,9 +18,8 @@ APP_NAME="${APP_NAME:-DivoomKeeperStudio}"
 ONEDIR="${ONEDIR:-dist/linux/$APP_NAME}"
 OUT_NAME="${OUT_NAME:-$APP_NAME}"
 DESKTOP_ID="divoom-keeper-studio"
-if [[ "$APP_NAME" == *Web ]]; then DESKTOP_ID="divoom-keeper-studio-web"; fi
 if [[ ! -x "$ONEDIR/$APP_NAME" ]]; then
-  echo "error: $ONEDIR/$APP_NAME not found. Run build_linux.sh first (add --ui web for DivoomKeeperStudioWeb)." >&2
+  echo "error: $ONEDIR/$APP_NAME not found. Run build_linux.sh first." >&2
   exit 1
 fi
 

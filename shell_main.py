@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qt-free entry point: the browser shell (same as `app.py --ui web`). Never imports PySide6."""
+"""Entry point of the packaged browser shell (same as app.py). Never imports PySide6."""
 import sys
 
 from keeper import shell

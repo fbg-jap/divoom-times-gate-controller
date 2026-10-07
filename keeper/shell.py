@@ -117,16 +117,26 @@ class LaunchPages:
             self.pages.clear()
 
 
+QT_REMOVED = ("The Qt interface was removed; the web UI is the interface. "
+              "Use tag qt-ui-last to get the old app.")
+
+
 def parse_args(argv=None):
-    """Arguments of the Qt-free entry point (shell_main.py); mirrors `app.py --ui web`."""
-    parser = argparse.ArgumentParser(description="Divoom Keeper Studio (web shell)")
+    """The single argument parser (app.py and shell_main.py both use it)."""
+    parser = argparse.ArgumentParser(description="Divoom Keeper Studio")
     parser.add_argument("--demo", action="store_true", help="Synthetic data; no device/network writes")
     parser.add_argument("--config-dir", type=Path)
     parser.add_argument("--minimized", action="store_true")
-    parser.add_argument("--ui", choices=("web",), default="web", help=argparse.SUPPRESS)
+    parser.add_argument("--no-tray", action="store_true", help="Do not show the tray icon")
+    parser.add_argument("--ui", choices=("web", "qt"), default="web", help=argparse.SUPPRESS)  # web: kept for old autostart entries
     parser.add_argument("--port", type=int, help="Local port (default 8765, KEEPER_SHELL_PORT)")
     parser.add_argument("--print-launch-url", action="store_true", help="DEBUG ONLY: print the one-time login URL")
-    return parser.parse_args(argv)
+    parser.add_argument("--screenshot-dir", type=Path, help=argparse.SUPPRESS)  # removed with the Qt interface
+    args = parser.parse_args(argv)
+    if args.ui == "qt" or args.screenshot_dir:
+        print(QT_REMOVED, file=sys.stderr)
+        raise SystemExit(2)
+    return args
 
 
 def find_app_browser(which=shutil.which, exists=os.path.exists, environ=None, platform=None):
@@ -283,7 +293,7 @@ def run(args, *, serve=start_server, healthy=wait_healthy, opener=open_ui, tray_
                 print(base, flush=True)
                 print("launch URL suppressed (stdout is not a terminal); use the data-dir login", file=sys.stderr)
         log.info("Keeper portal on %s", base)
-        factory = tray_loader()
+        factory = None if getattr(args, "no_tray", False) else tray_loader()
         if factory:
             try:
                 from .startup import set_startup

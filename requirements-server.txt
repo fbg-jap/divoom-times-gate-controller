@@ -1,4 +1,2 @@
--r requirements-core.txt
-fastapi>=0.115,<1
-uvicorn>=0.34,<1
-filelock>=3.16,<4
+# Headless server (server.py, systemd unit): the desktop requirements; nothing extra is server-only.
+-r requirements.txt

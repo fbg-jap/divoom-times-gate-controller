@@ -13,8 +13,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home keeper && mkdir /data && chown keeper:keeper /data
-COPY requirements-core.txt requirements-server.txt ./
-RUN pip install --no-cache-dir -r requirements-server.txt
+COPY requirements-core.txt ./
+RUN pip install --no-cache-dir -r requirements-core.txt
 COPY keeper ./keeper
 COPY server.py ./
 COPY --from=web /build/dist ./web/dist

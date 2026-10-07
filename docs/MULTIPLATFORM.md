@@ -84,21 +84,21 @@ The optional desktop integration API on port 8787 is separate from the authentic
 
 ## Linux desktop
 
-Requirements: a Linux distribution with a graphical desktop, Python 3.11+, `venv` and Qt libraries. On Debian/Ubuntu:
+Requirements: a Linux distribution with a graphical desktop, Python 3.11+ and `venv`. A Chromium-family browser is recommended for the app-mode window; any browser works. On Debian/Ubuntu:
 
 ```sh
-sudo apt install python3-venv libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 fonts-dejavu-core
+sudo apt install python3-venv
 bash run_linux.sh
 ```
 
 On Fedora:
 
 ```sh
-sudo dnf install python3 mesa-libGL mesa-libEGL libxkbcommon libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil dejavu-sans-fonts
+sudo dnf install python3
 bash run_linux.sh
 ```
 
-`run_linux.sh` and `build_linux.sh` use Python 3.13, 3.12 or 3.11 when installed (override with `PYTHON=python3.12 bash run_linux.sh`), because the newest Python releases often lack PySide6/PyAV wheels. To switch interpreters, delete `.venv-linux` first.
+`run_linux.sh` and `build_linux.sh` use Python 3.13, 3.12 or 3.11 when installed (override with `PYTHON=python3.12 bash run_linux.sh`), because the newest Python releases often lack PyAV wheels. To switch interpreters, delete `.venv-linux` first.
 
 First startup creates `.venv-linux` and installs dependencies. Data is stored in `$XDG_DATA_HOME/divoom-keeper-studio` or `~/.local/share/divoom-keeper-studio`. Autostart uses a Desktop Entry under `$XDG_CONFIG_HOME/autostart` or `~/.config/autostart`.
 
@@ -110,7 +110,7 @@ bash build_linux.sh
 
 The local build produces `dist/DivoomKeeperStudio-3.1.1-linux-ARCHITECTURE.tar.gz`. Build artifacts are also available from the verified CI run.
 
-Build on Linux for the target architecture. The package includes Python/Qt but still needs system graphics libraries. Some Wayland sessions lack a tray; without one, closing the window exits the program. Lock detection requires `XDG_SESSION_ID` and a `loginctl` session exposing `LockedHint`.
+Build on Linux for the target architecture. The package includes Python and the web interface and needs only a browser. Some sessions lack a tray (stock GNOME); without one, quit with the button of the Desktop card in the web UI. Lock detection requires `XDG_SESSION_ID` and a `loginctl` session exposing `LockedHint`.
 
 The [verified CI run](https://github.com/raishack/divoom-times-gate-controller/actions/runs/36348139691) provides a **linux-x86_64** binary artifact. An interactive desktop test on physical Linux hardware remains pending. `linux-source.tar.gz` from `packaging/bundle_universal.py` contains source, not a compiled binary.
 
@@ -124,13 +124,12 @@ chmod +x DivoomKeeperStudio-*-x86_64.AppImage
 ```
 
 - Running it needs FUSE 2 (`libfuse2` on Debian/Ubuntu, `fuse-libs` on Fedora). Without it, run `./DivoomKeeperStudio-*.AppImage --appimage-extract-and-run`.
-- On X11, Qt needs `libxcb-cursor0` (`xcb-util-cursor` on Fedora).
-- The tray icon needs a StatusNotifier host (KDE, or the AppIndicator extension on GNOME); without one, closing the window exits the program.
+- The tray icon needs a StatusNotifier host (KDE, or the AppIndicator extension on GNOME); without one, quit from the Desktop card in the web UI.
 - Data stays in `~/.local/share/divoom-keeper-studio`, shared with the other Linux builds.
 - Autostart writes `~/.config/autostart/divoom-keeper-studio.desktop` pointing at the AppImage file, so keep it at a stable path.
 - To build locally: `bash build_linux.sh`, then `APPIMAGETOOL=/path/to/appimagetool bash packaging/build_appimage.sh`.
 
-CI also builds `DivoomKeeperStudioWeb-VERSION-x86_64.AppImage` (artifact **linux-appimage-web-x86_64**): the Qt-free browser shell (`--ui web`, see the README) with PySide6 excluded and `web/dist` bundled. It needs no Qt or xcb libraries, only a browser, and relaunches itself in the same mode on autostart. Build it with `bash build_linux.sh --ui web` and `APP_NAME=DivoomKeeperStudioWeb bash packaging/build_appimage.sh` (`ONEDIR` and `OUT_NAME` are also overridable). The Qt AppImage above is unchanged and stays the default.
+The AppImage runs the web shell (`web/dist` bundled): it needs no Qt or xcb libraries, only a browser, and relaunches itself on autostart. It is about 60 MB (the former Qt AppImage was 116 MB). `APP_NAME`, `ONEDIR` and `OUT_NAME` are overridable in `packaging/build_appimage.sh`. `python tools/smoke_shell.py DivoomKeeperStudio-*.AppImage --appimage-extract-and-run` checks it end to end.
 
 ## Standalone Android
 
@@ -203,6 +202,6 @@ The portal's `?mobile-demo=1` mode runs the mobile engine with browser storage a
 
 The iOS job requires Xcode 26. Simulator artifacts cannot be installed on a real iPhone. Android debug builds may use different keys across computers/runs: export a backup before replacing an installation with an incompatible signature.
 
-References: [Capacitor environment](https://capacitorjs.com/docs/getting-started/environment-setup), [native HTTP](https://capacitorjs.com/docs/apis/http), [Qt for Python deployment](https://doc.qt.io/qtforpython-6.8/deployment/index.html), [Docker Compose networking](https://docs.docker.com/compose/how-tos/networking/).
+References: [Capacitor environment](https://capacitorjs.com/docs/getting-started/environment-setup), [native HTTP](https://capacitorjs.com/docs/apis/http), [Docker Compose networking](https://docs.docker.com/compose/how-tos/networking/).
 
 [README](../README.md) · [Desktop guide](DESKTOP.md) · [RGB 3.1.1](RGB-3.1.1.md)

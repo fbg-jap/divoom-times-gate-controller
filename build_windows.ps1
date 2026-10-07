@@ -1,4 +1,4 @@
-param([switch]$SkipInstall, [string]$DistPath = 'dist', [ValidateSet('qt', 'web')][string]$Ui = 'qt')
+param([switch]$SkipInstall, [string]$DistPath = 'dist')
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 if (-not (Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
@@ -9,12 +9,8 @@ if (-not $SkipInstall) {
     & .\.venv\Scripts\python.exe -m pip install -r requirements.txt 'pyinstaller>=6,<7'
     if ($LASTEXITCODE -ne 0) { throw 'Could not install the dependencies.' }
 }
-$appName = if ($Ui -eq 'web') { 'DivoomKeeperStudioWeb' } else { 'DivoomKeeperStudio' }
-if ($Ui -eq 'web' -and -not $SkipInstall) {
-    & .\.venv\Scripts\python.exe -m pip install -r requirements-server.txt
-    if ($LASTEXITCODE -ne 0) { throw 'Could not install the server dependencies.' }
-}
-if ($Ui -eq 'web' -and -not (Test-Path -LiteralPath 'web\dist\index.html')) {
+$appName = 'DivoomKeeperStudio'
+if (-not (Test-Path -LiteralPath 'web\dist\index.html')) {
     Push-Location web
     try {
         npm ci

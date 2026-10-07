@@ -1,39 +1,45 @@
-# PyInstaller spec: keep Windows' own ICU for Qt's unversioned ICU imports.
-# Some development tools add a different ICU build to PATH. Bundling it causes
-# QtCore to fail before the GUI starts (e.g. ucnv_open vs ucnv_open_78).
+# PyInstaller spec for Divoom Keeper Studio: the browser shell (shell_main.py) with the bundled web UI. Build web/dist first (cd web && npm ci && npm run build).
 from pathlib import Path
-import re
 import sys
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 root = Path(SPECPATH).parent
-datas = []
+if not (root / "web" / "dist" / "index.html").exists():
+    raise SystemExit("web/dist is missing: run `npm ci && npm run build` in web/ first.")
+datas = [(str(root / "web" / "dist"), "web/dist"),
+         (str(root / "packaging" / "divoom-keeper-studio.png"), "packaging")]
 for package in ("tzdata", "icalendar", "recurring_ical_events"):
     datas += collect_data_files(package)
 
+hiddenimports = [
+    # uvicorn picks its loop/protocol implementations by name at runtime.
+    "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.loops.asyncio", "uvicorn.protocols.http.auto",
+    "uvicorn.protocols.http.h11_impl", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
+    "uvicorn.lifespan.off",
+]
+# pystray (optional tray) selects its platform backend by name at import time; absent when not installed.
+hiddenimports += collect_submodules("pystray")
+# jeepney is imported lazily by keeper.notifications, so PyInstaller cannot see it.
+if sys.platform == "linux":
+    hiddenimports += ["jeepney", "jeepney.io.blocking"]
+
 a = Analysis(
-    [str(root / "app.py")],
+    [str(root / "shell_main.py")],
     pathex=[str(root)],
     binaries=[],
     datas=datas,
-    # jeepney is imported lazily by keeper.notifications, so PyInstaller cannot see it.
-    hiddenimports=["jeepney", "jeepney.io.blocking"] if sys.platform == "linux" else [],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["icalendar.tests", "recurring_ical_events.test"],
+    excludes=["tkinter", "icalendar.tests", "recurring_ical_events.test"],
     noarchive=False,
 )
-# This Qt wheel targets the ICU API provided by Windows 10 (1809+) / Windows 11.
-# Let the Windows loader resolve those OS libraries, rather than shipping DLLs
-# discovered through an unrelated development tool's PATH.
-a.binaries = [entry for entry in a.binaries if not re.fullmatch(
-    r"icu(?:uc|in|dt\d*)\.dll", Path(entry[0]).name, flags=re.IGNORECASE)]
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name="DivoomKeeperStudio", debug=False, bootloader_ignore_signals=False,
-    strip=False, upx=False, console=False,
+    strip=False, upx=False, console=sys.platform != "win32",
 )
 coll = COLLECT(
     exe, a.binaries, a.datas, strip=False, upx=False, name="DivoomKeeperStudio",
