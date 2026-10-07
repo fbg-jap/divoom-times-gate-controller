@@ -28,6 +28,21 @@ class PortalTests(unittest.TestCase):
         self.client.__exit__(None, None, None)
         self.temp.cleanup()
 
+    def test_activity_list_ignores_pomodoro_ticks_and_merges_repeated_health(self):
+        engine = self.app.state.engine
+        before = len(engine.activity)
+        for _ in range(50):
+            engine.emit("pomodoro", phase="Ready", remaining=1500.0)
+        engine.emit("log", message="real entry", level="info")
+        for _ in range(10):
+            engine.emit("health", device_id="d1", online=False, body={"error": "x"})
+        engine.emit("health", device_id="d2", online=False, body={})
+        engine.emit("health", device_id="d1", online=True, body={})   # a change is a new entry
+        engine.emit("health", device_id="d1", online=True, body={})
+        events = [e for e in list(engine.activity)[before:]]
+        self.assertEqual([e["event"] for e in events], ["log", "health", "health", "health"])
+        self.assertEqual([(e.get("device_id"), e.get("online")) for e in events[1:]], [("d1", False), ("d2", False), ("d1", True)])
+
     def job(self, response):
         self.assertEqual(response.status_code, 200, response.text)
         key = response.json()["job"]

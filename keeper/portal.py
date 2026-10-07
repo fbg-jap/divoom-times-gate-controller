@@ -95,6 +95,15 @@ class PortalEngine(Engine):
             if event == "preview":
                 self.previews[(kwargs["device_id"], kwargs["panel"])] = kwargs["png"]
                 return
+            if event == "pomodoro":   # once a second while idle: it would push every real entry out of the activity list (state has runtime.pomodoro)
+                return
+            if event == "health":   # same state as the last probe of this device: refresh that entry instead of adding another
+                for entry in reversed(self.activity):
+                    if entry["event"] == "health" and entry.get("device_id") == kwargs.get("device_id"):
+                        if entry.get("online") == kwargs.get("online"):
+                            entry.update(time=time.time(), **kwargs)
+                            return
+                        break
             self.sequence += 1
             self.activity.append({"id": self.sequence, "event": event, "time": time.time(), **kwargs})
 
