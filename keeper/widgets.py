@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
@@ -58,8 +59,12 @@ def prtg_reason(error):
 
 def font(size, bold=False):
     name = "segoeuib.ttf" if bold else "segoeui.ttf"
+    bundled = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    # Segoe UI on Windows; otherwise the bundled DejaVu Sans (Pillow's built-in font has no Æ/Ø/Å and similar letters)
     for path in [Path(os.getenv("WINDIR", "C:/Windows")) / "Fonts" / name,
-                 Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")]:
+                 Path(getattr(sys, "_MEIPASS", "")) / "keeper" / "fonts" / bundled,
+                 Path(__file__).resolve().parent / "fonts" / bundled,
+                 Path("/usr/share/fonts/truetype/dejavu") / bundled]:
         if path.exists():
             return ImageFont.truetype(str(path), size)
     return ImageFont.load_default(size=size)
@@ -72,14 +77,23 @@ def png_bytes(image):
 
 
 def wrap_text(draw, text, f, width):
+    """Wrap at spaces; a word wider than the line is split by character."""
     lines = []
     for paragraph in str(text).splitlines() or [""]:
         current = ""
-        for ch in paragraph:
-            if draw.textlength(current + ch, font=f) > width and current:
-                lines.append(current.rstrip())
+        for word in paragraph.split(" "):
+            candidate = word if not current else current + " " + word
+            if draw.textlength(candidate, font=f) <= width:
+                current = candidate
+                continue
+            if current:
+                lines.append(current)
                 current = ""
-            current += ch
+            for ch in word:
+                if draw.textlength(current + ch, font=f) > width and current:
+                    lines.append(current)
+                    current = ""
+                current += ch
         lines.append(current)
     return lines
 
@@ -381,7 +395,7 @@ class Renderer:
 
         def label(text, y, size=12, color="#b8c4d5", center=False, bold=False):
             f = font(size, bold)
-            while draw.textlength(str(text), font=f) > 112 and size > 8:
+            while draw.textlength(str(text), font=f) > 112 and size > 10:
                 size -= 1
                 f = font(size, bold)
             x = (128 - draw.textlength(str(text), font=f)) / 2 if center else 8
@@ -389,7 +403,7 @@ class Renderer:
 
         label(title or {"pc": "SYSTEM", "clock": "LOCAL TIME", "text": "NOTE", "weather": "WEATHER",
                         "countdown": "COUNTDOWN", "calendar": "CALENDAR", "service": "STATUS"}.get(kind, "KEEPER"),
-              17, 11, accent, bold=True)
+              17, 13, accent, bold=True)
         if kind == "clock":
             now = timesource.now(ZoneInfo(slot.get("timezone", "Europe/Madrid")))
             label(now.strftime("%H:%M"), 41, 34, "white", center=True, bold=True)
@@ -432,7 +446,7 @@ class Renderer:
                 for i, (key, title) in enumerate([("download", "RX / DOWNLOAD"), ("upload", "TX / UPLOAD")]):
                     y = 35 + i * 44
                     value = values.get(key)
-                    label(title, y, 10)
+                    label(title, y, 12)
                     label(format_rate(value), y + 13, 18, "white", bold=True)
                     peak = max((s.get(key) or 0 for s in self.providers.pc_history), default=1)
                     graph(key, y + 36, 6, peak)
@@ -441,14 +455,14 @@ class Renderer:
                 disk = self.providers.disk(slot.get("pc_disk", ""))
                 values = {**values, "disk": disk["percent"]}
                 drive = slot.get("pc_disk", "") or Path.home().anchor
-                label(str(drive) + " · FREE", 35, 10)
+                label(str(drive) + " · FREE", 35, 12)
                 free = disk["free"]
                 label("N/A" if free is None else f"{free / 1024**3:.1f} GiB", 49, 22, "white", bold=True)
             keys = ["cpu_temp", "gpu_temp"] if view == "temperature" else ["disk", "ram"] if view == "storage" else ["cpu", "ram", "gpu"]
             for i, key in enumerate(keys):
                 value = values[key]
                 y = (75 if view == "storage" else 37) + i * 27
-                label(key.replace("_temp", "").upper(), y, 11)
+                label(key.replace("_temp", "").upper(), y, 13, bold=True)
                 suffix = "°C" if key.endswith("_temp") else "%"
                 label("N/A" if value is None else f"{value:.0f}{suffix}", y, 12, "white", center=True, bold=True)
                 if view == "history":
@@ -462,8 +476,8 @@ class Renderer:
             label(f"{data['temperature_2m']:.0f}°", 35, 40, "white", center=True, bold=True)
             code = data["weather_code"]
             state = "CLEAR" if code == 0 else "CLOUDY" if code < 4 else "FOG" if code < 50 else "RAIN / SNOW"
-            label(state, 85, 11, center=True)
-            label(f"Humidity {data['relative_humidity_2m']}%", 104, 10, center=True)
+            label(state, 85, 13, center=True)
+            label(f"Humidity {data['relative_humidity_2m']}%", 104, 12, center=True)
         elif kind == "countdown":
             target = datetime.fromisoformat(slot["target"])
             if target.tzinfo is None:
@@ -474,7 +488,7 @@ class Renderer:
             minutes, secs = divmod(rem, 60)
             value = f"{days}d {hours}h" if days else f"{hours:02}:{minutes:02}" if hours else f"{minutes:02}:{secs:02}"
             label(value, 43, 32, "white", center=True, bold=True)
-            label("FINISHED" if seconds == 0 else "TIME LEFT", 94, 10, center=True)
+            label("FINISHED" if seconds == 0 else "TIME LEFT", 94, 12, center=True)
         elif kind == "service":
             ok, latency = self.providers.service(slot["url"])
             color = "#64e6ca" if ok else "#ff8091"
@@ -488,7 +502,7 @@ class Renderer:
                 label(line, 65 + i * 17, 14)
         else:
             label("DIVOOM", 43, 23, "white", center=True, bold=True)
-            label("KEEPER STUDIO", 81, 11, center=True)
+            label("KEEPER STUDIO", 81, 13, center=True)
         return image
 
 

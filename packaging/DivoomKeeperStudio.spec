@@ -7,7 +7,8 @@ root = Path(SPECPATH).parent
 if not (root / "web" / "dist" / "index.html").exists():
     raise SystemExit("web/dist is missing: run `npm ci && npm run build` in web/ first.")
 datas = [(str(root / "web" / "dist"), "web/dist"),
-         (str(root / "packaging" / "divoom-keeper-studio.png"), "packaging")]
+         (str(root / "packaging" / "divoom-keeper-studio.png"), "packaging"),
+         (str(root / "keeper" / "fonts"), "keeper/fonts")]
 for package in ("tzdata", "icalendar", "recurring_ical_events"):
     datas += collect_data_files(package)
 

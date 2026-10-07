@@ -360,6 +360,19 @@ class EngineTests(FixtureCase):
 
 
 class WidgetTests(unittest.TestCase):
+    def test_font_covers_nordic_letters_and_wrapping_keeps_words(self):
+        from PIL import Image, ImageDraw
+        from keeper.widgets import font, wrap_text
+        for bold in (False, True):
+            f = font(14, bold)
+            for ch in "æøåÆØÅ♪":   # Pillow's built-in fallback font draws these as empty boxes
+                self.assertNotEqual(f.getmask(ch).getbbox(), f.getmask("\uffff").getbbox(), ch)
+        draw = ImageDraw.Draw(Image.new("RGB", (128, 128)))
+        lines = wrap_text(draw, "Kosovos parlament vælger præsident", font(14, True), 112)
+        self.assertTrue(all(" " not in line or draw.textlength(line, font=font(14, True)) <= 112 for line in lines))
+        self.assertEqual(" ".join(lines), "Kosovos parlament vælger præsident")
+        self.assertEqual(wrap_text(draw, "x" * 80, font(14), 112)[0][:3], "xxx")   # a very long word is still split
+
     def test_all_renderers_with_demo_data(self):
         renderer = Renderer(demo=True)
         for kind in ["text", "clock", "pc", "weather", "calendar", "service", "countdown"]:

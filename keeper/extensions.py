@@ -593,23 +593,23 @@ def render_extra(s, providers):
         lines(s.get("sensor_unit", ""), 104, 12, 1, accent)
     elif kind == "prtg":
         data, error = extra.prtg_state()
-        lines(s.get("title") or "PRTG", 7, 11, 1, accent)
+        lines(s.get("title") or "PRTG", 6, 14, 1, accent)
         if data is None and error.startswith("Waiting"):
             lines("Connecting…", 40, 13, 2, "#9aa4b5")
         elif data is None:
             lines("Source unavailable", 36, 13, 2, "#ff6b6b")
             if error and error != "not configured":
-                lines(error, 76, 10, 4, "#9aa4b5")
+                lines(error, 76, 12, 3, "#9aa4b5")
         else:
             face = font(22, True)
             for n, (key, color) in enumerate((("up", "#4ade80"), ("warning", "#facc15"), ("down", "#ff4d4d"), ("paused", "#9aa4b5"))):
-                x, y = 8 + (n % 2) * 56, 26 + (n // 2) * 30
+                x, y = 6 + (n % 2) * 62, 24 + (n // 2) * 36
                 draw.text((x, y), str(data[key]), fill=color, font=face)
-                draw.text((x, y + 24), key.upper(), fill=color, font=font(8))
-            lines(data["worst"] or "All sensors OK", 92, 10, 3, "white" if data["worst"] else "#4ade80")
+                draw.text((x, y + 22), key.upper(), fill=color, font=font(11, True))
+            lines(data["worst"] or "All sensors OK", 98, 12, 2, "white" if data["worst"] else "#4ade80")
     elif kind == "spotify":
         data, error = extra.spotify_state()
-        lines(s.get("title") or "Spotify", 7, 11, 1, accent)
+        lines(s.get("title") or "Spotify", 6, 14, 1, accent)
         if data is None and error in {"not connected", "reconnect"}:
             lines("Spotify not connected", 40, 13, 3, "#ff6b6b")
         elif data is None and error.startswith("Waiting"):
@@ -637,24 +637,24 @@ def render_extra(s, providers):
                 else:
                     draw.ellipse((28, 28, 100, 100), outline=accent, width=3)
                     draw.text((64, 64), "♪", fill=accent, font=font(56), anchor="mm")
-                face = font(10)
+                face = font(12, True)
                 pill = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
                 ImageDraw.Draw(pill).rounded_rectangle((3, 3, 12 + int(draw.textlength(state, font=face)), 18), 5, fill=(0, 0, 0, 160))
                 image.paste(pill, (0, 0), pill)
                 draw.text((8, 5), state, fill=accent, font=face)
             elif mode == "text":
-                draw.text((8, 24), state, fill=accent, font=font(10))
+                draw.text((8, 22), state, fill=accent, font=font(12, True))
                 lines(data.get("title") or "Spotify", 37, 16, 3)
-                lines(data.get("artist", ""), 93, 12, 2, accent)
+                lines(data.get("artist", ""), 93, 14, 2, accent)
             else:
                 if art:
                     image.paste(art, (8, 22))
                 else:
                     draw.ellipse((9, 23, 57, 71), outline=accent, width=2)
                     draw.text((25, 29), "♪", fill=accent, font=font(25))
-                draw.text((66, 28), state, fill=accent, font=font(10))
-                lines(data.get("title") or "Spotify", 77, 13, 2)
-                lines(data.get("artist", ""), 105, 10, 1, accent)
+                draw.text((66, 26), state, fill=accent, font=font(12, True))
+                lines(data.get("title") or "Spotify", 76, 14, 2)
+                lines(data.get("artist", ""), 104, 12, 1, accent)
             total = int(data.get("duration_ms") or 0)
             if total > 0:
                 progress = int(data.get("progress_ms") or 0)
