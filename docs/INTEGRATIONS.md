@@ -100,9 +100,11 @@ The **PRTG status** widget and the `prtg_down` / `prtg_warning` alert metrics re
 
 ## GitHub pull requests
 
-The **GitHub pull requests** screen shows how many pull requests are open and the titles of the latest two. Enable it under **Integrations > GitHub** and choose what to show on the screen:
+The **GitHub** screen shows how many pull requests (or issues) are open and the titles of the latest two, or the status of a repository's latest CI run. Enable it under **Integrations > GitHub** and choose what to show on the screen:
 
 - **Review requested from me** and **My open pull requests** need a token, because `@me` means the token's owner.
+- **Issues assigned to me** (open issues assigned to the token's owner) and **Mentioning me** (open issues and pull requests that mention the token's owner) also need a token.
+- **Latest CI run of a repository** takes `owner/name` and shows a green *PASSING*, red *FAILING*, amber *RUNNING* or grey *NOT RUN* (cancelled or skipped) / *NO RUNS* dot with the workflow name, branch and trigger of the most recent GitHub Actions run (`GET /repos/{owner}/{repo}/actions/runs?per_page=1`, any workflow). A token needs read access to *Actions* for private repositories.
 - **Open pull requests of a repository** takes `owner/name`; a public repository works without a token (a token only raises the rate limit).
 
 Create the token under GitHub > Settings > Developer settings > Personal access tokens. A fine-grained token with read access to *Pull requests* and *Metadata* is enough; a classic token needs the `repo` scope to see private repositories. The token is stored in `config.json` (owner-only, like the other integration secrets) and is removed from exported backups.
@@ -221,7 +223,7 @@ Keeper can recognise Teams chat, mention and call pop-ups from this PC and show 
 - **What is matched**: a notification is treated as Teams when any entry of the *patterns* list (case-insensitive) appears in its app name, summary or body. Defaults: `microsoft teams` (the native Windows app), `msteams`, `teams-for-linux` (the unofficial Linux client) and the domains `teams.microsoft.com`, `teams.cloud.microsoft`, `teams.live.com` (Teams running as a browser app, where Chrome or Brave notifications carry the site domain).
 - **Kinds**: *call* (the text says calling, incoming call, meeting started, `ringer`, `llamando`, `ruft an`), *mention* (mentioned, `nævnte`, `mencionó`, `erwähnt`, or an `@`), otherwise *chat*. Each kind can be switched off. Calls stay on screen for *call seconds* and can sound the buzzer.
 - **Privacy**: by default only the sender and `New message` / `Mentioned you` / `Incoming call` are shown; the message preview appears only with *Show message preview*.
-- **Screen and filters**: the Teams *screen* can differ from the general one (0 = same). The general rate limit still applies first, and the general blocked-apps list still wins over Teams (a blocked app is dropped before Teams is evaluated); an allowed-apps list that excludes the app also excludes it.
+- **Screen and filters**: the Teams *screen* can differ from the general one (0 = same). The general rate limit still applies, and the general blocked-apps list still wins over Teams (a blocked app is dropped before Teams is evaluated). The allowed-apps list is for general notifications only: a notification that matches the Teams patterns is shown even when its app (for example the browser or `teams-for-linux`) is not on that list.
 - **Limitations**: the kinds are heuristics on the notification text, so they depend on the Teams display language. Teams must have operating-system notifications enabled; Focus assist / Do not disturb silences them and Keeper sees nothing. Linux needs `jeepney` as above. The Windows backend is still unverified, and no real Teams client has been tested yet.
 
 ## Online time

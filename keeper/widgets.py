@@ -58,7 +58,8 @@ def prtg_reason(error):
 
 
 GITHUB_API = "https://api.github.com"
-GITHUB_QUERIES = {"review": "is:pr is:open archived:false review-requested:@me", "mine": "is:pr is:open archived:false author:@me"}
+GITHUB_QUERIES = {"review": "is:pr is:open archived:false review-requested:@me", "mine": "is:pr is:open archived:false author:@me",
+                  "issues": "is:issue is:open archived:false assignee:@me", "mentions": "is:open archived:false mentions:@me"}
 
 
 def github_reason(error):
@@ -180,12 +181,34 @@ class Providers:
             chunks.append(chunk)
         return b"".join(chunks)
 
-    def github_fetch(self, token, query):
-        """Open pull requests matching a GitHub search query: {"count": n, "items": [{number, title, repo, author, draft}]}.
-        Blocking; raises on any failure (ExtraSources maps it with github_reason). Called from a background sampler."""
+    def github_headers(self, token):
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "DivoomKeeperStudio"}
         if token:
             headers["Authorization"] = "Bearer " + token
+        return headers
+
+    def github_ci(self, token, repo):
+        """Latest GitHub Actions run of a repository: {"state", "name", "branch", "event"}; state is success, failure, running or other
+        (cancelled, skipped, ...), or none when the repository has no runs. Blocking; raises on any failure."""
+        with self.session.get(f"{GITHUB_API}/repos/{repo}/actions/runs", params={"per_page": 1}, headers=self.github_headers(token),
+                              timeout=8, stream=True, allow_redirects=False) as response:
+            response.raise_for_status()
+            body = self.prtg_read(response, 512 * 1024)
+        runs = json.loads(body).get("workflow_runs") or []
+        if not runs:
+            return {"state": "none", "name": "", "branch": "", "event": ""}
+        run = runs[0]
+        if run.get("status") != "completed":
+            state = "running"
+        else:
+            state = {"success": "success", "failure": "failure", "timed_out": "failure", "startup_failure": "failure"}.get(run.get("conclusion"), "other")
+        return {"state": state, "name": str(run.get("name") or "")[:60], "branch": str(run.get("head_branch") or "")[:60],
+                "event": str(run.get("event") or "")[:20]}
+
+    def github_fetch(self, token, query):
+        """Open pull requests matching a GitHub search query: {"count": n, "items": [{number, title, repo, author, draft}]}.
+        Blocking; raises on any failure (ExtraSources maps it with github_reason). Called from a background sampler."""
+        headers = self.github_headers(token)
         with self.session.get(GITHUB_API + "/search/issues", params={"q": query, "per_page": 3, "sort": "updated", "order": "desc"},
                               headers=headers, timeout=8, stream=True, allow_redirects=False) as response:
             response.raise_for_status()

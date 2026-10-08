@@ -66,6 +66,18 @@ class FetchTests(unittest.TestCase):
         providers.github_fetch("", "is:pr repo:acme/keeper")
         self.assertNotIn("Authorization", providers.session.calls[0][1]["headers"])
 
+    def test_ci_state_from_the_latest_run(self):
+        def run(status, conclusion):
+            return FakeResponse(body={"workflow_runs": [{"status": status, "conclusion": conclusion, "name": "CI", "head_branch": "main", "event": "push"}]})
+        for status, conclusion, state in (("completed", "success", "success"), ("completed", "failure", "failure"), ("completed", "timed_out", "failure"),
+                                          ("in_progress", None, "running"), ("completed", "cancelled", "other")):
+            providers = self.providers(run(status, conclusion))
+            result = providers.github_ci("tok", "acme/keeper")
+            self.assertEqual(result, {"state": state, "name": "CI", "branch": "main", "event": "push"})
+        self.assertEqual(providers.session.calls[0][0], GITHUB_API + "/repos/acme/keeper/actions/runs")
+        self.assertEqual(providers.session.calls[0][1]["headers"]["Authorization"], "Bearer tok")
+        self.assertEqual(self.providers(FakeResponse(body={"workflow_runs": []})).github_ci("", "a/b")["state"], "none")
+
     def test_reasons_are_fixed_texts_without_urls_or_tokens(self):
         def error(status, headers=None):
             return requests.HTTPError("x https://api.github.com/?access_token=SECRET", response=FakeResponse(status, headers=headers))
@@ -115,10 +127,31 @@ class StateTests(unittest.TestCase):
         self.assertNotIn("SECRET", error)
 
 
+class NewQueryTests(unittest.TestCase):
+    extra = StateTests.extra
+
+    def test_issue_and_mention_queries_use_the_token_owner(self):
+        extra = self.extra({"enabled": True, "token": "t"})
+        extra.github_state({"github_query": "issues"})
+        extra.github_state({"github_query": "mentions"})
+        queries = [call[1]["params"]["q"] for call in extra.providers.session.calls]
+        self.assertTrue(any("is:issue" in q and "assignee:@me" in q for q in queries))
+        self.assertTrue(any("mentions:@me" in q for q in queries))
+        self.assertEqual(self.extra({"enabled": True, "token": ""}).github_state({"github_query": "issues"}), (None, "token required"))
+
+    def test_ci_needs_a_repository_and_works_without_a_token(self):
+        extra = self.extra({"enabled": True, "token": ""}, FakeResponse(body={"workflow_runs": [{"status": "completed", "conclusion": "success", "name": "CI"}]}))
+        self.assertEqual(extra.github_state({"github_query": "ci"}), (None, "choose a repository"))
+        data, error = extra.github_state({"github_query": "ci", "github_repo": "acme/keeper"})
+        self.assertEqual((error, data["state"]), ("", "success"))
+
+
 class ValidationAndRenderTests(unittest.TestCase):
     def test_slot_validation(self):
         validate_content(slot("github", github_query="repo", github_repo="acme/keeper"))
         validate_content(slot("github"))
+        for query in ("issues", "mentions", "ci"):
+            validate_content(slot("github", github_query=query, github_repo="acme/keeper"))
         for bad in ({"github_query": "everything"}, {"github_repo": "no-slash"}, {"github_repo": "a/b/c"}, {"github_repo": 5}):
             with self.assertRaises(ValueError):
                 validate_content(slot("github", **bad))
@@ -138,12 +171,20 @@ class ValidationAndRenderTests(unittest.TestCase):
             self.assertNotIn("ghp_SECRET", text)
 
     def test_demo_render_and_error_render(self):
-        for query in ("review", "mine", "repo"):
+        for query in ("review", "mine", "repo", "issues", "mentions", "ci"):
             image = Renderer(demo=True).render(slot("github", github_query=query, github_repo="acme/keeper"))
             self.assertEqual(image.size, (128, 128))
         real = Renderer(demo=False)
         real.providers.extra.github_conf = {"enabled": True, "token": ""}
         self.assertEqual(real.render(slot("github", github_query="review")).size, (128, 128))
+
+    def test_ci_render_states(self):
+        images = []
+        for state in ("success", "failure", "running", "none", "other"):
+            real = Renderer(demo=False)
+            real.providers.extra.github_state = lambda s, state=state: ({"state": state, "name": "CI", "branch": "main", "event": "push"}, "")
+            images.append(real.render(slot("github", github_query="ci", github_repo="acme/keeper")).tobytes())
+        self.assertEqual(len(set(images)), 5)
 
 
 if __name__ == "__main__":

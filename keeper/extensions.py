@@ -19,7 +19,7 @@ METRICS = [("cpu", "CPU %"), ("ram", "RAM %"), ("gpu", "GPU %"), ("disk", "Disk 
            ("cpu_temp", "CPU °C"), ("gpu_temp", "GPU °C"), ("download", "Descarga B/s"), ("upload", "Subida B/s")]
 PRTG_METRICS = {"prtg_down", "prtg_warning"}
 GITHUB_REPO = re.compile(r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
-GITHUB_QUERY_KINDS = ("review", "mine", "repo")
+GITHUB_QUERY_KINDS = ("review", "mine", "repo", "issues", "mentions", "ci")
 
 
 def finite(value):
@@ -41,7 +41,7 @@ def validate_content(s):
         raise ValueError("Invalid panorama speed")
     if s.get("kind") == "github":
         if s.get("github_query", "review") not in GITHUB_QUERY_KINDS:
-            raise ValueError("GitHub query must be review, mine or repo")
+            raise ValueError("GitHub query must be review, mine, repo, issues, mentions or ci")
         repo = s.get("github_repo", "")
         if not isinstance(repo, str) or (repo and not GITHUB_REPO.fullmatch(repo)):
             raise ValueError("Invalid GitHub repository (use owner/name)")
@@ -364,6 +364,8 @@ class ExtraSources:
         "choose a repository" or a short reason. Never blocks for more than FIRST_READ_WAIT."""
         kind = s.get("github_query", "review")
         repo = str(s.get("github_repo", "")).strip()
+        if self.providers.demo and kind == "ci":
+            return {"state": "success", "name": "CI", "branch": "main", "event": "push"}, ""
         if self.providers.demo:
             items = [{"number": 412, "title": "Fix connection retries", "repo": "acme/keeper", "author": "ana", "draft": False},
                      {"number": 409, "title": "Add notice colors", "repo": "acme/keeper", "author": "bo", "draft": True}]
@@ -372,10 +374,10 @@ class ExtraSources:
         if not conf.get("enabled"):
             return None, "not configured"
         token = str(conf.get("token", "")).strip()
-        if kind == "repo":
+        if kind in ("repo", "ci"):
             if not GITHUB_REPO.fullmatch(repo):
                 return None, "choose a repository"
-            query = f"is:pr is:open repo:{repo}"
+            query = f"is:pr is:open repo:{repo}" if kind == "repo" else "ci:" + repo
         else:
             if not token:
                 return None, "token required"   # "@me" means the token's owner
@@ -387,6 +389,8 @@ class ExtraSources:
             from .windows_sources import AsyncProbe
             def sample():
                 try:
+                    if kind == "ci":
+                        return self.providers.github_ci(token, repo)
                     return self.providers.github_fetch(token, query)
                 except Exception as error:
                     from .widgets import github_reason
@@ -653,7 +657,8 @@ def render_extra(s, providers):
         query = s.get("github_query", "review")
         repo = str(s.get("github_repo", "")).strip()
         data, error = extra.github_state(s)
-        default_title = {"review": "Review requested", "mine": "My pull requests"}.get(query, repo.split("/")[-1] or "GitHub")
+        default_title = {"review": "Review requested", "mine": "My pull requests", "issues": "Assigned issues",
+                         "mentions": "Mentions"}.get(query, repo.split("/")[-1] or "GitHub")
         fit(s.get("title") or default_title, 5, 13, accent, True, True)
         if data is None and error in {"not configured", "token required", "choose a repository"}:
             lines({"not configured": "GitHub not configured", "token required": "Add a GitHub token",
@@ -663,8 +668,16 @@ def render_extra(s, providers):
         elif data is None:
             lines("GitHub unavailable", 34, 13, 1, "#ff6b6b", True)
             lines(error or "protocol error", 56, 12, 3, "#9aa4b5", True)
+        elif query == "ci":
+            state = data["state"]
+            color, label = {"success": ("#4ade80", "PASSING"), "failure": ("#ff4d4d", "FAILING"), "running": ("#fbbf24", "RUNNING"),
+                            "none": ("#9aa4b5", "NO RUNS")}.get(state, ("#9aa4b5", "NOT RUN"))
+            draw.ellipse((44, 28, 84, 68), fill=color)
+            lines(label, 76, 20, 1, color, True, True)
+            fit(data["name"], 102, 12, center=True)
+            fit(" · ".join(x for x in (data["branch"], data["event"]) if x), 117, 10, "#9aa4b5", center=True)
         else:
-            lines("open · " + (repo if query == "repo" else "you"), 24, 11, 1, "#9aa4b5", True)
+            lines("open · " + (repo if query == "repo" else "mentions" if query == "mentions" else "you"), 24, 11, 1, "#9aa4b5", True)
             count = data["count"]
             text = str(count) if count < 1000 else "999+"
             face = font(46, True)

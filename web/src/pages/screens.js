@@ -309,8 +309,8 @@ export function contentForm(s, inList = false) {
     s.github_repo ??= "";
     form.append(
       hint(t("ui.github_widget_hint")),
-      field(s, "github_query", t("ui.github_query"), "select", { review: t("ui.github_q_review"), mine: t("ui.github_q_mine"), repo: t("ui.github_q_repo") }),
-      ...(s.github_query === "repo" ? [field(s, "github_repo", t("ui.github_repo"))] : []),
+      field(s, "github_query", t("ui.github_query"), "select", { review: t("ui.github_q_review"), mine: t("ui.github_q_mine"), issues: t("ui.github_q_issues"), mentions: t("ui.github_q_mentions"), repo: t("ui.github_q_repo"), ci: t("ui.github_q_ci") }),
+      ...(s.github_query === "repo" || s.github_query === "ci" ? [field(s, "github_repo", t("ui.github_repo"))] : []),
     );
   }
   if (s.kind === "mail") {
