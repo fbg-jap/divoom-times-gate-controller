@@ -327,17 +327,14 @@ class NotificationService:
             general = bool(cfg.get("enabled"))
             if not (general or teams["enabled"]) or not self.device_id:
                 return False
-            if not app_allowed(app, cfg.get("allow_apps"), cfg.get("deny_apps")):
+            if not app_allowed(app, [], cfg.get("deny_apps")):
                 return False
-            found = None
-            if not general:   # Teams alone: everything that is not Teams is dropped, and does not use up the rate limit
-                found = classify_teams(app, summary, body, teams["patterns"])
-                if not found:
-                    return False
+            # A Teams notification is recognised by its own patterns, so the allow list (meant for general notifications) does not apply to it.
+            found = classify_teams(app, summary, body, teams["patterns"]) if teams["enabled"] else None
+            if not found and not (general and app_allowed(app, cfg.get("allow_apps"), [])):
+                return False   # Teams alone: everything that is not Teams is dropped, and does not use up the rate limit
             if not self.limiter.allow(cfg.get("per_minute", 6)):
                 return False
-            if general and teams["enabled"]:
-                found = classify_teams(app, summary, body, teams["patterns"])
             panel = min(max(int(cfg.get("panel", 1)), 1), 5) - 1
             seconds = min(max(int(cfg.get("seconds", 8)), 5), 60)
             if found:

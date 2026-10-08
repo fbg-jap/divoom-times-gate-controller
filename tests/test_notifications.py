@@ -292,6 +292,14 @@ class TeamsServiceTests(unittest.TestCase):
         self.assertIn("Mentioned you", self.engine.automations.calls[1][2])
         self.assertIn("hello", self.engine.automations.calls[1][2])
 
+    def test_allow_list_does_not_block_teams_but_deny_does(self):
+        self.configure(allow_apps=["Firefox"], deny_apps=["Brave"])
+        self.assertTrue(self.service.handle("teams-for-linux", "Ana", "hi"))
+        self.assertFalse(self.service.handle("Chromium", "Ana", "hello"))   # not Teams, not allowed
+        self.assertTrue(self.service.handle("Firefox", "Ana", "hello"))
+        self.assertFalse(self.service.handle("Brave", "teams.microsoft.com", "Ana: hi"))   # deny wins
+        self.assertEqual(len(self.engine.automations.calls), 2)
+
     def test_mention_without_preview(self):
         self.configure()
         self.service.handle("Microsoft Teams", "Ana mentioned you", "secret")
@@ -318,18 +326,17 @@ class TeamsServiceTests(unittest.TestCase):
         self.service.handle("Microsoft Teams", "Ana", "")
         self.assertEqual(self.engine.automations.calls[1][1], 2)
 
-    def test_deny_and_allow_lists_apply_to_teams(self):
+    def test_deny_list_applies_to_teams_but_the_allow_list_does_not(self):
         self.configure(deny_apps=["microsoft teams"])
         self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
         self.configure(allow_apps=["Mail"])
-        self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
+        self.assertTrue(self.service.handle("Microsoft Teams", "Ana", ""))
 
     def test_rate_limiter_still_first(self):
         self.configure(per_minute=1)
         self.assertTrue(self.service.handle("Microsoft Teams", "Ana", ""))
-        with patch.object(nt, "classify_teams") as classify:
-            self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
-            classify.assert_not_called()
+        self.assertFalse(self.service.handle("Microsoft Teams", "Ana", ""))
+        self.assertEqual(len(self.engine.automations.calls), 1)
 
     def test_non_teams_path_is_unchanged_with_teams_enabled(self):
         self.configure()
